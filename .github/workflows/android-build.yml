@@ -36,6 +36,22 @@ jobs:
           rm -rf craftdroid-src
           mkdir -p craftdroid-src
           unzip -q "$ARCHIVE" -d craftdroid-src
+
+          # Accept either a flat ZIP or a ZIP with one nested project directory.
+          if [ ! -f craftdroid-src/gradlew ]; then
+            PROJECT_DIR="$(find craftdroid-src -type f -name gradlew -print -quit | xargs -r dirname)"
+            test -n "$PROJECT_DIR" || { echo 'gradlew not found anywhere in extracted archive.' >&2; exit 1; }
+            test -f "$PROJECT_DIR/gradle/wrapper/gradle-wrapper.properties" || {
+              echo 'Gradle wrapper properties not found next to gradlew.' >&2
+              exit 1
+            }
+            if [ "$PROJECT_DIR" != "craftdroid-src" ]; then
+              shopt -s dotglob
+              mv "$PROJECT_DIR"/* craftdroid-src/
+              rmdir "$PROJECT_DIR"
+            fi
+          fi
+
           test -f craftdroid-src/gradlew
           test -f craftdroid-src/gradle/wrapper/gradle-wrapper.properties
           chmod +x craftdroid-src/gradlew
