@@ -14,6 +14,7 @@ from pathlib import Path
 
 ABIS = ("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
 BRIDGE = "libcraftdroidbridge.so"
+ELF_MAGIC = b"\x7fELF"
 
 
 def main() -> None:
@@ -35,17 +36,17 @@ def main() -> None:
             if entry not in names:
                 raise SystemExit(f"Missing native bridge for {abi}: {entry}")
             data = zf.read(entry)
-            if len(data) < 4 or data[:4] != b"\\x7fELF":
+            if len(data) < 4 or data[:4] != ELF_MAGIC:
                 raise SystemExit(f"Native bridge is not an ELF shared object: {entry}")
             if len(data) < 64:
                 raise SystemExit(f"Native bridge is unexpectedly small: {entry}")
 
     digest = hashlib.sha256(apk.read_bytes()).hexdigest()
-    print(f"APK runtime preflight: PASS")
+    print("APK runtime preflight: PASS")
     print(f"- size: {apk.stat().st_size} bytes")
     print(f"- sha256: {digest}")
-    print(f"- Java payload: classes.dex present")
-    print(f"- Android manifest: present")
+    print("- Java payload: classes.dex present")
+    print("- Android manifest: present")
     print(f"- native bridge: {BRIDGE} present and ELF for {len(ABIS)} ABIs")
 
     # When readelf is available, validate that each bridge is a shared ELF file.
