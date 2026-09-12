@@ -3,8 +3,9 @@
 
 This does not pretend to boot Minecraft without game assets/account data. It
 statically verifies that the production launch path prepares Java and the
-native renderer before the embedded JVM launch, validates the resolved
-classpath, and routes launch failures through recovery diagnostics.
+native renderer before the embedded JVM launch, validates the generated
+LaunchCommand with LaunchPreflight, and routes launch failures through the
+recovery/error boundary.
 """
 from pathlib import Path
 import re
@@ -31,30 +32,23 @@ def main() -> None:
 
     require(text, r"javaManager\.ensureRuntime\(requiredJava\)", "Java runtime preparation")
     require(text, r"rendererManager\.ensureNativeStack\(requestedNativeLwjgl\)", "native renderer preparation")
-    require(text, r"LaunchClasspathResolver\.resolve\(", "Minecraft classpath resolution")
-    require(text, r"resolvedClasspath\.valid", "classpath validity gate")
+    require(text, r"LaunchPreflight\.verify\(", "generated launch-command preflight")
+    require(text, r"preflight\.valid", "launch-command validity gate")
+    require(text, r"NativeGameBridge\.launchJava\(", "embedded JVM launch")
 
     java_pos = text.find("javaManager.ensureRuntime(requiredJava)")
     renderer_pos = text.find("rendererManager.ensureNativeStack(requestedNativeLwjgl)")
-    if java_pos < 0 or renderer_pos < 0:
-        raise SystemExit("Unable to locate launch preparation calls")
+    preflight_pos = text.find("LaunchPreflight.verify(")
+    launch_pos = text.find("NativeGameBridge.launchJava(")
+    if min(java_pos, renderer_pos, preflight_pos, launch_pos) < 0:
+        raise SystemExit("Unable to locate one or more Minecraft launch stages")
 
-    # Find an actual JVM/native launch invocation rather than a type/import name.
-    launch_patterns = [
-        r"\b(?:launch|start|run)(?:Jvm|JVM)\s*\(",
-        r"\b(?:launch|start|run)Minecraft\s*\(",
-        r"\bNativeGameBridge\.[A-Za-z_][A-Za-z0-9_]*\s*\(",
-        r"\bEmbeddedJvm\.[A-Za-z_][A-Za-z0-9_]*\s*\(",
-    ]
-    launch_positions = []
-    for pattern in launch_patterns:
-        for match in re.finditer(pattern, text):
-            launch_positions.append(match.start())
-    if not launch_positions:
-        raise SystemExit("Could not identify the embedded JVM/native launch invocation")
-    jvm_pos = min(p for p in launch_positions if p >= 0)
-    if java_pos > jvm_pos or renderer_pos > jvm_pos:
-        raise SystemExit("Java/renderer preparation occurs after the JVM/native launch boundary")
+    if java_pos > launch_pos:
+        raise SystemExit("Java runtime preparation occurs after the JVM launch")
+    if renderer_pos > launch_pos:
+        raise SystemExit("Native renderer preparation occurs after the JVM launch")
+    if preflight_pos > launch_pos:
+        raise SystemExit("Launch command preflight occurs after the JVM launch")
 
     require(text, r"try\s*\{|runCatching\s*\{", "launch exception boundary")
     recovery_files = list(src.rglob("LaunchRecoveryPolicy.kt"))
@@ -63,7 +57,7 @@ def main() -> None:
 
     print("Step 177 Minecraft launch contract: PASS")
     print(f"manager={manager}")
-    print("verified=Java runtime, renderer/native stack, classpath validity, JVM launch ordering, recovery boundary")
+    print("verified=Java runtime, renderer/native stack, launch-command preflight, embedded JVM launch ordering, recovery boundary")
 
 
 if __name__ == "__main__":
