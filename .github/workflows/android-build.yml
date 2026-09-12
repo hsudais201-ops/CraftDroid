@@ -163,6 +163,15 @@ jobs:
           path: artifacts/apk/*
           if-no-files-found: error
 
+      - name: Step 174 Android emulator smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          script: bash tools/ci/runtime_smoke_step174.sh craftdroid-src/app/build/outputs/apk/debug/app-debug.apk artifacts/runtime
+
       - name: Snapshot source files for diagnostics
         if: always()
         shell: bash
@@ -193,6 +202,7 @@ jobs:
           name: CraftDroid-build-diagnostics
           path: |
             artifacts/build/**
+            artifacts/runtime/**
             craftdroid-src/app/build/reports/**
             craftdroid-src/app/build/test-results/**
             craftdroid-src/app/build/diagnostic-source/**
