@@ -1,0 +1,23 @@
+name: Verify Real Minecraft Version Fixture
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Minecraft 1.21.1 metadata and client availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_minecraft_version_fixture.py
