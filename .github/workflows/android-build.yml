@@ -37,7 +37,6 @@ jobs:
           mkdir -p craftdroid-src
           unzip -q "$ARCHIVE" -d craftdroid-src
 
-          # Accept either a flat ZIP or a ZIP with one nested project directory.
           if [ ! -f craftdroid-src/gradlew ]; then
             PROJECT_DIR="$(find craftdroid-src -type f -name gradlew -print -quit | xargs -r dirname)"
             test -n "$PROJECT_DIR" || { echo 'gradlew not found anywhere in extracted archive.' >&2; exit 1; }
@@ -64,9 +63,6 @@ jobs:
           set -euo pipefail
           SETTINGS="craftdroid-src/settings.gradle.kts"
           test -f "$SETTINGS"
-          # The source archive requests the Foojay toolchain resolver, but CraftDroid
-          # already builds against the JDK supplied by GitHub Actions. Removing the
-          # optional resolver avoids an unnecessary plugin-resolution dependency.
           sed -i '/org\.gradle\.toolchains\.foojay-resolver-convention/d' "$SETTINGS"
           echo '--- normalized settings.gradle.kts ---'
           sed -n '1,60p' "$SETTINGS"
@@ -76,6 +72,12 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/ci/repair_step153.py craftdroid-src
+
+      - name: Apply Step 154 unit-test repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step154_tests.py craftdroid-src
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
