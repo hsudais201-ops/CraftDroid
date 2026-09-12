@@ -35,7 +35,7 @@ fi
 printf '%s\n' "$ROOT_REL" > "$OUT/minecraft-root.txt"
 printf '%s\n' "$ROOTS" > "$OUT/discovered-roots.txt"
 
-STAGE="/data/local/tmp/craftdroid-step186-$RANDOM"
+STAGE="/data/local/tmp/craftdroid-step187-$RANDOM"
 "$ADB" shell rm -rf "$STAGE"
 "$ADB" shell mkdir -p "$STAGE"
 "$ADB" push "$FIXTURE/." "$STAGE/" > "$OUT/fixture-push.txt"
@@ -49,6 +49,11 @@ test -n "$ASSET_INDEX_NAME"
 if ! "$ADB" shell am start -W -n "$PACKAGE/$ACTIVITY" > "$OUT/activity-start.txt" 2>&1; then
   "$ADB" shell monkey -p "$PACKAGE" 1 > "$OUT/monkey-start.txt" 2>&1
 fi
+
+"$ADB" shell dumpsys activity activities > "$OUT/pre-play-activities.txt" || true
+"$ADB" shell dumpsys window windows > "$OUT/pre-play-windows.txt" || true
+"$ADB" shell pidof "$PACKAGE" > "$OUT/pre-play-pid.txt" 2>/dev/null || true
+"$ADB" exec-out screencap -p > "$OUT/before-play.png" 2>/dev/null || true
 
 # Give Compose and the launcher state time to render, then find a Play/Start control.
 # Parse the XML with Python so detection does not depend on the attribute order emitted
@@ -74,10 +79,10 @@ for node in root.iter('node'):
     text = node.attrib.get('text', '')
     desc = node.attrib.get('content-desc', '')
     label = f'{text} {desc}'.strip()
-    if not re.search(r'(?i)\\b(play|start)\\b', label):
+    if not re.search(r'(?i)\b(play|start)\b', label):
         continue
     bounds = node.attrib.get('bounds', '')
-    m = re.fullmatch(r'\\[(\\d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]', bounds)
+    m = re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', bounds)
     if m:
         print(' '.join(m.groups()))
         break
@@ -97,6 +102,13 @@ if [ -n "$PLAY_BOUNDS" ]; then
   printf 'bounds=%s\n' "$PLAY_BOUNDS" > "$OUT/play-target.txt"
   "$ADB" shell input tap "$(( (x1+x2) / 2 ))" "$(( (y1+y2) / 2 ))" > "$OUT/play-tap.txt" 2>&1 || true
   printf 'Tapped production Play/Start control at %s\n' "$PLAY_BOUNDS" | tee -a "$OUT/play-tap.txt"
+  sleep 3
+  "$ADB" shell dumpsys activity activities > "$OUT/post-play-activities.txt" || true
+  "$ADB" shell dumpsys window windows > "$OUT/post-play-windows.txt" || true
+  "$ADB" shell pidof "$PACKAGE" > "$OUT/post-play-pid.txt" 2>/dev/null || true
+  "$ADB" exec-out screencap -p > "$OUT/after-play.png" 2>/dev/null || true
+  "$ADB" shell uiautomator dump /sdcard/window-after-play.xml >/dev/null 2>&1 || true
+  "$ADB" shell cat /sdcard/window-after-play.xml > "$OUT/ui-after-play.xml" 2>/dev/null || true
 else
   echo 'No accessibility-visible Play/Start control found after 24 seconds.' > "$OUT/play-tap.txt"
   [ -f "$OUT/ui-12.xml" ] && cp "$OUT/ui-12.xml" "$OUT/ui.xml"
@@ -113,14 +125,14 @@ grep -Ei 'CraftDroid|MinecraftLaunchManager|LaunchPreflight|NativeGameBridge|Jav
 
 FATAL_RE='FATAL EXCEPTION|Fatal signal|SIGSEGV|SIGABRT|SIGBUS|SIGILL|UnsatisfiedLinkError|NoClassDefFoundError|ClassNotFoundException|ExceptionInInitializerError|dlopen failed|CANNOT LINK|OutOfMemoryError|GLFW.*(error|failed)|LWJGL.*(error|failed)'
 if grep -Eiq "$FATAL_RE" "$OUT/logcat.txt"; then
-  echo 'Step 186 detected a real Android/JVM/native launch failure.' >&2
+  echo 'Step 187 detected a real Android/JVM/native launch failure.' >&2
   grep -Ei "$FATAL_RE" "$OUT/logcat.txt" >&2 || true
   exit 1
 fi
 
 if grep -Eiq 'MinecraftLaunchManager.*launch|NativeGameBridge.*launchJava|LaunchPreflight.*valid|Minecraft.*starting|Step [1-6]/6:' "$OUT/logcat.txt"; then
-  echo 'Step 186 reached the production Minecraft launch path without fatal Android/JVM/native errors.' | tee "$OUT/result.txt"
+  echo 'Step 187 reached the production Minecraft launch path without fatal Android/JVM/native errors.' | tee "$OUT/result.txt"
 else
-  echo 'Step 186 staged real Minecraft 1.21.1 files but no concrete Minecraft JVM launch marker was observed.' | tee "$OUT/result.txt"
+  echo 'Step 187 staged real Minecraft 1.21.1 files but no concrete Minecraft JVM launch marker was observed.' | tee "$OUT/result.txt"
   exit 1
 fi
