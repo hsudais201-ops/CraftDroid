@@ -61,7 +61,7 @@ jobs:
           test -s artifacts/fixture/assets/indexes/*.json
           find artifacts/fixture/libraries -type f -print -quit | grep -q .
 
-      - name: Download APK from triggering build run
+      - name: Validate and download APK build artifact
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -69,8 +69,21 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts/apk
           found=''
+          BUILD_SHA=''
+          BUILD_STATUS=''
           if [ -n "$SOURCE_RUN_ID" ]; then
-            echo "Looking for CraftDroid-debug-apk on build run $SOURCE_RUN_ID."
+            echo "Inspecting APK build run $SOURCE_RUN_ID."
+            RUN_JSON="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/$SOURCE_RUN_ID")"
+            BUILD_SHA="$(printf '%s' "$RUN_JSON" | jq -r '.head_sha // empty')"
+            BUILD_STATUS="$(printf '%s' "$RUN_JSON" | jq -r '.conclusion // empty')"
+            printf '%s\n' "$BUILD_SHA" > artifacts/apk/build-head-sha.txt
+            printf '%s\n' "$BUILD_STATUS" > artifacts/apk/build-conclusion.txt
+            test "$BUILD_STATUS" = success
+            test "$BUILD_SHA" = "$TARGET_SHA" || {
+              echo "APK build run $SOURCE_RUN_ID targets $BUILD_SHA but boot test targets $TARGET_SHA." >&2
+              echo 'Supply an APK build run from the same source commit.' >&2
+              exit 1
+            }
             found="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
               --jq '.artifacts[] | select(.name=="CraftDroid-debug-apk" and .expired==false) | .id' \
               | head -n 1)"
@@ -80,15 +93,29 @@ jobs:
             found="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
               --jq '.artifacts[] | select(.name=="CraftDroid-debug-apk" and .expired==false) | [.id,.workflow_run.head_sha,.workflow_run.conclusion] | @tsv' \
               | awk -v sha="$TARGET_SHA" '$2==sha && $3=="success" {print $1; exit}')"
+            printf '%s\n' "$TARGET_SHA" > artifacts/apk/build-head-sha.txt
+            printf '%s\n' "success" > artifacts/apk/build-conclusion.txt
           fi
           test -n "$found"
           printf '%s\n' "$found" > artifacts/apk/artifact-id.txt
+          printf '%s\n' "$TARGET_SHA" > artifacts/apk/source-sha.txt
+          printf '%s\n' "${SOURCE_RUN_ID:-auto-by-source-commit}" > artifacts/apk/source-run-id.txt
           gh api -H 'Accept: application/vnd.github+json' \
             "/repos/${GITHUB_REPOSITORY}/actions/artifacts/$found/zip" > artifacts/apk/artifact.zip
           unzip -q artifacts/apk/artifact.zip -d artifacts/apk
           APK="$(find artifacts/apk -type f -name '*.apk' -print -quit)"
           test -n "$APK"
           echo "APK=$APK" >> "$GITHUB_ENV"
+
+      - name: Record launch-test identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "target_sha=$TARGET_SHA"
+            echo "source_run_id=${SOURCE_RUN_ID:-none}"
+            echo "apk=$(basename "$APK")"
+          } | tee artifacts/apk/test-identity.txt
 
       - name: Install Android SDK
         uses: android-actions/setup-android@v4
@@ -116,11 +143,11 @@ jobs:
             mkdir -p artifacts/runtime
             bash tools/ci/real_minecraft_boot_step182.sh "$APK" artifacts/runtime artifacts/fixture
 
-      - name: Upload Step 194 diagnostics
+      - name: Upload Step 195 diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CraftDroid-step194-real-minecraft-boot
+          name: CraftDroid-step195-real-minecraft-boot
           path: artifacts/runtime/**
           if-no-files-found: ignore
 
@@ -128,6 +155,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CraftDroid-step194-minecraft-fixture
+          name: CraftDroid-step195-minecraft-fixture
           path: artifacts/fixture/fixture-result.txt
+          if-no-files-found: ignore
+
+      - name: Upload APK test identity
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CraftDroid-step195-apk-identity
+          path: artifacts/apk/*
           if-no-files-found: ignore
