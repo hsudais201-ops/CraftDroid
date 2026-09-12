@@ -1,0 +1,22 @@
+name: Verify Real Minecraft Launch Fixture
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate real Minecraft 1.21.1 launch classpath
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_minecraft_launch_fixture.py
