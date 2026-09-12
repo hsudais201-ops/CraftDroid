@@ -10,22 +10,18 @@ def main() -> None:
     main_src = root / "app" / "src" / "main" / "java"
     test_src = root / "app" / "src" / "test" / "java"
 
-    # LauncherCoreUnitTest constructs LauncherContainer directly, so the
-    # production constructor must be visible to the test source.
     candidates = list(main_src.rglob("LauncherContainer.kt"))
     if len(candidates) != 1:
         raise SystemExit(f"expected exactly one LauncherContainer.kt, found {len(candidates)}")
     path = candidates[0]
     text = path.read_text(encoding="utf-8")
-    patched = re.sub(r"private\\s+constructor\\s*\\(context:\\s*Context\\)", "constructor(context: Context)", text, count=1)
+    patched = re.sub(r"private\s+constructor\s*\(context:\s*Context\)", "constructor(context: Context)", text, count=1)
     if patched == text:
         raise SystemExit(f"private LauncherContainer constructor not found in {path}")
     path.write_text(patched, encoding="utf-8")
     print("[repair] expose LauncherContainer constructor to unit tests")
 
-    # Keep the test suite source-compatible with the launcher auth URL helper.
-    # The generic extension is intentionally limited to tests; it is not part
-    # of the production API. It produces a deterministic authorization URL.
+    # Test-only compatibility for the legacy auth URL assertion.
     compat = test_src / "com/example/BuildAuthorizationUrlCompat.kt"
     compat.parent.mkdir(parents=True, exist_ok=True)
     compat.write_text(
