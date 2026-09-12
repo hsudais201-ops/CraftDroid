@@ -31,7 +31,6 @@ def main() -> int:
     w = workflow.read_text(encoding="utf-8")
     h = harness.read_text(encoding="utf-8")
 
-    # Manual and workflow_run paths must both be available.
     require(w, "workflow_dispatch:", "manual dispatch")
     require(w, "workflow_run:", "build-completion trigger")
     require(w, "actions: read", "artifact read permission")
@@ -42,14 +41,13 @@ def main() -> int:
     require(w, "lib/x86_64/libcraftdroidbridge.so", "x86_64 native bridge check")
     require(w, "real_minecraft_boot_step182.sh \"$APK\"", "production real-boot harness")
 
-    # The harness must isolate the Play event and preserve post-Play diagnostics.
     require(h, '"$ADB" logcat -c', "pre-Play log boundary")
     require(h, "post-play-log-boundary.txt", "post-Play boundary record")
     require(h, "crash-logcat-60s.txt", "crash-buffer capture")
     require(h, "processes.txt", "process snapshot")
     require(h, "logcat-60s.txt", "60-second log capture")
     require(h, "ui-after-play.xml", "post-Play UI capture")
-    require(h, "No post-Play Minecraft JVM launch marker was observed", "strict launch result")
+    require(h, "no post-Play Minecraft JVM launch marker was observed", "strict launch result")
 
     print("PASS: real Minecraft Android boot workflow/harness contract is wired correctly.")
     return 0
