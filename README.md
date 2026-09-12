@@ -12,13 +12,13 @@ Android Minecraft Java launcher project.
 - Real Minecraft 1.21.1 metadata fixture: PASS.
 - Real Minecraft 1.21.1 installation fixture: PASS, including client JAR, version JSON, asset index, Linux-applicable libraries, and native artifacts.
 - Real Minecraft 1.21.1 launch fixture: PASS, including the real `net.minecraft.client.main.Main` class and a non-empty resolved classpath.
-- Step 182 real Android boot harness: stages the real Minecraft 1.21.1 fixture into CraftDroid's app-private game root and exercises the production launcher Play/Start path while collecting JVM/GLFW/native diagnostics.
-- Step 183 CI reliability: real-boot verification is triggered independently on pushes and waits for a successful CraftDroid APK artifact built from the exact same commit, preventing build/verification race-condition skips.
-- Real Minecraft game boot: not yet verified in a completed Step 182/183 Android run.
+- Step 184 clean-install boot harness: creates CraftDroid's app-private game root when a fresh install has no pre-existing `versions/` directory, then stages the real Minecraft 1.21.1 fixture.
+- Step 184 verification gate: accepts success only after the production Minecraft launch path emits a concrete launch marker and no fatal Java/native/GLFW error signature is present.
+- Real Minecraft game boot: not yet verified in a completed Android emulator run.
 
 ## Current next step
 
-Complete the Step 183 Android emulator run and use its diagnostics to fix the first concrete Minecraft JVM, Java runtime, native renderer, GLFW, or launcher-path failure that appears. A healthy launcher process alone does not count as Minecraft boot.
+Run the updated Step 184 workflow and use the emulator diagnostics to repair the first concrete Minecraft JVM, Java runtime, native renderer, GLFW, or launcher-path failure. A healthy launcher process alone does not count as Minecraft boot.
 
 ## Target architecture
 
