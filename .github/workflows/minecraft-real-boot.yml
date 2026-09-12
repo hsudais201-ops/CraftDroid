@@ -17,10 +17,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Python dependencies
-        shell: bash
-        run: python3 -m pip install --disable-pip-version-check --quiet --upgrade pip
-
       - name: Download and materialize real Minecraft 1.21.1 fixture
         shell: bash
         run: |
@@ -46,16 +42,11 @@ jobs:
             found="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
               --jq '.artifacts[] | select(.name=="CraftDroid-debug-apk" and .expired==false) | [.id,.workflow_run.head_sha,.workflow_run.conclusion] | @tsv' \
               | awk -v sha="$GITHUB_SHA" '$2==sha && $3=="success" {print $1; exit}')"
-            if [ -n "$found" ]; then
-              break
-            fi
+            if [ -n "$found" ]; then break; fi
             sleep 30
           done
-          if [ -z "$found" ]; then
-            echo "No successful CraftDroid-debug-apk artifact was published for $GITHUB_SHA." >&2
-            exit 1
-          fi
-          printf '%s\n' "$found" > artifacts/apk/artifact-id.txt
+          test -n "$found"
+          printf '%s\\n' "$found" > artifacts/apk/artifact-id.txt
           gh api -H 'Accept: application/vnd.github+json' \
             "/repos/${GITHUB_REPOSITORY}/actions/artifacts/$found/zip" > artifacts/apk/artifact.zip
           unzip -q artifacts/apk/artifact.zip -d artifacts/apk
@@ -66,7 +57,7 @@ jobs:
       - name: Install Android SDK
         uses: android-actions/setup-android@v4
 
-      - name: Start Android emulator and run Step 182 real boot harness
+      - name: Start Android emulator and run Step 184 real boot harness
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -89,11 +80,11 @@ jobs:
             mkdir -p artifacts/runtime
             bash tools/ci/real_minecraft_boot_step182.sh "$APK" artifacts/runtime artifacts/fixture
 
-      - name: Upload Step 182 diagnostics
+      - name: Upload Step 184 diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CraftDroid-step182-real-minecraft-boot
+          name: CraftDroid-step184-real-minecraft-boot
           path: artifacts/runtime/**
           if-no-files-found: ignore
 
@@ -101,6 +92,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CraftDroid-step182-minecraft-fixture
+          name: CraftDroid-step184-minecraft-fixture
           path: artifacts/fixture/fixture-result.txt
           if-no-files-found: ignore
