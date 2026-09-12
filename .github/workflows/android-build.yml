@@ -42,6 +42,19 @@ jobs:
           echo '--- extracted project root ---'
           find craftdroid-src -maxdepth 1 -mindepth 1 -printf '%f\n' | sort
 
+      - name: Normalize Gradle settings for CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          SETTINGS="craftdroid-src/settings.gradle.kts"
+          test -f "$SETTINGS"
+          # The source archive requests the Foojay toolchain resolver, but CraftDroid
+          # already builds against the JDK supplied by GitHub Actions. Removing the
+          # optional resolver avoids an unnecessary plugin-resolution dependency.
+          sed -i '/org\.gradle\.toolchains\.foojay-resolver-convention/d' "$SETTINGS"
+          echo '--- normalized settings.gradle.kts ---'
+          sed -n '1,60p' "$SETTINGS"
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
