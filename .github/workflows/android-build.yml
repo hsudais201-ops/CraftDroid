@@ -150,6 +150,12 @@ jobs:
           echo '--- APK ---'
           ls -lh "$APK"
 
+      - name: Step 172 runtime APK preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_runtime_preflight.py craftdroid-src/app/build/outputs/apk/debug/app-debug.apk | tee artifacts/build/runtime-preflight.txt
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
