@@ -2,6 +2,11 @@ name: Verify Real Minecraft Android Boot
 
 on:
   workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'Optional successful Build CraftDroid APK workflow run ID to use'
+        required: false
+        type: string
   workflow_run:
     workflows: [Build CraftDroid APK]
     types: [completed]
@@ -17,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - name: Select source commit
+      - name: Select source commit and build run
         shell: bash
         run: |
           set -euo pipefail
@@ -26,7 +31,7 @@ jobs:
             SOURCE_RUN_ID='${{ github.event.workflow_run.id }}'
           else
             TARGET_SHA="$GITHUB_SHA"
-            SOURCE_RUN_ID=''
+            SOURCE_RUN_ID='${{ inputs.source_run_id }}'
           fi
           printf '%s\n' "$TARGET_SHA" > target-sha.txt
           printf '%s\n' "$SOURCE_RUN_ID" > source-run-id.txt
@@ -51,7 +56,7 @@ jobs:
           test -s artifacts/fixture/assets/indexes/*.json
           find artifacts/fixture/libraries -type f -print -quit | grep -q .
 
-      - name: Download APK from triggering build run
+      - name: Download APK from selected or triggering build run
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -83,7 +88,7 @@ jobs:
       - name: Install Android SDK
         uses: android-actions/setup-android@v4
 
-      - name: Start Android emulator and run Step 190 real boot harness
+      - name: Start Android emulator and run Step 191 real boot harness
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -106,11 +111,11 @@ jobs:
             mkdir -p artifacts/runtime
             bash tools/ci/real_minecraft_boot_step182.sh "$APK" artifacts/runtime artifacts/fixture
 
-      - name: Upload Step 190 diagnostics
+      - name: Upload Step 191 diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CraftDroid-step190-real-minecraft-boot
+          name: CraftDroid-step191-real-minecraft-boot
           path: artifacts/runtime/**
           if-no-files-found: ignore
 
@@ -118,6 +123,17 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CraftDroid-step190-minecraft-fixture
+          name: CraftDroid-step191-minecraft-fixture
           path: artifacts/fixture/fixture-result.txt
+          if-no-files-found: ignore
+
+      - name: Upload source/build selection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CraftDroid-step191-boot-selection
+          path: |
+            target-sha.txt
+            source-run-id.txt
+            artifacts/apk/artifact-id.txt
           if-no-files-found: ignore
