@@ -10,14 +10,15 @@ Android Minecraft Java launcher project.
 - Android launcher runtime smoke test: verified on the GitHub Actions emulator pipeline.
 - Automatic Java/renderer preparation contract: verified for Java 8/16/17/21/25 compatibility and native renderer setup.
 - Real Minecraft 1.21.1 metadata fixture: PASS.
-- Real Minecraft 1.21.1 installation fixture: PASS, including client JAR, asset index, Linux-applicable libraries, and native artifacts.
+- Real Minecraft 1.21.1 installation fixture: PASS, including client JAR, version JSON, asset index, Linux-applicable libraries, and native artifacts.
 - Real Minecraft 1.21.1 launch fixture: PASS, including the real `net.minecraft.client.main.Main` class and a non-empty resolved classpath.
-- Step 182 real Android boot harness: added. It materializes the real Minecraft 1.21.1 fixture, discovers CraftDroid's app-private `versions` root, stages the client/version JSON/libraries/assets there, installs the matching debug APK from the successful Android build, and exercises the production launcher Play/Start path while collecting JVM/GLFW/native diagnostics.
-- Real Minecraft game boot: requires a completed successful Step 182 run with a concrete production launch marker and no fatal Java/native/GLFW errors.
+- Step 182 real Android boot harness: stages the real Minecraft 1.21.1 fixture into CraftDroid's app-private game root and exercises the production launcher Play/Start path while collecting JVM/GLFW/native diagnostics.
+- Step 183 CI reliability: real-boot verification is triggered independently on pushes and waits for a successful CraftDroid APK artifact built from the exact same commit, preventing build/verification race-condition skips.
+- Real Minecraft game boot: not yet verified in a completed Step 182/183 Android run.
 
 ## Current next step
 
-Run Step 182 to completion in GitHub Actions. A healthy launcher process alone does not count; success requires the staged real 1.21.1 installation to reach the production Minecraft launch path without fatal Android/JVM/native errors.
+Complete the Step 183 Android emulator run and use its diagnostics to fix the first concrete Minecraft JVM, Java runtime, native renderer, GLFW, or launcher-path failure that appears. A healthy launcher process alone does not count as Minecraft boot.
 
 ## Target architecture
 
