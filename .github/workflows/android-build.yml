@@ -40,7 +40,7 @@ jobs:
           test -f craftdroid-src/gradle/wrapper/gradle-wrapper.properties
           chmod +x craftdroid-src/gradlew
           echo '--- extracted project root ---'
-          ls -la craftdroid-src | head -80
+          find craftdroid-src -maxdepth 1 -mindepth 1 -printf '%f\n' | sort
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
