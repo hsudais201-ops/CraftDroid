@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Step 179: exercise a real Minecraft 1.21.1 installation fixture.
+"""Step 179/182: exercise a real Minecraft 1.21.1 installation fixture.
 
 Downloads the actual Mojang 1.21.1 version metadata, client JAR, asset index,
 and Linux-applicable library artifacts. Every downloaded artifact is checked
-against Mojang's SHA-1 metadata and the client JAR is also checked as a valid
-ZIP. This verifies the external inputs required by CraftDroid's installer,
-without pretending to launch the game in CI.
+against Mojang's SHA-1 metadata. When CRAFTDROID_FIXTURE_DIR is set, the
+fixture is materialized for the Android Step 182 boot harness.
 """
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import sys
 import tempfile
 import urllib.request
 import zipfile
@@ -31,10 +29,7 @@ def fetch_json(url: str) -> dict:
 def sha1_file(path: Path) -> str:
     digest = hashlib.sha1()
     with path.open("rb") as handle:
-        while True:
-            chunk = handle.read(1024 * 1024)
-            if not chunk:
-                break
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
 
@@ -43,10 +38,7 @@ def download_checked(url: str, destination: Path, expected_sha1: str, expected_s
     destination.parent.mkdir(parents=True, exist_ok=True)
     req = urllib.request.Request(url, headers={"User-Agent": "CraftDroid-CI/1"})
     with urllib.request.urlopen(req, timeout=120) as response, destination.open("wb") as handle:
-        while True:
-            chunk = response.read(1024 * 1024)
-            if not chunk:
-                break
+        for chunk in iter(lambda: response.read(1024 * 1024), b""):
             handle.write(chunk)
     actual_size = destination.stat().st_size
     if expected_size is not None and actual_size != expected_size:
@@ -74,9 +66,10 @@ def allowed_on_linux(lib: dict) -> bool:
 
 
 def main() -> None:
-    out = Path(os.environ.get("CRAFTDROID_FIXTURE_DIR", "")).resolve() if os.environ.get("CRAFTDROID_FIXTURE_DIR") else None
-    with tempfile.TemporaryDirectory(prefix="craftdroid-179-") as temp_dir:
-        root = out or Path(temp_dir)
+    configured_root = os.environ.get("CRAFTDROID_FIXTURE_DIR")
+    with tempfile.TemporaryDirectory(prefix="craftdroid-182-") as temp_dir:
+        root = Path(configured_root).resolve() if configured_root else Path(temp_dir)
+        root.mkdir(parents=True, exist_ok=True)
         manifest = fetch_json(MANIFEST_URL)
         entry = next((v for v in manifest.get("versions", []) if v.get("id") == VERSION_ID), None)
         if not isinstance(entry, dict) or not entry.get("url"):
@@ -84,14 +77,17 @@ def main() -> None:
         detail = fetch_json(entry["url"])
         if detail.get("id") != VERSION_ID:
             raise SystemExit("Minecraft version detail ID mismatch")
-
         java_major = detail.get("javaVersion", {}).get("majorVersion")
         if java_major != 21:
             raise SystemExit(f"Minecraft {VERSION_ID} expected Java 21, got {java_major}")
 
+        versions_dir = root / "versions" / VERSION_ID
+        versions_dir.mkdir(parents=True, exist_ok=True)
+        (versions_dir / f"{VERSION_ID}.json").write_text(json.dumps(detail, separators=(",", ":")), encoding="utf-8")
+
         downloads = detail.get("downloads", {})
         client = downloads.get("client") or {}
-        client_path = root / "versions" / VERSION_ID / f"{VERSION_ID}.jar"
+        client_path = versions_dir / f"{VERSION_ID}.jar"
         download_checked(client["url"], client_path, client["sha1"], int(client["size"]))
         if not zipfile.is_zipfile(client_path):
             raise SystemExit("Downloaded Minecraft client is not a valid ZIP/JAR")
@@ -133,7 +129,7 @@ def main() -> None:
                     )
                     native_count += 1
 
-        print("Step 179 Minecraft install fixture: PASS")
+        print("Step 179/182 Minecraft install fixture: PASS")
         print(f"version={VERSION_ID}")
         print(f"java={java_major}")
         print(f"clientSha1={sha1_file(client_path)}")
