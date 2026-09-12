@@ -20,6 +20,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Verify real Minecraft Android boot harness contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_real_boot_harness_contract.py .
+
       - name: Locate CraftDroid source archive
         shell: bash
         run: |
@@ -220,31 +226,20 @@ jobs:
         if: steps.runtime-smoke.outcome != 'success'
         shell: bash
         run: |
-          echo 'Step 174 Android emulator smoke test failed. Diagnostics were captured in the build artifact.' >&2
+          echo 'Step 174 runtime smoke failed. See uploaded emulator diagnostics.' >&2
           exit 1
 
-      - name: Snapshot source files for diagnostics
+      - name: Snapshot repaired source tree
         if: always()
         shell: bash
         run: |
-          set -euo pipefail
-          OUT="craftdroid-src/app/build/diagnostic-source"
-          mkdir -p "$OUT"
-          cp -f craftdroid-src/app/src/main/java/com/example/game/GameSurfaceView.kt "$OUT/" 2>/dev/null || true
-          cp -f craftdroid-src/app/src/main/java/com/example/game/NativeGameBridge.kt "$OUT/" 2>/dev/null || true
-          cp -f craftdroid-src/app/src/main/java/com/example/game/TouchControlsOverlayView.kt "$OUT/" 2>/dev/null || true
-          cp -f craftdroid-src/app/src/main/java/com/example/launcher/LaunchCommandBuilder.kt "$OUT/" 2>/dev/null || true
-          cp -f craftdroid-src/app/src/main/java/com/example/launcher/MinecraftLaunchManager.kt "$OUT/" 2>/dev/null || true
-          cp -f craftdroid-src/app/src/main/java/com/example/logs/LaunchRecoveryPolicy.kt "$OUT/" 2>/dev/null || true
-          cp -f craftdroid-src/app/src/main/java/com/example/minecraft/ForgeNeoForgeInstaller.kt "$OUT/" 2>/dev/null || true
-          cp -f craftdroid-src/app/src/main/java/com/example/renderer/LwjglCompatibilityValidator.kt "$OUT/" 2>/dev/null || true
-          cp -f craftdroid-src/app/src/main/java/com/example/renderer/LwjglGlfwStubManager.kt "$OUT/" 2>/dev/null || true
-          cp -f craftdroid-src/app/src/main/java/com/example/renderer/NativeDependencyVerifier.kt "$OUT/" 2>/dev/null || true
-          cp -f craftdroid-src/app/src/main/java/com/example/ui/screens/HomeScreen.kt "$OUT/" 2>/dev/null || true
-          cp -f craftdroid-src/app/src/main/java/com/example/versions/VersionJsonParser.kt "$OUT/" 2>/dev/null || true
-          cp -f craftdroid-src/app/src/main/cpp/craftdroidbridge.cpp "$OUT/" 2>/dev/null || true
-          echo 'Diagnostic source snapshot:'
-          find "$OUT" -type f -maxdepth 1 -printf '%f\n' | sort
+          set -uo pipefail
+          mkdir -p artifacts/source-snapshot
+          find craftdroid-src -maxdepth 4 -type f \
+            \( -name '*.kt' -o -name '*.kts' -o -name '*.cpp' -o -name '*.h' \) \
+            -print | sort > artifacts/source-snapshot/files.txt || true
+          tar -czf artifacts/source-snapshot/craftdroid-src-repaired.tar.gz craftdroid-src 2>/dev/null || true
+          echo 'Source snapshot captured.'
 
       - name: Upload build diagnostics
         if: always()
@@ -254,7 +249,5 @@ jobs:
           path: |
             artifacts/build/**
             artifacts/runtime/**
-            craftdroid-src/app/build/reports/**
-            craftdroid-src/app/build/test-results/**
-            craftdroid-src/app/build/diagnostic-source/**
+            artifacts/source-snapshot/**
           if-no-files-found: ignore
