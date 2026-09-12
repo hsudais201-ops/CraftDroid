@@ -35,7 +35,7 @@ fi
 printf '%s\n' "$ROOT_REL" > "$OUT/minecraft-root.txt"
 printf '%s\n' "$ROOTS" > "$OUT/discovered-roots.txt"
 
-STAGE="/data/local/tmp/craftdroid-step187-$RANDOM"
+STAGE="/data/local/tmp/craftdroid-step190-$RANDOM"
 "$ADB" shell rm -rf "$STAGE"
 "$ADB" shell mkdir -p "$STAGE"
 "$ADB" push "$FIXTURE/." "$STAGE/" > "$OUT/fixture-push.txt"
@@ -100,6 +100,11 @@ done
 if [ -n "$PLAY_BOUNDS" ]; then
   read -r x1 y1 x2 y2 <<< "$PLAY_BOUNDS"
   printf 'bounds=%s\n' "$PLAY_BOUNDS" > "$OUT/play-target.txt"
+
+  # Isolate the actual launch attempt from launcher startup noise. Any Minecraft
+  # launch marker below must therefore be emitted after this Play/Start action.
+  "$ADB" logcat -c
+  printf 'Logcat cleared immediately before Play/Start tap.\n' > "$OUT/post-play-log-boundary.txt"
   "$ADB" shell input tap "$(( (x1+x2) / 2 ))" "$(( (y1+y2) / 2 ))" > "$OUT/play-tap.txt" 2>&1 || true
   printf 'Tapped production Play/Start control at %s\n' "$PLAY_BOUNDS" | tee -a "$OUT/play-tap.txt"
   sleep 3
@@ -117,22 +122,30 @@ fi
 for delay in 15 30 45 60; do
   sleep 15
   "$ADB" logcat -d -v threadtime > "$OUT/logcat-${delay}s.txt"
+  "$ADB" logcat -b crash -d -v threadtime > "$OUT/crash-logcat-${delay}s.txt" || true
 done
 "$ADB" shell dumpsys activity activities > "$OUT/activities.txt" || true
 "$ADB" shell dumpsys window windows > "$OUT/windows.txt" || true
+"$ADB" shell ps -A > "$OUT/processes.txt" || true
 cat "$OUT/logcat-60s.txt" > "$OUT/logcat.txt"
+cat "$OUT/crash-logcat-60s.txt" > "$OUT/crash-logcat.txt"
 grep -Ei 'CraftDroid|MinecraftLaunchManager|LaunchPreflight|NativeGameBridge|JavaRuntime|Renderer|GLFW|LWJGL|Minecraft|SIG|FATAL|Exception|Error|dlopen|CANNOT LINK|OutOfMemory' "$OUT/logcat.txt" > "$OUT/filtered-launch-log.txt" || true
 
 FATAL_RE='FATAL EXCEPTION|Fatal signal|SIGSEGV|SIGABRT|SIGBUS|SIGILL|UnsatisfiedLinkError|NoClassDefFoundError|ClassNotFoundException|ExceptionInInitializerError|dlopen failed|CANNOT LINK|OutOfMemoryError|GLFW.*(error|failed)|LWJGL.*(error|failed)'
-if grep -Eiq "$FATAL_RE" "$OUT/logcat.txt"; then
-  echo 'Step 187 detected a real Android/JVM/native launch failure.' >&2
-  grep -Ei "$FATAL_RE" "$OUT/logcat.txt" >&2 || true
+if grep -Eiq "$FATAL_RE" "$OUT/logcat.txt" || grep -Eiq "$FATAL_RE" "$OUT/crash-logcat.txt"; then
+  echo 'Step 190 detected a real Android/JVM/native launch failure.' >&2
+  grep -Eia "$FATAL_RE" "$OUT/logcat.txt" "$OUT/crash-logcat.txt" >&2 || true
+  exit 1
+fi
+
+if [ -z "$PLAY_BOUNDS" ]; then
+  echo 'Step 190 could not find a production Play/Start control, so no real launch attempt was made.' | tee "$OUT/result.txt"
   exit 1
 fi
 
 if grep -Eiq 'MinecraftLaunchManager.*launch|NativeGameBridge.*launchJava|LaunchPreflight.*valid|Minecraft.*starting|Step [1-6]/6:' "$OUT/logcat.txt"; then
-  echo 'Step 187 reached the production Minecraft launch path without fatal Android/JVM/native errors.' | tee "$OUT/result.txt"
+  echo 'Step 190 reached the production Minecraft launch path after the Play/Start action without fatal Android/JVM/native errors.' | tee "$OUT/result.txt"
 else
-  echo 'Step 187 staged real Minecraft 1.21.1 files but no concrete Minecraft JVM launch marker was observed.' | tee "$OUT/result.txt"
+  echo 'Step 190 tapped the production Play/Start control and staged real Minecraft 1.21.1 files, but no post-Play Minecraft JVM launch marker was observed.' | tee "$OUT/result.txt"
   exit 1
 fi
