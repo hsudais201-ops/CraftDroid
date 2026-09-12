@@ -1,0 +1,55 @@
+name: Verify Minecraft Launch Contract
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Locate source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE="$(find . -maxdepth 2 -type f -name 'CraftDroid_Launcher_2.4_GitHubActions_Step153.zip' -print -quit)"
+          test -n "$ARCHIVE"
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Extract source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf craftdroid-src
+          mkdir -p craftdroid-src
+          unzip -q "$ARCHIVE" -d craftdroid-src
+          if [ ! -f craftdroid-src/gradlew ]; then
+            PROJECT_DIR="$(find craftdroid-src -type f -name gradlew -print -quit | xargs -r dirname)"
+            test -n "$PROJECT_DIR"
+            shopt -s dotglob
+            mv "$PROJECT_DIR"/* craftdroid-src/
+            rmdir "$PROJECT_DIR"
+          fi
+          chmod +x craftdroid-src/gradlew
+
+      - name: Apply production repairs used by APK CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step153.py craftdroid-src
+          python3 tools/ci/repair_step154_tests.py craftdroid-src
+          python3 tools/ci/repair_step155_cpp.py craftdroid-src
+
+      - name: Verify Minecraft launch contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_minecraft_launch_contract.py craftdroid-src
