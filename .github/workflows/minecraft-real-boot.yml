@@ -2,9 +2,8 @@ name: Verify Real Minecraft Android Boot
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows: ["Build CraftDroid APK"]
-    types: [completed]
+  push:
+    branches: [main, master]
 
 permissions:
   contents: read
@@ -12,14 +11,11 @@ permissions:
 
 jobs:
   boot:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Install Python dependencies
         shell: bash
@@ -37,23 +33,31 @@ jobs:
           test -s artifacts/fixture/assets/indexes/*.json
           find artifacts/fixture/libraries -type f -print -quit | grep -q .
 
-      - name: Locate APK from the exact successful build run
+      - name: Wait for matching APK artifact
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p artifacts/apk
-          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
-            RUN_ID="${{ github.event.workflow_run.id }}"
-            gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/$RUN_ID/artifacts" --jq '.artifacts[] | select(.name=="CraftDroid-debug-apk" and .expired==false) | .id' | head -n 1 > artifacts/apk/artifact-id.txt
-          else
-            gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=50" --jq '.artifacts[] | select(.name=="CraftDroid-debug-apk" and .expired==false) | [.id,.workflow_run.head_sha] | @tsv' | awk -v sha="${GITHUB_SHA}" '$2==sha{print $1; exit}' > artifacts/apk/artifact-id.txt
+          found=''
+          for attempt in $(seq 1 24); do
+            echo "Looking for CraftDroid-debug-apk built from $GITHUB_SHA (attempt $attempt/24)."
+            found="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
+              --jq '.artifacts[] | select(.name=="CraftDroid-debug-apk" and .expired==false) | [.id,.workflow_run.head_sha,.workflow_run.conclusion] | @tsv' \
+              | awk -v sha="$GITHUB_SHA" '$2==sha && $3=="success" {print $1; exit}')"
+            if [ -n "$found" ]; then
+              break
+            fi
+            sleep 30
+          done
+          if [ -z "$found" ]; then
+            echo "No successful CraftDroid-debug-apk artifact was published for $GITHUB_SHA." >&2
+            exit 1
           fi
-          test -s artifacts/apk/artifact-id.txt
-          ARTIFACT_ID="$(cat artifacts/apk/artifact-id.txt)"
+          printf '%s\n' "$found" > artifacts/apk/artifact-id.txt
           gh api -H 'Accept: application/vnd.github+json' \
-            "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" > artifacts/apk/artifact.zip
+            "/repos/${GITHUB_REPOSITORY}/actions/artifacts/$found/zip" > artifacts/apk/artifact.zip
           unzip -q artifacts/apk/artifact.zip -d artifacts/apk
           APK="$(find artifacts/apk -type f -name '*.apk' -print -quit)"
           test -n "$APK"
@@ -79,7 +83,6 @@ jobs:
           emulator-port: 5554
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
-          disable-linux-hw-accel: auto
           enable-hw-keyboard: false
           channel: stable
           script: |
