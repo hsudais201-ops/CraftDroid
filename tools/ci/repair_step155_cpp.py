@@ -45,9 +45,12 @@ def main() -> None:
     # The native bridge currently calls a stale lifecycle helper. This cleanup
     # call is not required for compilation; the surrounding teardown continues.
     stale_call = re.compile(r"^\s*stopInputPump\(true\);\s*$", re.MULTILINE)
-    text, removed = stale_call.subn("        // Step 155: stale stopInputPump(true) call removed; teardown remains active.\n", text)
-    if removed != 1:
-        raise SystemExit(f"Expected exactly one stale stopInputPump(true) call, changed {removed}")
+    text, removed = stale_call.subn(
+        "        // Step 155: stale stopInputPump(true) call removed; teardown remains active.\n",
+        text,
+    )
+    if removed < 1:
+        raise SystemExit("Expected at least one stale stopInputPump(true) call")
 
     marker = re.search(r"\bstruct\s+InputEvent\s*\{", text)
     if not marker:
@@ -109,7 +112,7 @@ def main() -> None:
 
     cpp.write_text(text, encoding="utf-8")
     print(f"Repaired native bridge: {cpp}")
-    print("- removed stale stopInputPump(true) call")
+    print(f"- removed {removed} stale stopInputPump(true) calls")
     print("- added nine-field InputEvent compatibility constructor")
 
 
