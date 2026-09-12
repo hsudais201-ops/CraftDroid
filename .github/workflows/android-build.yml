@@ -71,6 +71,12 @@ jobs:
           echo '--- normalized settings.gradle.kts ---'
           sed -n '1,60p' "$SETTINGS"
 
+      - name: Apply Step 153 source repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step153.py craftdroid-src
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
