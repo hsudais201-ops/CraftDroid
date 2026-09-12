@@ -39,18 +39,20 @@ def main() -> None:
     if java_pos < 0 or renderer_pos < 0:
         raise SystemExit("Unable to locate launch preparation calls")
 
-    # The embedded JVM launch must occur only after Java/native preparation.
-    jvm_markers = [
-        "JvmLaunch",
-        "launchJvm",
-        "EmbeddedJvm",
-        "startJvm",
-        "NativeGameBridge",
+    # Find an actual JVM/native launch invocation rather than a type/import name.
+    launch_patterns = [
+        r"\b(?:launch|start|run)(?:Jvm|JVM)\s*\(",
+        r"\b(?:launch|start|run)Minecraft\s*\(",
+        r"\bNativeGameBridge\.[A-Za-z_][A-Za-z0-9_]*\s*\(",
+        r"\bEmbeddedJvm\.[A-Za-z_][A-Za-z0-9_]*\s*\(",
     ]
-    jvm_positions = [text.find(marker) for marker in jvm_markers if text.find(marker) >= 0]
-    if not jvm_positions:
-        raise SystemExit("Could not identify the embedded JVM/native launch boundary")
-    jvm_pos = min(jvm_positions)
+    launch_positions = []
+    for pattern in launch_patterns:
+        for match in re.finditer(pattern, text):
+            launch_positions.append(match.start())
+    if not launch_positions:
+        raise SystemExit("Could not identify the embedded JVM/native launch invocation")
+    jvm_pos = min(p for p in launch_positions if p >= 0)
     if java_pos > jvm_pos or renderer_pos > jvm_pos:
         raise SystemExit("Java/renderer preparation occurs after the JVM/native launch boundary")
 
