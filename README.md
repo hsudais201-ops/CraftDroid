@@ -12,12 +12,12 @@ Android Minecraft Java launcher project.
 - Real Minecraft 1.21.1 metadata fixture: PASS.
 - Real Minecraft 1.21.1 installation fixture: PASS, including client JAR, asset index, Linux-applicable libraries, and native artifacts.
 - Real Minecraft 1.21.1 launch fixture: PASS, including the real `net.minecraft.client.main.Main` class and a non-empty resolved classpath.
-- Step 181 real Android boot harness: added. It installs the latest available CraftDroid debug APK on an Android emulator, starts the production launcher entry point, captures JVM/GLFW/native diagnostics, and refuses to call launcher startup a full Minecraft boot.
-- Real Minecraft game boot: not yet verified.
+- Step 182 real Android boot harness: added. It materializes the real Minecraft 1.21.1 fixture, discovers CraftDroid's app-private `versions` root, stages the client/version JSON/libraries/assets there, installs the matching debug APK from the successful Android build, and exercises the production launcher Play/Start path while collecting JVM/GLFW/native diagnostics.
+- Real Minecraft game boot: requires a completed successful Step 182 run with a concrete production launch marker and no fatal Java/native/GLFW errors.
 
 ## Current next step
 
-Step 181 now needs a completed GitHub Actions run against a staged Minecraft installation. The required success condition is a concrete Minecraft JVM launch/startup signal without fatal Java/native/GLFW errors; a healthy launcher process alone is not sufficient.
+Run Step 182 to completion in GitHub Actions. A healthy launcher process alone does not count; success requires the staged real 1.21.1 installation to reach the production Minecraft launch path without fatal Android/JVM/native errors.
 
 ## Target architecture
 
