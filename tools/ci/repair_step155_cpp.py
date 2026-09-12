@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Deterministically repair the native bridge errors exposed by the CI build.
+"""Deterministically repair native bridge errors exposed by the CI build.
 
-The checked-in CraftDroid source is an archive, so the CI workflow applies this
-repair after extraction. The repairs are intentionally narrow and fail loudly
-when the expected source shape changes.
+The checked-in CraftDroid source is an archive, so CI applies this repair after
+extraction. Repairs are intentionally narrow and fail loudly when source shape
+changes.
 """
 
 from __future__ import annotations
@@ -42,10 +42,7 @@ def main() -> None:
     text = cpp.read_text(encoding="utf-8")
     original = text
 
-    # The native bridge currently calls a stale lifecycle helper. This cleanup
-    # call is not required for compilation; the surrounding teardown continues.
-    # Some archive variants contain this stale call more than once, so remove
-    # every exact stale statement rather than assuming a single occurrence.
+    # Remove stale lifecycle calls found in older archive variants.
     stale_call = re.compile(r"^\s*stopInputPump\(true\);\s*$", re.MULTILINE)
     text, removed = stale_call.subn(
         "        // Step 155: stale stopInputPump(true) call removed; teardown remains active.\n",
@@ -62,14 +59,11 @@ def main() -> None:
     body = text[open_pos + 1 : close_pos]
 
     if "Step 155 compatibility constructor" not in body:
-        # The failing calls are all nine-field event literals. Make those
-        # literals valid again without assuming the archive's current field
-        # count/order: zero the plain-data event and copy the legacy payload
-        # byte-for-byte into its leading storage. InputEvent is the native
-        # bridge's POD event record; any newer trailing fields remain zero.
         ctor = r'''
 
     // Step 155 compatibility constructor for legacy nine-field event literals.
+    InputEvent() noexcept = default;
+
     InputEvent(
         int type,
         float a,
@@ -100,11 +94,34 @@ def main() -> None:
     }
 '''
         text = text[:close_pos] + ctor + text[close_pos:]
+    elif "InputEvent() noexcept = default;" not in body:
+        # Existing compatibility constructor makes InputEvent non-aggregate;
+        # retain value-initialization sites such as InputEvent e{} by restoring
+        # an explicit default constructor.
+        text = text[:close_pos] + "\n\n    InputEvent() noexcept = default;\n" + text[close_pos:]
 
-    if text == original:
-        raise SystemExit("Step 155 C++ repair made no changes")
+    # NDK 27 treats jboolean -> bool in braced constructor arguments as a
+    # narrowing conversion. Make the JNI boundary conversion explicit.
+    text, mouse_casts = re.subn(
+        r"(push\(\{1, x, y, dx, dy, 0, button, 0, )down(\}\);)",
+        r"\1static_cast<bool>(down)\2",
+        text,
+    )
+    text, key_casts = re.subn(
+        r"(push\(\{2, static_cast<float>\(modifiers\), 0, 0, 0, key, 0, 0, )down(\}\);)",
+        r"\1static_cast<bool>(down)\2",
+        text,
+    )
+    text, gamepad_casts = re.subn(
+        r"(push\(\{4, 0, 0, 0, 0, button, 0, 0, )down(\}\);)",
+        r"\1static_cast<bool>(down)\2",
+        text,
+    )
+    if mouse_casts + key_casts + gamepad_casts < 3:
+        raise SystemExit(
+            "Expected all three JNI jboolean event pushes to receive explicit bool casts"
+        )
 
-    # The compatibility constructor uses memset/memcpy.
     if "#include <cstring>" not in text:
         includes = list(re.finditer(r"^#include\s+<[^>]+>\s*$", text, re.MULTILINE))
         if not includes:
@@ -112,10 +129,14 @@ def main() -> None:
         insert_at = includes[-1].end()
         text = text[:insert_at] + "\n#include <cstring>" + text[insert_at:]
 
+    if text == original:
+        raise SystemExit("Step 155 C++ repair made no changes")
+
     cpp.write_text(text, encoding="utf-8")
     print(f"Repaired native bridge: {cpp}")
     print(f"- removed {removed} stale stopInputPump(true) calls")
-    print("- added nine-field InputEvent compatibility constructor")
+    print("- ensured InputEvent has explicit default and nine-field compatibility constructors")
+    print("- added explicit bool casts for JNI jboolean event pushes")
 
 
 if __name__ == "__main__":
