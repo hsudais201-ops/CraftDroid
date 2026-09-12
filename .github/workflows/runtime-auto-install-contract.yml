@@ -1,0 +1,45 @@
+name: CraftDroid Runtime Auto-Install Contract
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Locate source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCHIVE="$(find . -maxdepth 2 -type f -name 'CraftDroid_Launcher_2.4_GitHubActions_Step153.zip' -print -quit)"
+          test -n "$ARCHIVE" || { echo 'CraftDroid source archive not found.' >&2; exit 1; }
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Extract source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf craftdroid-src
+          mkdir -p craftdroid-src
+          unzip -q "$ARCHIVE" -d craftdroid-src
+          if [ ! -f craftdroid-src/gradlew ]; then
+            PROJECT_DIR="$(find craftdroid-src -type f -name gradlew -print -quit | xargs -r dirname)"
+            test -n "$PROJECT_DIR"
+            shopt -s dotglob
+            mv "$PROJECT_DIR"/* craftdroid-src/
+            rmdir "$PROJECT_DIR"
+          fi
+
+      - name: Verify automatic Java 17/21/25 and renderer installation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_runtime_auto_install.py craftdroid-src
