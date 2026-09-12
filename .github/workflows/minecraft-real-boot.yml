@@ -57,7 +57,7 @@ jobs:
       - name: Install Android SDK
         uses: android-actions/setup-android@v4
 
-      - name: Start Android emulator and run Step 186 real boot harness
+      - name: Start Android emulator and run Step 187 real boot harness
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -80,11 +80,11 @@ jobs:
             mkdir -p artifacts/runtime
             bash tools/ci/real_minecraft_boot_step182.sh "$APK" artifacts/runtime artifacts/fixture
 
-      - name: Upload Step 186 diagnostics
+      - name: Upload Step 187 diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CraftDroid-step186-real-minecraft-boot
+          name: CraftDroid-step187-real-minecraft-boot
           path: artifacts/runtime/**
           if-no-files-found: ignore
 
@@ -92,6 +92,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CraftDroid-step186-minecraft-fixture
+          name: CraftDroid-step187-minecraft-fixture
           path: artifacts/fixture/fixture-result.txt
           if-no-files-found: ignore
