@@ -7,8 +7,10 @@ its Java payload and native bridge for every ABI produced by the build.
 from __future__ import annotations
 
 import hashlib
+import shutil
 import subprocess
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -49,27 +51,36 @@ def main() -> None:
     print("- Android manifest: present")
     print(f"- native bridge: {BRIDGE} present and ELF for {len(ABIS)} ABIs")
 
-    # When readelf is available, validate that each bridge is a shared ELF file.
-    try:
+    # readelf on this runner does not reliably accept ELF bytes from stdin.
+    # Materialize each APK entry and probe the actual file instead.
+    readelf = shutil.which("readelf")
+    unzip = shutil.which("unzip")
+    if not readelf or not unzip:
+        print("- ELF header/type validation: skipped (readelf/unzip unavailable)")
+        return
+
+    with tempfile.TemporaryDirectory(prefix="craftdroid-elf-") as tmp:
+        tmpdir = Path(tmp)
         for abi in ABIS:
-            result = subprocess.run(
-                ["unzip", "-p", str(apk), f"lib/{abi}/{BRIDGE}"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=True,
-            )
+            entry = f"lib/{abi}/{BRIDGE}"
+            elf_path = tmpdir / f"{abi}-{BRIDGE}"
+            with elf_path.open("wb") as output:
+                subprocess.run(
+                    [unzip, "-p", str(apk), entry],
+                    stdout=output,
+                    stderr=subprocess.PIPE,
+                    check=True,
+                )
             probe = subprocess.run(
-                ["readelf", "-h", "-"],
-                input=result.stdout,
+                [readelf, "-h", str(elf_path)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                text=True,
                 check=True,
             )
-            if b"Type:" not in probe.stdout or b"DYN" not in probe.stdout:
+            if "Type:" not in probe.stdout or "DYN" not in probe.stdout:
                 raise SystemExit(f"readelf did not identify {abi} bridge as DYN")
-        print("- ELF header/type validation: PASS")
-    except FileNotFoundError:
-        print("- readelf validation: skipped (tool unavailable)")
+    print("- ELF header/type validation: PASS")
 
 
 if __name__ == "__main__":
