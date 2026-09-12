@@ -17,11 +17,22 @@ printf '%s\n' "$PACKAGE" > "$OUT/package.txt"
 printf '%s\n' "$ACTIVITY" > "$OUT/activity.txt"
 
 "$ADB" wait-for-device
+"$ADB" shell getprop sys.boot_completed > "$OUT/boot-completed.txt" || true
 "$ADB" install -r "$APK"
 "$ADB" shell am force-stop "$PACKAGE" || true
 "$ADB" logcat -c
-"$ADB" shell monkey -p "$PACKAGE" 1 >/dev/null
-sleep 20
+
+# Prefer an explicit activity launch so the test exercises the real entry point.
+# Fall back to monkey for manifest/activity layouts that reject am start.
+if ! "$ADB" shell am start -W -n "$PACKAGE/$ACTIVITY" > "$OUT/activity-start.txt" 2>&1; then
+  "$ADB" shell monkey -p "$PACKAGE" 1 > "$OUT/monkey-start.txt" 2>&1
+fi
+
+# Capture startup progressively so short-lived native/JVM failures are retained.
+for delay in 5 10 15; do
+  sleep 5
+  "$ADB" logcat -d -v threadtime > "$OUT/emulator-logcat-${delay}s.txt"
+done
 "$ADB" logcat -d -v threadtime > "$OUT/emulator-logcat.txt"
 "$ADB" shell dumpsys activity activities > "$OUT/emulator-activities.txt" || true
 "$ADB" shell dumpsys window windows > "$OUT/emulator-windows.txt" || true
@@ -29,6 +40,7 @@ sleep 20
 PID="$($ADB shell pidof "$PACKAGE" | tr -d '\r' | awk '{print $1}')"
 if [ -z "$PID" ]; then
   echo 'Launcher process exited during runtime smoke test.' >&2
+  tail -n 200 "$OUT/emulator-logcat.txt" >&2 || true
   exit 1
 fi
 printf '%s\n' "$PID" > "$OUT/pid.txt"
@@ -47,11 +59,14 @@ else
   printf '%s\n' 'native-bridge: not observed in launcher process (may be loaded lazily)' > "$OUT/native-bridge.txt"
 fi
 
-FATAL_RE='FATAL EXCEPTION|Fatal signal|SIGSEGV|UnsatisfiedLinkError|NoClassDefFoundError|ClassNotFoundException|dlopen failed|OutOfMemoryError|GLFW.*(error|failed)|LWJGL.*(error|failed)'
+grep -Ei 'CraftDroid|craftdroid|GLFW|LWJGL|JavaRuntime|Renderer|NativeGameBridge|libcraftdroidbridge' "$OUT/emulator-logcat.txt" > "$OUT/launcher-startup-markers.txt" || true
+
+FATAL_RE='FATAL EXCEPTION|Fatal signal|SIGSEGV|SIGABRT|SIGBUS|SIGILL|UnsatisfiedLinkError|NoClassDefFoundError|ClassNotFoundException|ExceptionInInitializerError|dlopen failed|linker.*CANNOT LINK|OutOfMemoryError|GLFW.*(error|failed)|LWJGL.*(error|failed)|ANativeWindow.*(fail|error)|EGL.*(error|fail)'
 if grep -Eiq "$FATAL_RE" "$OUT/emulator-logcat.txt"; then
   echo 'Runtime smoke test found a fatal/native launch signature.' >&2
   grep -Ei "$FATAL_RE" "$OUT/emulator-logcat.txt" >&2 || true
   exit 1
 fi
 
-printf '%s\n' 'PASS: APK installed, launcher process stayed alive, and launcher activity remained foreground on Android emulator.' | tee "$OUT/result.txt"
+printf '%s\n' 'PASS: APK installed, launcher activity started, launcher process stayed alive, foreground activity remained CraftDroid, and no fatal Android/native/GLFW/LWJGL startup signature was detected.' | tee "$OUT/result.txt"
+printf '%s\n' 'SCOPE: This smoke test verifies Android launcher startup/runtime health. It does not claim full Minecraft game boot without game assets/runtime/account setup.' > "$OUT/scope.txt"
