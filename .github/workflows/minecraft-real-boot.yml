@@ -2,7 +2,9 @@ name: Verify Real Minecraft Android Boot
 
 on:
   workflow_dispatch:
-  push:
+  workflow_run:
+    workflows: [Build CraftDroid APK]
+    types: [completed]
     branches: [main, master]
 
 permissions:
@@ -11,11 +13,27 @@ permissions:
 
 jobs:
   boot:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == github.event.repository.default_branch) }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
+      - name: Select source commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            TARGET_SHA='${{ github.event.workflow_run.head_sha }}'
+          else
+            TARGET_SHA="$GITHUB_SHA"
+          fi
+          printf '%s\n' "$TARGET_SHA" > target-sha.txt
+          echo "TARGET_SHA=$TARGET_SHA" >> "$GITHUB_ENV"
+
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 1
 
       - name: Download and materialize real Minecraft 1.21.1 fixture
         shell: bash
@@ -29,7 +47,7 @@ jobs:
           test -s artifacts/fixture/assets/indexes/*.json
           find artifacts/fixture/libraries -type f -print -quit | grep -q .
 
-      - name: Wait for matching APK artifact
+      - name: Download APK built from the exact source commit
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -37,16 +55,16 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts/apk
           found=''
-          for attempt in $(seq 1 24); do
-            echo "Looking for CraftDroid-debug-apk built from $GITHUB_SHA (attempt $attempt/24)."
+          echo "Looking for CraftDroid-debug-apk built from $TARGET_SHA."
+          for attempt in $(seq 1 12); do
             found="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
               --jq '.artifacts[] | select(.name=="CraftDroid-debug-apk" and .expired==false) | [.id,.workflow_run.head_sha,.workflow_run.conclusion] | @tsv' \
-              | awk -v sha="$GITHUB_SHA" '$2==sha && $3=="success" {print $1; exit}')"
+              | awk -v sha="$TARGET_SHA" '$2==sha && $3=="success" {print $1; exit}')"
             if [ -n "$found" ]; then break; fi
-            sleep 30
+            sleep 15
           done
           test -n "$found"
-          printf '%s\\n' "$found" > artifacts/apk/artifact-id.txt
+          printf '%s\n' "$found" > artifacts/apk/artifact-id.txt
           gh api -H 'Accept: application/vnd.github+json' \
             "/repos/${GITHUB_REPOSITORY}/actions/artifacts/$found/zip" > artifacts/apk/artifact.zip
           unzip -q artifacts/apk/artifact.zip -d artifacts/apk
