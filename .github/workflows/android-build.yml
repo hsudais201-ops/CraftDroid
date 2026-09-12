@@ -170,7 +170,20 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          disk-size: 2G
+          heap-size: 512M
+          ram-size: 1536M
           script: bash tools/ci/runtime_smoke_step174.sh craftdroid-src/app/build/outputs/apk/debug/app-debug.apk artifacts/runtime
+          cores: 2
+          avd-name: test
+          force-avd-creation: true
+          emulator-boot-timeout: 600
+          emulator-port: 5554
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          disable-linux-hw-accel: auto
+          enable-hw-keyboard: false
+          channel: stable
 
       - name: Snapshot source files for diagnostics
         if: always()
