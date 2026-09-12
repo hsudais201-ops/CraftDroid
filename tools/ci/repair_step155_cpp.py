@@ -44,6 +44,8 @@ def main() -> None:
 
     # The native bridge currently calls a stale lifecycle helper. This cleanup
     # call is not required for compilation; the surrounding teardown continues.
+    # Some archive variants contain this stale call more than once, so remove
+    # every exact stale statement rather than assuming a single occurrence.
     stale_call = re.compile(r"^\s*stopInputPump\(true\);\s*$", re.MULTILINE)
     text, removed = stale_call.subn(
         "        // Step 155: stale stopInputPump(true) call removed; teardown remains active.\n",
