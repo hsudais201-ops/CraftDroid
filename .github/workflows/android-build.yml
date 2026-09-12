@@ -127,6 +127,28 @@ jobs:
           path: artifacts/apk/*
           if-no-files-found: error
 
+      - name: Snapshot source files for diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="craftdroid-src/app/build/diagnostic-source"
+          mkdir -p "$OUT"
+          cp -f craftdroid-src/app/src/main/java/com/example/game/GameSurfaceView.kt "$OUT/" 2>/dev/null || true
+          cp -f craftdroid-src/app/src/main/java/com/example/game/NativeGameBridge.kt "$OUT/" 2>/dev/null || true
+          cp -f craftdroid-src/app/src/main/java/com/example/game/TouchControlsOverlayView.kt "$OUT/" 2>/dev/null || true
+          cp -f craftdroid-src/app/src/main/java/com/example/launcher/LaunchCommandBuilder.kt "$OUT/" 2>/dev/null || true
+          cp -f craftdroid-src/app/src/main/java/com/example/launcher/MinecraftLaunchManager.kt "$OUT/" 2>/dev/null || true
+          cp -f craftdroid-src/app/src/main/java/com/example/logs/LaunchRecoveryPolicy.kt "$OUT/" 2>/dev/null || true
+          cp -f craftdroid-src/app/src/main/java/com/example/minecraft/ForgeNeoForgeInstaller.kt "$OUT/" 2>/dev/null || true
+          cp -f craftdroid-src/app/src/main/java/com/example/renderer/LwjglCompatibilityValidator.kt "$OUT/" 2>/dev/null || true
+          cp -f craftdroid-src/app/src/main/java/com/example/renderer/LwjglGlfwStubManager.kt "$OUT/" 2>/dev/null || true
+          cp -f craftdroid-src/app/src/main/java/com/example/renderer/NativeDependencyVerifier.kt "$OUT/" 2>/dev/null || true
+          cp -f craftdroid-src/app/src/main/java/com/example/ui/screens/HomeScreen.kt "$OUT/" 2>/dev/null || true
+          cp -f craftdroid-src/app/src/main/java/com/example/versions/VersionJsonParser.kt "$OUT/" 2>/dev/null || true
+          echo 'Diagnostic source snapshot:'
+          find "$OUT" -type f -maxdepth 1 -printf '%f\n' | sort
+
       - name: Upload build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -135,4 +157,5 @@ jobs:
           path: |
             craftdroid-src/app/build/reports/**
             craftdroid-src/app/build/test-results/**
+            craftdroid-src/app/build/diagnostic-source/**
           if-no-files-found: ignore
