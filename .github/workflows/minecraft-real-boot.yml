@@ -120,6 +120,31 @@ jobs:
       - name: Install Android SDK
         uses: android-actions/setup-android@v4
 
+      - name: Preflight APK for x86_64 Android emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_MANIFEST="$GITHUB_WORKSPACE/artifacts/apk/apk-badging.txt"
+          APK_ABIS="$GITHUB_WORKSPACE/artifacts/apk/apk-native-libs.txt"
+          SHA_FILE="$GITHUB_WORKSPACE/artifacts/apk/apk-sha256.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee "$APK_MANIFEST"
+          PACKAGE="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" "$APK_MANIFEST" | head -n1)"
+          ACTIVITY="$(sed -n "s/^launchable-activity: name='\([^']*\)'.*/\1/p" "$APK_MANIFEST" | head -n1)"
+          test -n "$PACKAGE"
+          test -n "$ACTIVITY"
+          printf '%s\n' "$PACKAGE" > artifacts/apk/package.txt
+          printf '%s\n' "$ACTIVITY" > artifacts/apk/activity.txt
+          sha256sum "$APK" | tee "$SHA_FILE"
+          unzip -l "$APK" | awk '{print $4}' | grep '^lib/x86_64/' | tee "$APK_ABIS"
+          grep -q 'lib/x86_64/libcraftdroidbridge.so$' "$APK_ABIS"
+          test -s artifacts/apk/apk-native-libs.txt
+          {
+            echo "package=$PACKAGE"
+            echo "activity=$ACTIVITY"
+            echo "required_abi=x86_64"
+            echo "required_native=lib/x86_64/libcraftdroidbridge.so"
+          } | tee artifacts/apk/apk-preflight.txt
+
       - name: Start Android emulator and run Step 190 real boot harness
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -143,11 +168,11 @@ jobs:
             mkdir -p artifacts/runtime
             bash tools/ci/real_minecraft_boot_step182.sh "$APK" artifacts/runtime artifacts/fixture
 
-      - name: Upload Step 195 diagnostics
+      - name: Upload Step 196 diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CraftDroid-step195-real-minecraft-boot
+          name: CraftDroid-step196-real-minecraft-boot
           path: artifacts/runtime/**
           if-no-files-found: ignore
 
@@ -155,14 +180,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CraftDroid-step195-minecraft-fixture
+          name: CraftDroid-step196-minecraft-fixture
           path: artifacts/fixture/fixture-result.txt
           if-no-files-found: ignore
 
-      - name: Upload APK test identity
+      - name: Upload APK preflight and identity
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CraftDroid-step195-apk-identity
+          name: CraftDroid-step196-apk-preflight
           path: artifacts/apk/*
           if-no-files-found: ignore
