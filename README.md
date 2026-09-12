@@ -5,13 +5,14 @@ Android Minecraft Java launcher project.
 ## Current state
 
 - GitHub Actions Android build workflow: added
-- Actual CraftDroid Android source tree: not yet imported
-- APK build: blocked until the Android source tree and Gradle wrapper are present
-- Real Minecraft boot verification: not yet possible until the runnable project is imported
+- CraftDroid Android source tree: included inside `CraftDroid_Launcher_2.4_GitHubActions_Step153.zip`
+- The uploaded Step 153 archive contains the Gradle wrapper, `app/` module, Kotlin source, C++/GLFW bridge, resources, assets, tests, and build documentation.
+- APK build: not yet verified on GitHub Actions
+- Real Minecraft boot: not yet verified
 
-## Required next import
+## Next step
 
-The Step 153 archive available in this project contains only the CI workflow and documentation; it does not contain the launcher source. The real CraftDroid project ZIP/source tree must be imported before CI can produce an APK.
+Extract/import the source tree from the Step 153 archive into the repository root so GitHub Actions can build the actual Android project directly.
 
 ## Target architecture
 
