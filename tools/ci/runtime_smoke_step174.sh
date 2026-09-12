@@ -24,11 +24,34 @@ printf '%s\n' "$ACTIVITY" > "$OUT/activity.txt"
 sleep 20
 "$ADB" logcat -d -v threadtime > "$OUT/emulator-logcat.txt"
 "$ADB" shell dumpsys activity activities > "$OUT/emulator-activities.txt" || true
+"$ADB" shell dumpsys window windows > "$OUT/emulator-windows.txt" || true
 
-if grep -Eiq 'FATAL EXCEPTION|Fatal signal|SIGSEGV|UnsatisfiedLinkError|NoClassDefFoundError|ClassNotFoundException|dlopen failed|OutOfMemoryError|GLFW.*(error|failed)|LWJGL.*(error|failed)' "$OUT/emulator-logcat.txt"; then
+PID="$($ADB shell pidof "$PACKAGE" | tr -d '\r' | awk '{print $1}')"
+if [ -z "$PID" ]; then
+  echo 'Launcher process exited during runtime smoke test.' >&2
+  exit 1
+fi
+printf '%s\n' "$PID" > "$OUT/pid.txt"
+
+TOP_ACTIVITY="$($ADB shell dumpsys activity activities | sed -n 's/.*mResumedActivity:.* \([^ ]*\/[^ ]*\) .*/\1/p' | head -n1 | tr -d '\r')"
+printf '%s\n' "$TOP_ACTIVITY" > "$OUT/top-activity.txt"
+case "$TOP_ACTIVITY" in
+  "$PACKAGE"/*) ;;
+  *) echo "Launcher activity is not the resumed foreground activity: $TOP_ACTIVITY" >&2; exit 1 ;;
+esac
+
+"$ADB" shell cat "/proc/$PID/maps" > "$OUT/process-maps.txt" || true
+if grep -Fq 'libcraftdroidbridge.so' "$OUT/process-maps.txt"; then
+  printf '%s\n' 'native-bridge: loaded' > "$OUT/native-bridge.txt"
+else
+  printf '%s\n' 'native-bridge: not observed in launcher process (may be loaded lazily)' > "$OUT/native-bridge.txt"
+fi
+
+FATAL_RE='FATAL EXCEPTION|Fatal signal|SIGSEGV|UnsatisfiedLinkError|NoClassDefFoundError|ClassNotFoundException|dlopen failed|OutOfMemoryError|GLFW.*(error|failed)|LWJGL.*(error|failed)'
+if grep -Eiq "$FATAL_RE" "$OUT/emulator-logcat.txt"; then
   echo 'Runtime smoke test found a fatal/native launch signature.' >&2
-  grep -Ei 'FATAL EXCEPTION|Fatal signal|SIGSEGV|UnsatisfiedLinkError|NoClassDefFoundError|ClassNotFoundException|dlopen failed|OutOfMemoryError|GLFW.*(error|failed)|LWJGL.*(error|failed)' "$OUT/emulator-logcat.txt" >&2 || true
+  grep -Ei "$FATAL_RE" "$OUT/emulator-logcat.txt" >&2 || true
   exit 1
 fi
 
-printf '%s\n' 'PASS: APK installed and launcher activity started on Android emulator.' | tee "$OUT/result.txt"
+printf '%s\n' 'PASS: APK installed, launcher process stayed alive, and launcher activity remained foreground on Android emulator.' | tee "$OUT/result.txt"
