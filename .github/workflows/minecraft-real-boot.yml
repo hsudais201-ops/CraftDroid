@@ -1,0 +1,72 @@
+name: Verify Real Minecraft Android Boot
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Locate latest successful CraftDroid APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/apk
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=20"
+          gh api "$API" --jq '.artifacts[] | select(.name=="CraftDroid-debug-apk" and .expired==false) | [.id,.workflow_run.head_sha] | @tsv' | head -n 1 > artifacts/apk/artifact.txt || true
+          if [ ! -s artifacts/apk/artifact.txt ]; then
+            echo 'No downloadable CraftDroid-debug-apk artifact is currently available.' >&2
+            exit 1
+          fi
+          ARTIFACT_ID="$(cut -f1 artifacts/apk/artifact.txt)"
+          gh api -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" > artifacts/apk/artifact.zip
+          unzip -q artifacts/apk/artifact.zip -d artifacts/apk
+          APK="$(find artifacts/apk -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          echo "APK=$APK" >> "$GITHUB_ENV"
+
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Start Android emulator and run real boot harness
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disk-size: 2G
+          heap-size: 512M
+          ram-size: 1536M
+          cores: 2
+          avd-name: craftdroid-real-boot
+          force-avd-creation: true
+          emulator-boot-timeout: 600
+          emulator-port: 5554
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          disable-linux-hw-accel: auto
+          enable-hw-keyboard: false
+          script: |
+            mkdir -p artifacts/runtime
+            bash tools/ci/real_minecraft_boot_step181.sh "$APK" artifacts/runtime
+
+      - name: Upload Step 181 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CraftDroid-step181-real-boot-diagnostics
+          path: artifacts/runtime/**
+          if-no-files-found: ignore
