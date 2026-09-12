@@ -1,0 +1,64 @@
+name: CraftDroid Android CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Check Gradle project
+        shell: bash
+        run: |
+          test -f gradlew || { echo 'ERROR: gradlew is missing. Import the CraftDroid Android project first.'; exit 1; }
+          test -f gradle/wrapper/gradle-wrapper.properties || { echo 'ERROR: Gradle wrapper is missing.'; exit 1; }
+          chmod +x gradlew
+          ./gradlew --version
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build debug APK
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - name: Collect APKs
+        shell: bash
+        run: |
+          mkdir -p artifacts/apk
+          find . -type f -path '*/build/outputs/apk/*.apk' -exec cp {} artifacts/apk/ \;
+          test -n "$(find artifacts/apk -type f -name '*.apk' -print -quit)"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CraftDroid-debug-apk
+          path: artifacts/apk/*.apk
+
+      - name: Upload build reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CraftDroid-build-reports
+          path: |
+            **/build/reports/**
+            **/build/test-results/**
+          if-no-files-found: ignore
