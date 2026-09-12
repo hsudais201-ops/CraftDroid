@@ -1,0 +1,23 @@
+name: Verify Real Minecraft Installation Fixture
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install and verify Minecraft 1.21.1 artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_minecraft_install_fixture.py
