@@ -1,0 +1,80 @@
+name: Export Android Source
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'CraftDroid_Launcher_2.4_GitHubActions_Step153.zip'
+      - '.github/workflows/export-android-source.yml'
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_ARCHIVE: CraftDroid_Launcher_2.4_GitHubActions_Step153.zip
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Locate source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$SOURCE_ARCHIVE"
+          echo "Using $SOURCE_ARCHIVE"
+
+      - name: Extract Android source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf craftdroid-src
+          mkdir -p craftdroid-src
+          unzip -q "$SOURCE_ARCHIVE" -d craftdroid-src
+
+          # Flatten a single nested directory when present.
+          shopt -s dotglob nullglob
+          entries=(craftdroid-src/*)
+          if [ "${#entries[@]}" -eq 1 ] && [ -d "${entries[0]}" ]; then
+            nested="${entries[0]}"
+            cp -a "$nested"/. craftdroid-src/
+            rm -rf "$nested"
+          fi
+
+          test -f craftdroid-src/settings.gradle.kts
+          test -d craftdroid-src/app
+
+      - name: Remove build/cache output
+        shell: bash
+        run: |
+          set -euo pipefail
+          find craftdroid-src -type d \( \
+            -name .gradle -o \
+            -name build -o \
+            -name .idea \
+          \) -prune -exec rm -rf {} +
+          find craftdroid-src -type f \( \
+            -name '*.apk' -o \
+            -name '*.aab' -o \
+            -name '*.log' \
+          \) -delete
+
+      - name: Create source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf CraftDroid-android-source.tar.gz -C craftdroid-src .
+          sha256sum CraftDroid-android-source.tar.gz > CraftDroid-android-source.sha256
+
+      - name: Upload Android source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CraftDroid-android-source
+          path: |
+            CraftDroid-android-source.tar.gz
+            CraftDroid-android-source.sha256
+          if-no-files-found: error
+          retention-days: 14
