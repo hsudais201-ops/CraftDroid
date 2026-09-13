@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           ARCHIVE="$(find . -maxdepth 2 -type f -name 'CraftDroid_Launcher_2.4_GitHubActions_Step153.zip' -print -quit)"
-          test -n "$ARCHIVE" || { echo 'CraftDroid Step 153 source archive not found.' >&2; exit 1; }
+          test -n "$ARCHIVE" || { echo 'CraftDroid Step 153 source archive not found in repository.' >&2; exit 1; }
           echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
           echo "Using $ARCHIVE"
 
@@ -46,10 +46,6 @@ jobs:
           if [ ! -f craftdroid-src/gradlew ]; then
             PROJECT_DIR="$(find craftdroid-src -type f -name gradlew -print -quit | xargs -r dirname)"
             test -n "$PROJECT_DIR" || { echo 'gradlew not found anywhere in extracted archive.' >&2; exit 1; }
-            test -f "$PROJECT_DIR/gradle/wrapper/gradle-wrapper.properties" || {
-              echo 'Gradle wrapper properties not found next to gradlew.' >&2
-              exit 1
-            }
             if [ "$PROJECT_DIR" != "craftdroid-src" ]; then
               shopt -s dotglob
               mv "$PROJECT_DIR"/* craftdroid-src/
@@ -57,9 +53,7 @@ jobs:
             fi
           fi
 
-          test -f craftdroid-src/gradlew
-          test -f craftdroid-src/gradle/wrapper/gradle-wrapper.properties
-          chmod +x craftdroid-src/gradlew
+          test -d craftdroid-src
           echo '--- extracted project root ---'
           find craftdroid-src -maxdepth 1 -mindepth 1 -printf '%f\n' | sort
 
@@ -113,18 +107,20 @@ jobs:
             "ndk;27.2.12479018" \
             "cmake;3.22.1"
 
-      - name: Set up Gradle
+      - name: Set up Gradle 9.6.0 directly
         uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.6.0'
 
       - name: Validate Gradle project
         working-directory: craftdroid-src
-        run: ./gradlew --no-daemon --stacktrace help
+        run: gradle --no-daemon --stacktrace help
 
       - name: Run unit tests
         id: unit-tests
         continue-on-error: true
         working-directory: craftdroid-src
-        run: ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest
+        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest
 
       - name: Report unit-test status
         if: always()
@@ -142,7 +138,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p ../artifacts/build
-          ./gradlew --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee ../artifacts/build/assembleDebug.log
+          gradle --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee ../artifacts/build/assembleDebug.log
 
       - name: Verify APK
         shell: bash
