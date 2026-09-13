@@ -57,6 +57,12 @@ jobs:
           echo '--- extracted project root ---'
           find craftdroid-src -maxdepth 1 -mindepth 1 -printf '%f\n' | sort
 
+      - name: Apply Step 194 Droid Launcher branding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/apply_droid_launcher_branding.py craftdroid-src
+
       - name: Normalize Gradle settings for CI
         shell: bash
         run: |
@@ -147,7 +153,7 @@ jobs:
           APK="craftdroid-src/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
           mkdir -p artifacts/apk
-          cp "$APK" artifacts/apk/
+          cp "$APK" artifacts/apk/Droid-Launcher-debug.apk
           sha256sum "$APK" | tee artifacts/apk/SHA256SUMS.txt
           echo '--- APK ---'
           ls -lh "$APK"
