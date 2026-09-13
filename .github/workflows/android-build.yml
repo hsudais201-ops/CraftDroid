@@ -165,6 +165,24 @@ jobs:
           path: artifacts/apk/*
           if-no-files-found: error
 
+      - name: Free runner disk space for emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '--- disk before cleanup ---'
+          df -hT / /home/runner
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk-bundle /opt/ghc 2>/dev/null || true
+          sudo rm -rf /usr/local/lib/android/sdk/build-tools/3* /usr/local/lib/android/sdk/build-tools/3[0-5]* 2>/dev/null || true
+          sudo rm -rf /usr/local/lib/android/sdk/platforms/android-2* /usr/local/lib/android/sdk/platforms/android-3[0-4] 2>/dev/null || true
+          sudo rm -rf /usr/local/lib/android/sdk/system-images/android-2* /usr/local/lib/android/sdk/system-images/android-3[0-4] 2>/dev/null || true
+          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Node 2>/dev/null || true
+          rm -rf "$HOME/.cache" "$HOME/.npm" "$HOME/.local/share/pnpm" 2>/dev/null || true
+          rm -rf "$HOME/.gradle/caches" "$HOME/.gradle/wrapper" 2>/dev/null || true
+          echo '--- disk after cleanup ---'
+          df -hT / /home/runner
+          AVAIL_KB="$(df -Pk /home/runner | awk 'NR==2 {print $4}')"
+          test "$AVAIL_KB" -ge 9000000 || { echo "Insufficient free disk for emulator: ${AVAIL_KB} KiB available; need at least 9000000 KiB." >&2; exit 1; }
+
       - name: Step 174 Android emulator smoke test
         id: runtime-smoke
         continue-on-error: true
@@ -176,12 +194,12 @@ jobs:
           profile: pixel_2
           disk-size: 2G
           heap-size: 512M
-          ram-size: 1536M
+          ram-size: 1024M
           script: bash tools/ci/runtime_smoke_step174.sh craftdroid-src/app/build/outputs/apk/debug/app-debug.apk artifacts/runtime
           cores: 2
           avd-name: test
           force-avd-creation: true
-          emulator-boot-timeout: 600
+          emulator-boot-timeout: 300
           emulator-port: 5554
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
@@ -203,17 +221,17 @@ jobs:
             echo '--- adb devices ---'
             "$ADB" devices -l 2>&1 || true
             echo '--- boot completed ---'
-            "$ADB" shell getprop sys.boot_completed 2>&1 || true
+            timeout 15s "$ADB" shell getprop sys.boot_completed 2>&1 || true
             echo '--- package/activity processes ---'
-            "$ADB" shell ps -A 2>&1 | grep -Ei 'craftdroid|com\.example' || true
+            timeout 15s "$ADB" shell ps -A 2>&1 | grep -Ei 'craftdroid|com\.example' || true
             echo '--- focused activity ---'
-            "$ADB" shell dumpsys activity activities 2>&1 | grep -E 'mResumedActivity|mFocusedApp' | tail -n 20 || true
+            timeout 15s "$ADB" shell dumpsys activity activities 2>&1 | grep -E 'mResumedActivity|mFocusedApp' | tail -n 20 || true
             echo '--- window ---'
-            "$ADB" shell dumpsys window windows 2>&1 | grep -E 'mCurrentFocus|mFocusedApp' | tail -n 20 || true
+            timeout 15s "$ADB" shell dumpsys window windows 2>&1 | grep -E 'mCurrentFocus|mFocusedApp' | tail -n 20 || true
             echo '--- recent crashes ---'
-            "$ADB" shell dumpsys dropbox --print 2>&1 | grep -Ei -A8 -B2 'data_app_crash|system_app_crash|app_native_crash|system_server_crash|CraftDroid' | tail -n 160 || true
+            timeout 15s "$ADB" shell dumpsys dropbox --print 2>&1 | grep -Ei -A8 -B2 'data_app_crash|system_app_crash|app_native_crash|system_server_crash|CraftDroid' | tail -n 160 || true
             echo '--- logcat tail ---'
-            "$ADB" logcat -d -v threadtime -t 2000 2>&1 || true
+            timeout 15s "$ADB" logcat -d -v threadtime -t 2000 2>&1 || true
           } > artifacts/runtime/step174-runner-diagnostics.txt 2>&1
           echo 'Step 174 runner diagnostics captured.'
           find artifacts/runtime -maxdepth 2 -type f -printf '%p\n' | sort || true
