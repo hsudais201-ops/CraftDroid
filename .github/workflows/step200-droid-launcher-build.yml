@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: droid-launcher-step218-${{ github.ref }}
+  group: droid-launcher-step219-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -98,13 +98,21 @@ jobs:
       - name: Apply Step 218 Minecraft-version Java profile resolver
         run: python3 tools/ci/repair_step218_java_profile.py droid-src
 
-      - name: Verify Java Runtime Manager contract
+      - name: Apply Step 219 Java preference launch binding
+        run: python3 tools/ci/repair_step219_launch_java_binding.py droid-src
+
+      - name: Verify Java launch binding contract
         shell: bash
         run: |
           set -euo pipefail
           find droid-src/app/src/main -type f -name 'JavaRuntimeManager.kt' -print -quit | grep -q .
-          grep -R "ensureRuntime" droid-src/app/src/main/java --include='JavaRuntimeManager.kt' >/dev/null
-          grep -R "recommendedJavaForVersion\|resolveJavaForVersion\|selected_java_runtime" droid-src/app/src/main/java/com/example/launcher --include='*.kt' >/dev/null
+          MANAGER=$(find droid-src/app/src/main -type f -name 'MinecraftLaunchManager.kt' -print -quit)
+          UI=$(find droid-src/app/src/main -type f -name 'DroidLauncherUiActivity.kt' -print -quit)
+          test -n "$MANAGER" && test -n "$UI"
+          grep -F 'javaManager.ensureRuntime(resolveLaunchJavaRuntime(requiredJava))' "$MANAGER" >/dev/null
+          grep -F 'System.getProperty("droid.launcher.java.runtime")' "$MANAGER" >/dev/null
+          grep -F 'System.setProperty("droid.launcher.java.runtime", value)' "$UI" >/dev/null
+          grep -F 'private fun resolveLaunchJavaRuntime(requestedJava: String): String' "$MANAGER" >/dev/null
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -142,7 +150,7 @@ jobs:
       - name: Report unit-test result
         if: always()
         run: |
-          echo "Step 218 unit-test outcome: ${{ steps.unit-tests.outcome }}"
+          echo "Step 219 unit-test outcome: ${{ steps.unit-tests.outcome }}"
 
       - name: Build Droid Launcher APK
         working-directory: droid-src
@@ -159,9 +167,9 @@ jobs:
           APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           mkdir -p artifacts/apk
-          cp "$APK" artifacts/apk/Droid-Launcher-Step218-debug.apk
+          cp "$APK" artifacts/apk/Droid-Launcher-Step219-debug.apk
           sha256sum "$APK" | tee artifacts/apk/SHA256SUMS.txt
-          echo 'Droid Launcher Step 218 APK created:'
+          echo 'Droid Launcher Step 219 APK created:'
           ls -lh "$APK"
 
       - name: APK runtime preflight
@@ -173,7 +181,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step218-debug
+          name: Droid-Launcher-Step219-debug
           path: artifacts/apk/*
           if-no-files-found: error
 
@@ -181,7 +189,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step218-diagnostics
+          name: Droid-Launcher-Step219-diagnostics
           path: |
             artifacts/build/**
             droid-src/app/build/reports/**
