@@ -70,21 +70,28 @@ jobs:
         run: python3 tools/ci/apply_step177_world_manager.py droid-src
       - name: Apply Step 202 Kotlin compile repairs
         run: python3 tools/ci/repair_step202_kotlin.py droid-src
-      - name: Apply Steps 205-216 UI and launch flow
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/ci/apply_step205_zalith_style_ui.py droid-src
-          python3 tools/ci/repair_step205_ui.py droid-src
-          python3 tools/ci/repair_step207_server_ui.py droid-src
-          python3 tools/ci/repair_step209_server_list.py droid-src
-          python3 tools/ci/repair_step210_server_launch.py droid-src
-          python3 tools/ci/repair_step211_minecraft_server_query.py droid-src
-          python3 tools/ci/repair_step212_server_ui.py droid-src
-          python3 tools/ci/repair_step213_server_cards.py droid-src
-          python3 tools/ci/repair_step214_server_detail.py droid-src
-          python3 tools/ci/repair_step215_launch_feedback.py droid-src
-          python3 tools/ci/repair_step216_launch_progress.py droid-src
+      - name: Apply Step 205 UI generation
+        run: python3 tools/ci/apply_step205_zalith_style_ui.py droid-src
+      - name: Repair Step 205 UI wiring
+        run: python3 tools/ci/repair_step205_ui.py droid-src
+      - name: Apply Step 207 home server panel
+        run: python3 tools/ci/repair_step207_server_ui.py droid-src
+      - name: Apply Step 209 multi-server management
+        run: python3 tools/ci/repair_step209_server_list.py droid-src
+      - name: Apply Step 210 selected-server launch integration
+        run: python3 tools/ci/repair_step210_server_launch.py droid-src
+      - name: Apply Step 211 Minecraft server status query
+        run: python3 tools/ci/repair_step211_minecraft_server_query.py droid-src
+      - name: Apply Step 212 server status and latency UI
+        run: python3 tools/ci/repair_step212_server_ui.py droid-src
+      - name: Apply Step 213 server cards
+        run: python3 tools/ci/repair_step213_server_cards.py droid-src
+      - name: Apply Step 214 server detail
+        run: python3 tools/ci/repair_step214_server_detail.py droid-src
+      - name: Apply Step 215 launch feedback
+        run: python3 tools/ci/repair_step215_launch_feedback.py droid-src
+      - name: Apply Step 216 launch progress
+        run: python3 tools/ci/repair_step216_launch_progress.py droid-src
       - name: Apply Steps 217-220 Java/runtime binding
         shell: bash
         run: |
