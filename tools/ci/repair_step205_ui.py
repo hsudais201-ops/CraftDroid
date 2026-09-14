@@ -18,7 +18,6 @@ def find_existing_launcher(manifest: str) -> str:
             match = re.search(r'android:name="([^"]+)"', block)
             if match:
                 return match.group(1)
-    # Also tolerate self-closing launcher declarations in hand-edited manifests.
     for block in re.findall(r'<(?:activity|activity-alias)\b[^>]*?/\s*>', manifest):
         if "android.intent.action.MAIN" in block and "android.intent.category.LAUNCHER" in block:
             match = re.search(r'android:name="([^"]+)"', block)
@@ -30,9 +29,14 @@ def find_existing_launcher(manifest: str) -> str:
 def remove_old_launcher_filters(manifest: str) -> str:
     pattern = r'<(?:activity|activity-alias)[ \t\r\n][\s\S]*?</(?:activity|activity-alias)>'
 
-    def patch(block: str) -> str:
+    def patch(match: re.Match[str]) -> str:
+        block = match.group(0)
         if "DroidLauncherUiActivity" not in block and "android.intent.action.MAIN" in block and "android.intent.category.LAUNCHER" in block:
-            block = re.sub(r'<intent-filter>[\s\S]*?</intent-filter>', lambda m: "" if ("android.intent.action.MAIN" in m.group(0) and "android.intent.category.LAUNCHER" in m.group(0)) else m.group(0), block)
+            block = re.sub(
+                r'<intent-filter>[\s\S]*?</intent-filter>',
+                lambda item: "" if ("android.intent.action.MAIN" in item.group(0) and "android.intent.category.LAUNCHER" in item.group(0)) else item.group(0),
+                block,
+            )
         return block
 
     return re.sub(pattern, patch, manifest)
