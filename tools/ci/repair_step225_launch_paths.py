@@ -80,7 +80,6 @@ def patch_method(s: str, signature: str) -> str:
         if version in block:
             block = block.replace(version, version + injection, 1)
         elif profile in block:
-            # The generated lower-level server launch path can have profile but no local version.
             prefix = '        val version = selectedMinecraftVersion()\n'
             block = block.replace(profile, profile + prefix + injection, 1)
         else:
@@ -125,7 +124,16 @@ def main() -> int:
         m = marker + m
 
     combined = s + '\n' + m + '\n' + path_file.read_text(encoding='utf-8')
-    for needle in ('MinecraftStorageResolver.version(context, version)', 'MinecraftStorageResolver.libraries(context)', 'MinecraftStorageResolver.assets(context)', 'MinecraftStorageResolver.natives(context, version)', 'minecraft_client_jar', 'DROID_LAUNCH_PATHS_VERSION'):
+    checks = (
+        ('MinecraftStorageResolver.version(context, version)', 'MinecraftStorageResolver.version(context, normalized)'),
+        ('MinecraftStorageResolver.libraries(context)', 'MinecraftStorageResolver.libraries(context)'),
+        ('MinecraftStorageResolver.assets(context)', 'MinecraftStorageResolver.assets(context)'),
+        ('MinecraftStorageResolver.natives(context, version)', 'MinecraftStorageResolver.natives(context, normalized)'),
+    )
+    for needle, alternate in checks:
+        if needle not in combined and alternate not in combined:
+            raise SystemExit(f'[step225] missing launch-path contract: {needle}')
+    for needle in ('minecraft_client_jar', 'DROID_LAUNCH_PATHS_VERSION'):
         if needle not in combined:
             raise SystemExit(f'[step225] missing launch-path contract: {needle}')
 
