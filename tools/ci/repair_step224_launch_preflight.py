@@ -75,18 +75,23 @@ def add_guard_to_method(s: str, signature: str) -> tuple[str, bool]:
     block = s[start:end]
     if 'MinecraftVersionInstallManager.isLaunchReady(this, version)' in block:
         return s, True
+    prefix = ''
+    if signature.strip() == 'private fun launchExistingActivityWithServer() {':
+        prefix = '''        val version = selectedMinecraftVersion()
+        val profile = selectedMinecraftProfile()
+'''
     guard = '''        if (!MinecraftVersionInstallManager.isLaunchReady(this, version)) {
             Toast.makeText(this, "Minecraft $version is not ready. Install or repair it first.", Toast.LENGTH_LONG).show()
             showPage("Search by ID")
             return
         }
 '''
-    profile_line = '        val profile = selectedMinecraftProfile()\n'
-    version_line = '        val version = selectedMinecraftVersion()\n'
-    if profile_line in block:
-        block = block.replace(profile_line, profile_line + guard, 1)
-    elif version_line in block:
-        block = block.replace(version_line, version_line + guard, 1)
+    if prefix:
+        block = block.replace(signature, signature + prefix + guard, 1)
+    elif '        val profile = selectedMinecraftProfile()\n' in block:
+        block = block.replace('        val profile = selectedMinecraftProfile()\n', '        val profile = selectedMinecraftProfile()\n' + guard, 1)
+    elif '        val version = selectedMinecraftVersion()\n' in block:
+        block = block.replace('        val version = selectedMinecraftVersion()\n', '        val version = selectedMinecraftVersion()\n' + guard, 1)
     else:
         raise SystemExit(f'[step224] {signature.strip()} lacks version/profile declaration')
     return s[:start] + block + s[end:], True
