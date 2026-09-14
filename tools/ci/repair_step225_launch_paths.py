@@ -97,6 +97,32 @@ def patch_method(s: str, signature: str) -> str:
     return s[:start] + block + s[end:]
 
 
+def repair_manager_marker_order(manager: Path) -> None:
+    """Keep all imports ahead of Step 225's top-level constant declaration."""
+    m = manager.read_text(encoding="utf-8")
+    marker = '// Step 225 launch-path contract: explicit filesystem paths are passed to the game activity.\n'
+    const = 'private const val DROID_LAUNCH_PATHS_VERSION = "225"\n'
+    if const not in m:
+        m = marker + const + m
+    # Older generated output placed the constant before imports, which Kotlin rejects.
+    prefix = marker + const
+    if m.startswith(prefix):
+        body = m[len(prefix):]
+        lines = body.splitlines(keepends=True)
+        package_end = next((i for i, line in enumerate(lines) if line.startswith('package ')), None)
+        if package_end is None:
+            raise SystemExit('[step225] manager package declaration not found')
+        import_end = package_end + 1
+        while import_end < len(lines) and (lines[import_end].startswith('import ') or lines[import_end].strip() == ''):
+            import_end += 1
+        imports = ''.join(lines[:import_end])
+        rest = ''.join(lines[import_end:])
+        if not rest.startswith('\n'):
+            rest = '\n' + rest
+        m = imports + '\n' + marker + const + rest.lstrip('\n')
+    manager.write_text(m, encoding="utf-8")
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
     source_root = root / "app/src/main/java"
@@ -117,11 +143,8 @@ def main() -> int:
             break
     ui.write_text(s, encoding="utf-8")
 
+    repair_manager_marker_order(manager)
     m = manager.read_text(encoding="utf-8")
-    marker = '// Step 225 launch-path contract: explicit filesystem paths are passed to the game activity.\nprivate const val DROID_LAUNCH_PATHS_VERSION = "225"\n'
-    if 'DROID_LAUNCH_PATHS_VERSION' not in m:
-        manager.write_text(marker + m, encoding="utf-8")
-        m = marker + m
 
     combined = s + '\n' + m + '\n' + path_file.read_text(encoding='utf-8')
     checks = (
@@ -140,6 +163,7 @@ def main() -> int:
     print('[step225] installed Minecraft filesystem paths resolved before launch')
     print('[step225] explicit client/library/assets/native paths added to launch intent')
     print('[step225] canonical MinecraftStorageResolver contract installed')
+    print('[step225] Kotlin import/declaration ordering repaired')
     return 0
 
 if __name__ == '__main__':
