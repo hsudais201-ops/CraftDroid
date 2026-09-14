@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: droid-launcher-step205-${{ github.ref }}
+  group: droid-launcher-step207-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -65,6 +65,9 @@ jobs:
       - name: Repair Step 205 UI wiring
         run: python3 tools/ci/repair_step205_ui.py droid-src
 
+      - name: Apply Step 207 home server panel
+        run: python3 tools/ci/repair_step207_server_ui.py droid-src
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -101,7 +104,7 @@ jobs:
       - name: Report unit-test result
         if: always()
         run: |
-          echo "Step 205 unit-test outcome: ${{ steps.unit-tests.outcome }}"
+          echo "Step 207 unit-test outcome: ${{ steps.unit-tests.outcome }}"
 
       - name: Build Droid Launcher APK
         working-directory: droid-src
@@ -118,9 +121,9 @@ jobs:
           APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           mkdir -p artifacts/apk
-          cp "$APK" artifacts/apk/Droid-Launcher-Step205-debug.apk
+          cp "$APK" artifacts/apk/Droid-Launcher-Step207-debug.apk
           sha256sum "$APK" | tee artifacts/apk/SHA256SUMS.txt
-          echo 'Droid Launcher Step 205 APK created:'
+          echo 'Droid Launcher Step 207 APK created:'
           ls -lh "$APK"
 
       - name: APK runtime preflight
@@ -132,7 +135,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step205-debug
+          name: Droid-Launcher-Step207-debug
           path: artifacts/apk/*
           if-no-files-found: error
 
@@ -140,7 +143,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step205-diagnostics
+          name: Droid-Launcher-Step207-diagnostics
           path: |
             artifacts/build/**
             droid-src/app/build/reports/**
