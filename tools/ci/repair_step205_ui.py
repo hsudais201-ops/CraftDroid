@@ -18,6 +18,12 @@ def find_existing_launcher(manifest: str) -> str:
             match = re.search(r'android:name="([^"]+)"', block)
             if match:
                 return match.group(1)
+    # Also tolerate self-closing launcher declarations in hand-edited manifests.
+    for block in re.findall(r'<(?:activity|activity-alias)\b[^>]*?/\s*>', manifest):
+        if "android.intent.action.MAIN" in block and "android.intent.category.LAUNCHER" in block:
+            match = re.search(r'android:name="([^"]+)"', block)
+            if match:
+                return match.group(1)
     return ""
 
 
@@ -30,6 +36,26 @@ def remove_old_launcher_filters(manifest: str) -> str:
         return block
 
     return re.sub(pattern, patch, manifest)
+
+
+def repair_launch_method(source: str) -> str:
+    start = source.find("    private fun launchExistingActivity()")
+    companion = source.find("    companion object", start if start >= 0 else 0)
+    if start < 0 or companion < 0:
+        raise SystemExit("[step205-repair] launchExistingActivity/companion anchors not found")
+    launch_body = '''    private fun launchExistingActivity() {
+        val component = EXISTING_LAUNCHER_COMPONENT
+        if (component.isNotBlank()) {
+            try {
+                startActivity(Intent().setClassName(packageName, component))
+            } catch (_: Exception) {
+                // Keep the launcher UI usable when the legacy activity is unavailable.
+            }
+        }
+    }
+
+'''
+    return source[:start] + launch_body + source[companion:]
 
 
 def main() -> int:
@@ -45,23 +71,7 @@ def main() -> int:
     source = source.replace("setTextColor(text)", "setTextColor(primaryText)")
     source = source.replace("if (filled) Color.WHITE else text", "if (filled) Color.WHITE else primaryText")
     source = source.replace("private val text = Color.rgb(31, 37, 44)", "private val primaryText = Color.rgb(31, 37, 44)")
-
-    launch_pattern = r'    private fun launchExistingActivity\(\) \{[\s\S]*?\n    \}\n\n    companion object'
-    launch_body = '''    private fun launchExistingActivity() {
-        val component = EXISTING_LAUNCHER_COMPONENT
-        if (component.isNotBlank()) {
-            try {
-                startActivity(Intent().setClassName(packageName, component))
-            } catch (_: Exception) {
-                // Keep the launcher UI usable when the legacy activity is unavailable.
-            }
-        }
-    }
-
-    companion object'''
-    source, count = re.subn(launch_pattern, launch_body, source, count=1)
-    if count != 1:
-        raise SystemExit("[step205-repair] launchExistingActivity shape not found")
+    source = repair_launch_method(source)
     if existing:
         source = re.sub(r'private const val EXISTING_LAUNCHER_COMPONENT = "[^"]*"', f'private const val EXISTING_LAUNCHER_COMPONENT = "{existing}"', source)
     ui.write_text(source, encoding="utf-8")
