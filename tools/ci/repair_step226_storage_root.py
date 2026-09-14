@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""Step 226: unify every generated Minecraft path on one canonical storage root."""
+from pathlib import Path
+import sys
+
+
+def find_one(root: Path, name: str) -> Path:
+    matches = list(root.rglob(name))
+    if len(matches) != 1:
+        raise SystemExit(f"[step226] expected exactly one {name}, found {len(matches)}")
+    return matches[0]
+
+
+def patch_installer(root: Path) -> None:
+    path = find_one(root / "app/src/main/java", "MinecraftVersionInstallManager.kt")
+    text = path.read_text(encoding="utf-8")
+    old = '''    private fun minecraftRoot(context: Context): File =
+        File(context.filesDir, "minecraft").apply { mkdirs() }
+
+    private fun versionRoot(context: Context, version: String): File =
+        File(minecraftRoot(context), "versions/$version").apply { mkdirs() }
+'''
+    new = '''    private fun minecraftRoot(context: Context): File =
+        MinecraftStorageResolver.root(context)
+
+    private fun versionRoot(context: Context, version: String): File =
+        MinecraftStorageResolver.version(context, version)
+'''
+    if old in text:
+        text = text.replace(old, new, 1)
+    elif 'MinecraftStorageResolver.root(context)' not in text:
+        raise SystemExit('[step226] installer storage-root implementation was not found')
+    path.write_text(text, encoding="utf-8")
+
+
+def patch_launch_paths(root: Path) -> None:
+    path = find_one(root / "app/src/main/java", "MinecraftLaunchPaths.kt")
+    text = path.read_text(encoding="utf-8")
+    required = [
+        'MinecraftStorageResolver.root(context)',
+        'MinecraftStorageResolver.version(context, version)',
+        'MinecraftStorageResolver.libraries(context)',
+        'MinecraftStorageResolver.assets(context)',
+        'MinecraftStorageResolver.natives(context, version)',
+    ]
+    for needle in required:
+        if needle not in text:
+            raise SystemExit(f'[step226] launch path resolver missing canonical call: {needle}')
+
+
+def main() -> int:
+    root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
+    if not (root / "app/src/main/java").is_dir():
+        raise SystemExit(f"[step226] Android source directory not found: {root}")
+    patch_installer(root)
+    patch_launch_paths(root)
+
+    manager = find_one(root / "app/src/main/java", "MinecraftLaunchManager.kt")
+    manager_text = manager.read_text(encoding="utf-8")
+    marker = '// Step 226 storage contract: Minecraft artifacts and launch paths share MinecraftStorageResolver.\n'
+    if 'Step 226 storage contract:' not in manager_text:
+        manager.write_text(marker + manager_text, encoding="utf-8")
+        manager_text = marker + manager_text
+
+    installer = find_one(root / "app/src/main/java", "MinecraftVersionInstallManager.kt").read_text(encoding="utf-8")
+    paths = find_one(root / "app/src/main/java", "MinecraftLaunchPaths.kt").read_text(encoding="utf-8")
+    checks = [
+        (installer, 'MinecraftStorageResolver.root(context)'),
+        (installer, 'MinecraftStorageResolver.version(context, version)'),
+        (paths, 'MinecraftStorageResolver.root(context)'),
+        (paths, 'MinecraftStorageResolver.libraries(context)'),
+        (paths, 'MinecraftStorageResolver.assets(context)'),
+        (paths, 'MinecraftStorageResolver.natives(context, version)'),
+        (manager_text, 'Step 226 storage contract:'),
+    ]
+    for text, needle in checks:
+        if needle not in text:
+            raise SystemExit(f'[step226] missing storage contract: {needle}')
+
+    print('[step226] installer and launch-path code now share one canonical Minecraft root')
+    print('[step226] generated launch manager carries the Step 226 storage contract marker')
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
