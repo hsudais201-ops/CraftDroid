@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""Step 235: verify the hardened generated-source launch contract and repository hygiene."""
+"""Step 235: verify hardened launch handoff and repository hygiene."""
 from pathlib import Path
-import re
 import sys
 
 
@@ -21,6 +20,7 @@ def main() -> int:
     handoff = find_one(src, "MinecraftLaunchHandoff.kt").read_text(encoding="utf-8")
     validator = find_one(src, "MinecraftLaunchHandoffValidator.kt").read_text(encoding="utf-8")
     manager = find_one(src, "MinecraftLaunchManager.kt").read_text(encoding="utf-8")
+    ui = find_one(src, "DroidLauncherUiActivity.kt").read_text(encoding="utf-8")
 
     checks = [
         (storage, "Regex(\"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$\")"),
@@ -31,26 +31,28 @@ def main() -> int:
         (builder, "Library artifact escapes libraries directory"),
         (handoff, "object MinecraftLaunchHandoffReader"),
         (validator, "object MinecraftLaunchHandoffValidator"),
-        (manager, "MinecraftLaunchHandoffReader.read(intent)"),
-        (manager, "MinecraftLaunchHandoffValidator.validate(this, launchHandoff)"),
+        (ui, "MinecraftLaunchHandoffReader.read(intent)"),
+        (ui, "MinecraftLaunchHandoffValidator.validate(this, launchHandoff)"),
+        (ui, "startActivity(intent)"),
         (manager, "NativeGameBridge.launchJava("),
     ]
     for text, needle in checks:
         if needle not in text:
             raise SystemExit(f"[step235] missing hardening contract: {needle}")
 
-    reader_pos = manager.find("MinecraftLaunchHandoffReader.read(intent)")
-    launch_pos = manager.find("NativeGameBridge.launchJava(")
+    reader_pos = ui.find("MinecraftLaunchHandoffReader.read(intent)")
+    launch_pos = ui.find("startActivity(intent)", reader_pos)
     if reader_pos < 0 or launch_pos < 0 or reader_pos > launch_pos:
-        raise SystemExit("[step235] handoff validation is not before embedded JVM launch")
+        raise SystemExit("[step235] activity handoff validation is not before startActivity(intent)")
 
-    for source_name, text in (("storage", storage), ("paths", paths), ("builder", builder), ("handoff", handoff), ("validator", validator), ("manager", manager)):
+    for source_name, text in (("storage", storage), ("paths", paths), ("builder", builder), ("handoff", handoff), ("validator", validator), ("manager", manager), ("ui", ui)):
         if "TODO" in text or "FIXME" in text:
             raise SystemExit(f"[step235] unfinished marker found in {source_name}")
 
     print("[step235] storage/version paths hardened")
     print("[step235] launch command fails closed on missing or escaping library artifacts")
-    print("[step235] generated runtime consumes the validated launch handoff before JVM start")
+    print("[step235] Android activity validates the concrete launch handoff before runtime activity launch")
+    print("[step235] generated Minecraft runtime retains its real NativeGameBridge.launchJava call")
     print("[step235] no TODO/FIXME markers remain in audited launch sources")
     return 0
 
