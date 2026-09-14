@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 237: repair generated-source API drift without changing the native launch architecture."""
+"""Step 237/241: repair generated-source API drift without changing native launch architecture."""
 from pathlib import Path
 import re
 import sys
@@ -19,51 +19,32 @@ def insert_before_last_class_brace(text: str, block: str) -> str:
     return text[:pos] + block + "\n" + text[pos:]
 
 
+def insert_before_renderer(s: str, block: str) -> str:
+    anchor = "    private fun rendererPage() {"
+    if anchor not in s:
+        raise SystemExit("[step237] rendererPage anchor missing")
+    return s.replace(anchor, block + anchor, 1)
+
+
 def repair_ui(root: Path) -> None:
     p = one(root / "app/src/main/java", "DroidLauncherUiActivity.kt")
     s = p.read_text(encoding="utf-8")
     if "import android.widget.Toast" not in s and "import android.widget." in s:
         s = s.replace("import android.widget.", "import android.widget.Toast\nimport android.widget.", 1)
 
-    helpers = """
-    private fun getSavedServer(): Pair<String, Int> {
-        val prefs = getSharedPreferences("droid_launcher_servers", MODE_PRIVATE)
-        val host = prefs.getString("selected_host", "localhost")?.trim().orEmpty().ifBlank { "localhost" }
-        val port = prefs.getInt("selected_port", 25565).coerceIn(1, 65535)
-        return host to port
-    }
+    saved_server = '''\n    private fun getSavedServer(): Pair<String, Int> {\n        val prefs = getSharedPreferences("droid_launcher_servers", MODE_PRIVATE)\n        val host = prefs.getString("selected_host", "localhost")?.trim().orEmpty().ifBlank { "localhost" }\n        val port = prefs.getInt("selected_port", 25565).coerceIn(1, 65535)\n        return host to port\n    }\n\n'''
+    java_helper = '''    private fun getResolvedJavaForLaunch(version: String): Int {\n        val saved = getSharedPreferences("droid_launcher", MODE_PRIVATE).getInt("java_runtime_override", 0)\n        if (saved in intArrayOf(8, 16, 17, 21, 25)) return saved\n        val parts = version.split('.', '-', '_').mapNotNull { it.toIntOrNull() }\n        val major = parts.firstOrNull() ?: 21\n        val minor = parts.getOrNull(1) ?: 0\n        return when {\n            major >= 25 -> 25\n            major >= 24 -> 21\n            major == 1 && minor >= 20 -> if (version >= "1.20.5") 21 else 17\n            major == 1 && minor >= 17 -> 17\n            else -> 8\n        }\n    }\n\n'''
+    launch_helper = '''    private fun launchSelectedMinecraft() {\n        val version = selectedMinecraftVersion()\n        if (!MinecraftVersionInstallManager.isLaunchReady(this, version)) {\n            Toast.makeText(this, "Minecraft $version is not ready. Install/repair it first.", Toast.LENGTH_LONG).show()\n            showPage("Search by ID")\n            return\n        }\n        launchExistingActivityWithServer()\n    }\n\n'''
 
-    private fun getResolvedJavaForLaunch(version: String): Int {
-        val saved = getSharedPreferences("droid_launcher", MODE_PRIVATE).getInt("java_runtime_override", 0)
-        if (saved in intArrayOf(8, 16, 17, 21, 25)) return saved
-        val parts = version.split('.', '-', '_').mapNotNull { it.toIntOrNull() }
-        val major = parts.firstOrNull() ?: 21
-        val minor = parts.getOrNull(1) ?: 0
-        return when {
-            major >= 25 -> 25
-            major >= 24 -> 21
-            major == 1 && minor >= 20 -> if (version >= "1.20.5") 21 else 17
-            major == 1 && minor >= 17 -> 17
-            else -> 8
-        }
-    }
-
-    private fun launchSelectedMinecraft() {
-        val version = selectedMinecraftVersion()
-        if (!MinecraftVersionInstallManager.isLaunchReady(this, version)) {
-            Toast.makeText(this, "Minecraft $version is not ready. Install/repair it first.", Toast.LENGTH_LONG).show()
-            showPage("Search by ID")
-            return
-        }
-        launchExistingActivityWithServer()
-    }
-
-"""
+    # Each compatibility helper is independently idempotent. Earlier Step 221
+    # may already have supplied launchSelectedMinecraft while the generated
+    # archive still needs the server/runtime helpers.
     if "private fun getSavedServer(): Pair<String, Int>" not in s:
-        anchor = "    private fun rendererPage() {"
-        if anchor not in s:
-            raise SystemExit("[step237] rendererPage anchor missing")
-        s = s.replace(anchor, helpers + anchor, 1)
+        s = insert_before_renderer(s, saved_server)
+    if "private fun getResolvedJavaForLaunch(version: String): Int" not in s:
+        s = insert_before_renderer(s, java_helper)
+    if "private fun launchSelectedMinecraft()" not in s:
+        s = insert_before_renderer(s, launch_helper)
     p.write_text(s, encoding="utf-8")
 
 
@@ -87,7 +68,6 @@ def repair_game_activity(root: Path) -> None:
     }
 """
         s = insert_before_last_class_brace(s, block)
-    # Some generated revisions used a bare kill() that is not an Android API.
     s = re.sub(r'(?m)^\s*kill\(\)\s*$', '        finish()', s)
     p.write_text(s, encoding="utf-8")
 
@@ -95,8 +75,6 @@ def repair_game_activity(root: Path) -> None:
 def repair_install_manager(root: Path) -> None:
     p = one(root / "app/src/main/java", "MinecraftVersionInstallManager.kt")
     s = p.read_text(encoding="utf-8")
-    # Keep a single authoritative isInstalled implementation. If a generated
-    # revision lost it, derive the state from the persistent installation state.
     if "fun isInstalled(context: Context, version: String)" not in s:
         anchor = "    fun state(context: Context, version: String)"
         pos = s.find(anchor)
@@ -120,12 +98,9 @@ def repair_viewmodel(root: Path) -> None:
     s = p.read_text(encoding="utf-8")
     if "class LaunchState" not in s and "data class LaunchState" not in s:
         package_match = re.search(r"^package\s+([^\n]+)", s, re.M)
-        if package_match:
-            pkg = package_match.group(1).strip()
-            state = f'''\n\n/** Stable UI state shared by launcher and launch-overlay surfaces. */\ndata class LaunchState(\n    val state: String = "IDLE",\n    val progress: Int = 0,\n    val message: String = "",\n    val error: String? = null\n)\n'''
-            # Put the model at top level; callers can still use it from the same package.
-            if "LaunchState(" in s:
-                s = s + state
+        if package_match and "LaunchState(" in s:
+            state = '''\n\n/** Stable UI state shared by launcher and launch-overlay surfaces. */\ndata class LaunchState(\n    val state: String = "IDLE",\n    val progress: Int = 0,\n    val message: String = "",\n    val error: String? = null\n)\n'''
+            s = s + state
     if "fun resetToHome()" not in s:
         s = insert_before_last_class_brace(s, """
     fun resetToHome() {
@@ -145,6 +120,7 @@ def main() -> int:
     print("[step237] GameActivity lifecycle hooks and invalid kill() call repaired")
     print("[step237] installer exposes stable isInstalled contract")
     print("[step237] launcher ViewModel reset compatibility checked")
+    print("[step241] compatibility helpers are independently idempotent; no launch helper duplication")
     return 0
 
 
