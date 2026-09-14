@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Step 223: expose persistent Minecraft installation state in the launcher UI.
-
-The patch is source-oriented: the workflow first generates the launcher UI, then this
-repair augments it without requiring Android XML resources.
-"""
+"""Step 223: expose persistent Minecraft installation state in the launcher UI."""
 from pathlib import Path
 import sys
 
@@ -23,9 +19,7 @@ def main() -> int:
         return when (MinecraftVersionInstallManager.state(this, version)) {
             MinecraftVersionInstallManager.State.INSTALLED -> "Ready to play"
             MinecraftVersionInstallManager.State.DOWNLOADING -> "Downloading…"
-            MinecraftVersionInstallManager.State.FAILED -> {
-                "Failed · tap Install to retry"
-            }
+            MinecraftVersionInstallManager.State.FAILED -> "Failed · tap Install to retry"
             MinecraftVersionInstallManager.State.NOT_INSTALLED -> "Ready to install"
         }
     }
@@ -35,9 +29,7 @@ def main() -> int:
         Toast.makeText(this, "Installing Minecraft $version…", Toast.LENGTH_SHORT).show()
         MinecraftVersionInstallManager.install(this, version, object : MinecraftVersionInstallManager.Listener {
             override fun onProgress(progress: MinecraftVersionInstallManager.Progress) {
-                runOnUiThread {
-                    if (currentPage == "Search by ID") showPage("Search by ID")
-                }
+                runOnUiThread { showPage("Search by ID") }
             }
 
             override fun onComplete(version: String) {
