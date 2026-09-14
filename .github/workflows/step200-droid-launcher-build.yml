@@ -173,6 +173,14 @@ jobs:
           cp "$APK" artifacts/apk/Droid-Launcher-Step236-debug.apk
           sha256sum "$APK" | tee artifacts/apk/SHA256SUMS.txt
           python3 tools/ci/verify_runtime_preflight.py "$APK" | tee artifacts/build/runtime-preflight.txt
+      - name: Verify APK package and signature structure
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
+          aapt2 dump badging "$APK" | tee artifacts/build/apk-badging.txt
+          grep -F "package: name='com.craftdroid.launcher'" artifacts/build/apk-badging.txt
+          apksigner verify --verbose "$APK" | tee artifacts/build/apk-signature.txt
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
