@@ -12,14 +12,49 @@ def replace_function(src: str, signature: str, next_signature: str, replacement:
     return src[:start] + replacement + src[end:]
 
 
-def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
-    ui = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
-    if not ui.exists():
-        raise SystemExit(f"[step222] missing UI source: {ui}")
+def ensure_version_helpers(s: str) -> str:
+    helpers = '''    private fun selectedMinecraftVersion(): String =
+        getSharedPreferences("droid_launcher", MODE_PRIVATE)
+            .getString("selected_minecraft_version", "1.21.11") ?: "1.21.11"
 
-    s = ui.read_text(encoding="utf-8")
+    private fun saveMinecraftVersion(version: String) {
+        getSharedPreferences("droid_launcher", MODE_PRIVATE)
+            .edit().putString("selected_minecraft_version", version).apply()
+    }
 
+    private fun selectedMinecraftProfile(): String =
+        getSharedPreferences("droid_launcher", MODE_PRIVATE)
+            .getString("selected_minecraft_profile", "Default") ?: "Default"
+
+    private fun saveMinecraftProfile(profile: String) {
+        getSharedPreferences("droid_launcher", MODE_PRIVATE)
+            .edit().putString("selected_minecraft_profile", profile).apply()
+    }
+
+    private fun launchSelectedMinecraft() {
+        val version = selectedMinecraftVersion()
+        val profile = selectedMinecraftProfile()
+        val java = getResolvedJavaForLaunch(version)
+        getSharedPreferences("droid_launcher", MODE_PRIVATE).edit()
+            .putString("last_launch_version", version)
+            .putString("last_launch_profile", profile)
+            .putInt("last_launch_java", java)
+            .apply()
+        launchExistingActivityWithServer()
+    }
+
+'''
+    if 'private fun selectedMinecraftVersion(): String' in s:
+        return s
+    anchor = '    private fun rendererPage() {'
+    if anchor not in s:
+        raise SystemExit('[step222] rendererPage anchor not found for version helpers')
+    return s.replace(anchor, helpers + anchor, 1)
+
+
+def ensure_install_helper(s: str) -> str:
+    if 'private fun installMinecraftVersion(version: String)' in s:
+        return s
     helper = r'''    private fun installMinecraftVersion(version: String) {
         val status = Toast.makeText(this, "Preparing Minecraft $version…", Toast.LENGTH_SHORT)
         status.show()
@@ -49,13 +84,19 @@ def main() -> int:
     }
 
 '''
-    if 'private fun installMinecraftVersion(version: String)' not in s:
-        anchor = '    private fun rendererPage() {'
-        if anchor not in s:
-            raise SystemExit('[step222] rendererPage anchor not found')
-        s = s.replace(anchor, helper + anchor, 1)
+    anchor = '    private fun rendererPage() {'
+    if anchor not in s:
+        raise SystemExit('[step222] rendererPage anchor not found for installer helper')
+    return s.replace(anchor, helper + anchor, 1)
 
-    # Rebuild the Game page so Play is gated by the real installed state.
+
+def main() -> int:
+    root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
+    ui = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
+    if not ui.exists():
+        raise SystemExit(f"[step222] missing UI source: {ui}")
+    s = ui.read_text(encoding="utf-8")
+
     game = r'''    private fun gamePage() {
         val version = selectedMinecraftVersion()
         val profile = selectedMinecraftProfile()
@@ -95,7 +136,6 @@ def main() -> int:
 '''
     s = replace_function(s, '    private fun gamePage() {', '    private fun rendererPage() {', game)
 
-    # Rebuild version cards with persistent installation state and Install/Play actions.
     library = r'''    private fun libraryPage(page: String) {
         if (page != "Search by ID") {
             pageArea.addView(section("Download · $page", "Modern launcher-style library browser"))
@@ -184,10 +224,14 @@ def main() -> int:
 '''
     s = replace_function(s, '    private fun libraryPage(page: String) {', '    private fun aboutPage() {', library)
 
+    # Critical ordering: page replacements above may remove helper blocks. Reinsert them last.
+    s = ensure_version_helpers(s)
+    s = ensure_install_helper(s)
     ui.write_text(s, encoding="utf-8")
     print('[step222] real Minecraft installer wired to version selector')
     print('[step222] Game Play is blocked until selected version is installed')
     print('[step222] version cards expose persistent Install/Select/Play actions')
+    print('[step222] version/profile/launch helpers preserved after page replacement')
     return 0
 
 
