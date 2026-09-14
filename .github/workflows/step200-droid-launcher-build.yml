@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: droid-launcher-step221-${{ github.ref }}
+  group: droid-launcher-step222-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -36,6 +36,7 @@ jobs:
           cp -f app/src/main/java/com/example/launcher/LaunchArgumentResolver.kt droid-src/app/src/main/java/com/example/launcher/LaunchArgumentResolver.kt
           cp -f app/src/main/java/com/example/launcher/LaunchArgumentsValidator.kt droid-src/app/src/main/java/com/example/launcher/LaunchArgumentsValidator.kt
           cp -f app/src/main/java/com/example/launcher/LaunchArtifactResolver.kt droid-src/app/src/main/java/com/example/launcher/LaunchArtifactResolver.kt
+          cp -f app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt droid-src/app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt
           cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
           cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
           cp -f app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt droid-src/app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt
@@ -84,15 +85,19 @@ jobs:
         run: python3 tools/ci/repair_step220_version_launch_binding.py droid-src
       - name: Apply Step 221 launcher-style version selector
         run: python3 tools/ci/repair_step221_version_selector.py droid-src
+      - name: Apply Step 222 real Minecraft version installer
+        run: python3 tools/ci/repair_step222_version_install.py droid-src
 
-      - name: Verify Java and Minecraft launch contract
+      - name: Verify Java, Minecraft launch and installer contract
         shell: bash
         run: |
           set -euo pipefail
           find droid-src/app/src/main -type f -name 'JavaRuntimeManager.kt' -print -quit | grep -q .
           MANAGER=$(find droid-src/app/src/main -type f -name 'MinecraftLaunchManager.kt' -print -quit)
+          INSTALLER=$(find droid-src/app/src/main -type f -name 'MinecraftVersionInstallManager.kt' -print -quit)
           UI=$(find droid-src/app/src/main -type f -name 'DroidLauncherUiActivity.kt' -print -quit)
-          test -n "$MANAGER" && test -n "$UI"
+          MANIFEST=$(find droid-src/app/src/main -type f -name 'AndroidManifest.xml' -print -quit)
+          test -n "$MANAGER" && test -n "$INSTALLER" && test -n "$UI" && test -n "$MANIFEST"
           grep -F 'javaManager.ensureRuntime(resolveLaunchJavaRuntime(requiredJava))' "$MANAGER" >/dev/null
           grep -F 'System.getProperty("droid.launcher.java.runtime")' "$MANAGER" >/dev/null
           grep -F 'intent.putExtra("minecraft_version", selectedVersion)' "$UI" >/dev/null
@@ -101,6 +106,12 @@ jobs:
           grep -F 'private fun selectedMinecraftVersion(): String' "$UI" >/dev/null
           grep -F 'private fun selectedMinecraftProfile(): String' "$UI" >/dev/null
           grep -F 'private fun launchSelectedMinecraft()' "$UI" >/dev/null
+          grep -F 'version_manifest_v2.json' "$INSTALLER" >/dev/null
+          grep -F 'Range' "$INSTALLER" >/dev/null
+          grep -F 'MessageDigest' "$INSTALLER" >/dev/null
+          grep -F 'MinecraftVersionInstallManager.install' "$UI" >/dev/null
+          grep -F 'MinecraftVersionInstallManager.isInstalled' "$UI" >/dev/null
+          grep -F 'android.permission.INTERNET' "$MANIFEST" >/dev/null
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -131,7 +142,7 @@ jobs:
         run: gradle --no-daemon --stacktrace :app:testDebugUnitTest
       - name: Report unit-test result
         if: always()
-        run: echo "Step 221 unit-test outcome: ${{ steps.unit-tests.outcome }}"
+        run: echo "Step 222 unit-test outcome: ${{ steps.unit-tests.outcome }}"
       - name: Build Droid Launcher APK
         working-directory: droid-src
         shell: bash
@@ -146,9 +157,9 @@ jobs:
           APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           mkdir -p artifacts/apk
-          cp "$APK" artifacts/apk/Droid-Launcher-Step221-debug.apk
+          cp "$APK" artifacts/apk/Droid-Launcher-Step222-debug.apk
           sha256sum "$APK" | tee artifacts/apk/SHA256SUMS.txt
-          echo 'Droid Launcher Step 221 APK created:'
+          echo 'Droid Launcher Step 222 APK created:'
           ls -lh "$APK"
       - name: APK runtime preflight
         shell: bash
@@ -158,14 +169,14 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step221-debug
+          name: Droid-Launcher-Step222-debug
           path: artifacts/apk/*
           if-no-files-found: error
       - name: Upload build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step221-diagnostics
+          name: Droid-Launcher-Step222-diagnostics
           path: |
             artifacts/build/**
             droid-src/app/build/reports/**
