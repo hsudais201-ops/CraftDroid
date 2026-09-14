@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 import sys
 
 MARKER = '        val add = button("+  Add Account")\n        left.addView(add, LinearLayout.LayoutParams(-1, dp(48)))\n'
@@ -24,8 +25,9 @@ INSERT = '''        val add = button("+  Add Account")
         val saved = getSavedServer()
         if (saved != null) {
             serverInfo.removeAllViews()
+            val last = getSharedPreferences("droid_launcher", MODE_PRIVATE).getString("server_last_status", "● Checking…")
             serverInfo.addView(label(saved.first, 14f, true))
-            serverInfo.addView(label(saved.second.toString() + "  ·  checking…", 12f, false))
+            serverInfo.addView(label(saved.second.toString() + "  ·  " + last, 12f, false))
             refreshServerStatus()
         }
 '''
@@ -70,7 +72,9 @@ DIALOG = '''
         getSharedPreferences("droid_launcher", MODE_PRIVATE).edit()
             .putString("server_address", address)
             .putInt("server_port", port)
+            .putString("server_last_status", "● Checking…")
             .apply()
+        refreshServerStatus()
     }
 
     private fun getSavedServer(): Pair<String, Int>? {
@@ -91,12 +95,26 @@ DIALOG = '''
             } catch (_: Exception) {
                 false
             }
+            val status = if (online) "● Online" else "● Offline"
+            getSharedPreferences("droid_launcher", MODE_PRIVATE).edit()
+                .putString("server_last_status", status)
+                .apply()
             runOnUiThread {
-                if (currentPage == "Game") showPage("Game")
+                if (currentPage == "Game") {
+                    // Refresh only when the user is already on the Game page; no recursive status polling.
+                    pageArea.postDelayed({ showPage("Game") }, 120)
+                }
             }
         }.start()
     }
 '''
+
+
+def patch_manifest(manifest: Path) -> None:
+    text = manifest.read_text(encoding="utf-8")
+    if "android.permission.INTERNET" not in text:
+        text = re.sub(r'(</manifest>)', '    <uses-permission android:name="android.permission.INTERNET" />\n\\1', text, count=1)
+        manifest.write_text(text, encoding="utf-8")
 
 
 def main() -> int:
@@ -105,8 +123,10 @@ def main() -> int:
     if not ui.exists():
         raise SystemExit(f"[step208] missing UI source: {ui}")
     source = ui.read_text(encoding="utf-8")
-    source = source.replace(MARKER, INSERT, 1) if 'val serverHeader = label("Servers"' not in source else source
-    # Replace the placeholder dialog/refresh block with the functional implementation.
+    if 'val serverHeader = label("Servers"' not in source:
+        if MARKER not in source:
+            raise SystemExit("[step208] expected Game page account block not found")
+        source = source.replace(MARKER, INSERT, 1)
     start = source.find('    private fun showServerDialog() {')
     if start >= 0:
         end = source.find('    private fun rendererPage() {', start)
@@ -118,13 +138,13 @@ def main() -> int:
         if anchor not in source:
             raise SystemExit("[step208] rendererPage anchor not found")
         source = source.replace(anchor, DIALOG + '\n' + anchor, 1)
-    # The status thread must publish its result; use a tiny stable tag-based label update by rebuilding the page.
-    source = source.replace('        Thread {\n            val online = try {', '        Thread {\n            val online = try {')
-    source = source.replace('            runOnUiThread {\n                if (currentPage == "Game") showPage("Game")\n            }', '            runOnUiThread {\n                val status = if (online) "● Online" else "● Offline"\n                if (currentPage == "Game") {\n                    val prefs = getSharedPreferences("droid_launcher", MODE_PRIVATE)\n                    prefs.edit().putString("server_last_status", status).apply()\n                    showPage("Game")\n                }\n            }')
-    source = source.replace('serverInfo.addView(label(saved.second.toString() + "  ·  checking…", 12f, false))', 'serverInfo.addView(label(saved.second.toString() + "  ·  " + getSharedPreferences("droid_launcher", MODE_PRIVATE).getString("server_last_status", "● Checking…"), 12f, false))')
     ui.write_text(source, encoding="utf-8")
+    manifests = list(root.glob("**/src/main/AndroidManifest.xml"))
+    if manifests:
+        patch_manifest(manifests[0])
     print("[step208] saved server address/port fields installed")
-    print("[step208] server persistence and TCP reachability status installed")
+    print("[step208] TCP reachability status and persistence installed")
+    print("[step208] INTERNET permission ensured")
     return 0
 
 if __name__ == "__main__":
