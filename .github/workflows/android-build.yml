@@ -1,21 +1,21 @@
-name: Build CraftDroid APK
+name: CraftDroid APK — legacy/manual validation
 
+# The authoritative Droid Launcher build is step200-droid-launcher-build.yml.
+# This older validation workflow is manual-only to prevent duplicate push builds.
 on:
   workflow_dispatch:
-  push:
-    branches: [main, master]
 
 permissions:
   contents: read
 
 concurrency:
-  group: craftdroid-apk-${{ github.ref }}
+  group: craftdroid-legacy-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 90
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,274 +26,65 @@ jobs:
           set -euo pipefail
           python3 tools/ci/verify_real_boot_harness_contract.py .
 
-      - name: Locate CraftDroid source archive
+      - name: Locate and extract CraftDroid source
         shell: bash
         run: |
           set -euo pipefail
           ARCHIVE="$(find . -maxdepth 2 -type f -name 'CraftDroid_Launcher_2.4_GitHubActions_Step153.zip' -print -quit)"
-          test -n "$ARCHIVE" || { echo 'CraftDroid Step 153 source archive not found in repository.' >&2; exit 1; }
-          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
-          echo "Using $ARCHIVE"
-
-      - name: Extract CraftDroid source
-        shell: bash
-        run: |
-          set -euo pipefail
+          test -n "$ARCHIVE"
           rm -rf craftdroid-src
           mkdir -p craftdroid-src
           unzip -q "$ARCHIVE" -d craftdroid-src
           if [ ! -f craftdroid-src/gradlew ]; then
             PROJECT_DIR="$(find craftdroid-src -type f -name gradlew -print -quit | xargs -r dirname)"
-            test -n "$PROJECT_DIR" || { echo 'gradlew not found anywhere in extracted archive.' >&2; exit 1; }
-            if [ "$PROJECT_DIR" != "craftdroid-src" ]; then
-              shopt -s dotglob
-              mv "$PROJECT_DIR"/* craftdroid-src/
-              rmdir "$PROJECT_DIR"
-            fi
+            test -n "$PROJECT_DIR"
+            shopt -s dotglob
+            mv "$PROJECT_DIR"/* craftdroid-src/
+            rmdir "$PROJECT_DIR"
           fi
-          test -d craftdroid-src
           mkdir -p craftdroid-src/app/src/main/java/com/example/launcher
           cp -f app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt craftdroid-src/app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt
-          echo '--- extracted project root ---'
-          find craftdroid-src -maxdepth 1 -mindepth 1 -printf '%f\n' | sort
-
-      - name: Apply Step 194 Droid Launcher branding
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/ci/apply_droid_launcher_branding.py craftdroid-src
 
       - name: Normalize Gradle settings for CI
         shell: bash
         run: |
           set -euo pipefail
           SETTINGS="craftdroid-src/settings.gradle.kts"
-          test -f "$SETTINGS"
-          sed -i '/org\.gradle\.toolchains\.foojay-resolver-convention/d' "$SETTINGS"
-          echo '--- normalized settings.gradle.kts ---'
-          sed -n '1,60p' "$SETTINGS"
+          if [ -f "$SETTINGS" ]; then
+            sed -i '/org\.gradle\.toolchains\.foojay-resolver-convention/d' "$SETTINGS"
+          fi
 
-      - name: Apply Step 153 source repairs
+      - name: Apply legacy source repairs
         shell: bash
         run: |
           set -euo pipefail
+          python3 tools/ci/apply_droid_launcher_branding.py craftdroid-src
           python3 tools/ci/repair_step153.py craftdroid-src
-
-      - name: Apply Step 154 unit-test repairs
-        shell: bash
-        run: |
-          set -euo pipefail
           python3 tools/ci/repair_step154_tests.py craftdroid-src
-
-      - name: Apply Step 155 native C++ repairs
-        shell: bash
-        run: |
-          set -euo pipefail
           python3 tools/ci/repair_step155_cpp.py craftdroid-src
-
-      - name: Apply Step 223 install status UI
-        shell: bash
-        run: |
-          set -euo pipefail
           python3 tools/ci/repair_step223_install_status_ui.py craftdroid-src
 
-      - name: Verify Step 222/223 installer contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          INSTALLER="craftdroid-src/app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt"
-          UI="$(find craftdroid-src/app/src/main -type f -name 'DroidLauncherUiActivity.kt' -print -quit)"
-          test -s "$INSTALLER"
-          test -n "$UI"
-          grep -F 'version_manifest_v2.json' "$INSTALLER" >/dev/null
-          grep -F 'Range' "$INSTALLER" >/dev/null
-          grep -F 'MessageDigest' "$INSTALLER" >/dev/null
-          grep -F 'minecraftInstallState' "$UI" >/dev/null
-          grep -F 'minecraftInstallProgress' "$UI" >/dev/null
-          grep -F 'installMinecraftVersion' "$UI" >/dev/null
-          echo 'Step 222/223 installer contract verified.'
-
-      - name: Set up JDK 17
+      - name: Validate legacy Gradle project
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
-
-      - name: Set up Android SDK
+      - name: Install Android SDK
         uses: android-actions/setup-android@v4
-
-      - name: Install Android SDK, NDK and CMake
-        shell: bash
-        run: |
-          set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-36" \
-            "build-tools;36.0.0" \
-            "ndk;27.2.12479018" \
-            "cmake;3.22.1"
-
-      - name: Set up Gradle 9.6.0 directly
+      - name: Install Android SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+      - name: Install Gradle 9.6.0 directly
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.6.0'
           validate-wrappers: false
-
-      - name: Validate Gradle project
+      - name: Gradle help
         working-directory: craftdroid-src
         run: gradle --no-daemon --stacktrace help
-
-      - name: Run unit tests
-        id: unit-tests
-        continue-on-error: true
+      - name: Legacy unit tests
         working-directory: craftdroid-src
         run: gradle --no-daemon --stacktrace :app:testDebugUnitTest
-
-      - name: Report unit-test status
-        if: always()
-        shell: bash
-        run: |
-          if [ "${{ steps.unit-tests.outcome }}" = "success" ]; then
-            echo 'Unit tests passed.'
-          else
-            echo 'Unit tests currently have failures; continuing so the APK build can be validated.'
-          fi
-
-      - name: Build debug APK
+      - name: Legacy debug APK build
         working-directory: craftdroid-src
-        shell: bash
-        run: |
-          set -o pipefail
-          mkdir -p ../artifacts/build
-          gradle --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee ../artifacts/build/assembleDebug.log
-
-      - name: Verify APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="craftdroid-src/app/build/outputs/apk/debug/app-debug.apk"
-          test -s "$APK"
-          mkdir -p artifacts/apk
-          cp "$APK" artifacts/apk/Droid-Launcher-Step223-debug.apk
-          sha256sum "$APK" | tee artifacts/apk/SHA256SUMS.txt
-          echo '--- APK ---'
-          ls -lh "$APK"
-
-      - name: Step 172 runtime APK preflight
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tools/ci/verify_runtime_preflight.py craftdroid-src/app/build/outputs/apk/debug/app-debug.apk | tee artifacts/build/runtime-preflight.txt
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: CraftDroid-Step223-debug-apk
-          path: artifacts/apk/*
-          if-no-files-found: error
-
-      - name: Free runner disk space for emulator
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo '--- disk before cleanup ---'
-          df -hT / /home/runner
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk-bundle /opt/ghc 2>/dev/null || true
-          sudo rm -rf /usr/local/lib/android/sdk/build-tools/3* /usr/local/lib/android/sdk/build-tools/3[0-5]* 2>/dev/null || true
-          sudo rm -rf /usr/local/lib/android/sdk/platforms/android-2* /usr/local/lib/android/sdk/platforms/android-3[0-4] 2>/dev/null || true
-          sudo rm -rf /usr/local/lib/android/sdk/system-images/android-2* /usr/local/lib/android/sdk/system-images/android-3[0-4] 2>/dev/null || true
-          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Node 2>/dev/null || true
-          rm -rf "$HOME/.cache" "$HOME/.npm" "$HOME/.local/share/pnpm" 2>/dev/null || true
-          rm -rf "$HOME/.gradle/caches" "$HOME/.gradle/wrapper" 2>/dev/null || true
-          echo '--- disk after cleanup ---'
-          df -hT / /home/runner
-          AVAIL_KB="$(df -Pk /home/runner | awk 'NR==2 {print $4}')"
-          test "$AVAIL_KB" -ge 9000000 || { echo "Insufficient free disk for emulator: ${AVAIL_KB} KiB available; need at least 9000000 KiB." >&2; exit 1; }
-
-      - name: Step 199 Android emulator smoke test
-        id: runtime-smoke
-        continue-on-error: true
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          disk-size: 2G
-          heap-size: 512M
-          ram-size: 2048M
-          script: timeout 180s bash tools/ci/runtime_smoke_step174.sh craftdroid-src/app/build/outputs/apk/debug/app-debug.apk artifacts/runtime
-          cores: 4
-          avd-name: test
-          force-avd-creation: true
-          emulator-boot-timeout: 300
-          emulator-port: 5554
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          disable-animations: true
-          disable-linux-hw-accel: auto
-          enable-hw-keyboard: false
-          channel: stable
-
-      - name: Capture Step 199 emulator diagnostics
-        if: always()
-        shell: bash
-        run: |
-          set -uo pipefail
-          mkdir -p artifacts/runtime
-          ADB="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/platform-tools/adb"
-          {
-            echo "runtime-smoke-outcome=${{ steps.runtime-smoke.outcome }}"
-            echo "runtime-smoke-conclusion=${{ steps.runtime-smoke.conclusion }}"
-            echo "runner-date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            echo '--- adb devices ---'
-            "$ADB" devices -l 2>&1 || true
-            echo '--- boot completed ---'
-            timeout 15s "$ADB" shell getprop sys.boot_completed 2>&1 || true
-            echo '--- package/activity processes ---'
-            timeout 15s "$ADB" shell ps -A 2>&1 | grep -Ei 'craftdroid|com\.example' || true
-            echo '--- focused activity ---'
-            timeout 15s "$ADB" shell dumpsys activity activities 2>&1 | grep -E 'mResumedActivity|mFocusedApp' | tail -n 20 || true
-            echo '--- window ---'
-            timeout 15s "$ADB" shell dumpsys window windows 2>&1 | grep -E 'mCurrentFocus|mFocusedApp' | tail -n 20 || true
-            echo '--- recent crashes ---'
-            timeout 15s "$ADB" shell dumpsys dropbox --print 2>&1 | grep -Ei -A8 -B2 'data_app_crash|system_app_crash|app_native_crash|system_server_crash|CraftDroid' | tail -n 160 || true
-            echo '--- logcat tail ---'
-            timeout 15s "$ADB" logcat -d -v threadtime -t 2000 2>&1 || true
-          } > artifacts/runtime/step199-runner-diagnostics.txt 2>&1
-          echo 'Step 199 runner diagnostics captured.'
-          find artifacts/runtime -maxdepth 2 -type f -printf '%p\n' | sort || true
-
-      - name: Report Step 199 runtime smoke status
-        if: always()
-        shell: bash
-        run: |
-          if [ "${{ steps.runtime-smoke.outcome }}" = "success" ]; then
-            echo 'Step 199 Android runtime smoke passed.'
-          else
-            echo '::warning::Step 199 Android emulator smoke test did not complete successfully. This does not invalidate the APK build; see uploaded runtime diagnostics.'
-          fi
-
-      - name: Snapshot repaired source tree
-        if: always()
-        shell: bash
-        run: |
-          set -uo pipefail
-          mkdir -p artifacts/source-snapshot
-          find craftdroid-src -maxdepth 4 -type f \
-            \( -name '*.kt' -o -name '*.kts' -o -name '*.cpp' -o -name '*.h' \) \
-            -print | sort > artifacts/source-snapshot/files.txt || true
-          tar -czf artifacts/source-snapshot/craftdroid-src-repaired.tar.gz craftdroid-src 2>/dev/null || true
-          echo 'Source snapshot captured.'
-
-      - name: Upload build diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: CraftDroid-Step223-build-diagnostics
-          path: |
-            artifacts/build/**
-            artifacts/runtime/**
-            artifacts/source-snapshot/**
-          if-no-files-found: ignore
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
