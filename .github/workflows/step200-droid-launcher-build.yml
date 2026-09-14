@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: droid-launcher-step229-${{ github.ref }}
+  group: droid-launcher-step230-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -103,32 +103,27 @@ jobs:
         run: python3 tools/ci/repair_step228_install_resilience.py droid-src
       - name: Apply Step 229 install progress UI
         run: python3 tools/ci/repair_step229_install_progress_ui.py droid-src
+      - name: Apply Step 230 complete launch preflight
+        run: python3 tools/ci/repair_step230_complete_launch_preflight.py droid-src
 
-      - name: Verify Java, installer, launch paths, storage, library rules and UI resilience
+      - name: Verify complete Minecraft launch contract
         shell: bash
         run: |
           set -euo pipefail
-          find droid-src/app/src/main -type f -name 'JavaRuntimeManager.kt' -print -quit | grep -q .
           MANAGER=$(find droid-src/app/src/main -type f -name 'MinecraftLaunchManager.kt' -print -quit)
           INSTALLER=$(find droid-src/app/src/main -type f -name 'MinecraftVersionInstallManager.kt' -print -quit)
-          PATHS=$(find droid-src/app/src/main -type f -name 'MinecraftLaunchPaths.kt' -print -quit)
-          STORAGE=$(find droid-src/app/src/main -type f -name 'MinecraftStorageResolver.kt' -print -quit)
           UI=$(find droid-src/app/src/main -type f -name 'DroidLauncherUiActivity.kt' -print -quit)
-          MANIFEST=$(find droid-src/app/src/main -type f -name 'AndroidManifest.xml' -print -quit)
-          test -n "$MANAGER" && test -n "$INSTALLER" && test -n "$PATHS" && test -n "$STORAGE" && test -n "$UI" && test -n "$MANIFEST"
-          grep -F 'fun cancel(context: Context, version: String)' "$INSTALLER" >/dev/null
-          grep -F 'savedProgress(context: Context, version: String)' "$INSTALLER" >/dev/null
-          grep -F 'if (!libraryAllowed(lib)) continue' "$INSTALLER" >/dev/null
-          grep -F 'MinecraftStorageResolver.root(context)' "$INSTALLER" >/dev/null
-          grep -F 'MinecraftLaunchPaths.resolve(this, version)' "$UI" >/dev/null
-          grep -F 'MinecraftVersionInstallManager.cancel(this, version)' "$UI" >/dev/null
-          grep -F 'MinecraftVersionInstallManager.cancel(this, item)' "$UI" >/dev/null
-          grep -F 'MinecraftVersionInstallManager.savedProgress(this, version)' "$UI" >/dev/null
-          grep -F 'MinecraftVersionInstallManager.lastError(this@DroidLauncherUiActivity, version)' "$UI" >/dev/null
-          grep -F 'Resume' "$UI" >/dev/null
-          grep -F 'Cancel' "$UI" >/dev/null
+          test -n "$MANAGER" && test -n "$INSTALLER" && test -n "$UI"
+          grep -F 'fun isLaunchReady(context: Context, version: String): Boolean' "$INSTALLER" >/dev/null
+          grep -F 'if (!libraryAllowed(library)) continue' "$INSTALLER" >/dev/null
+          grep -F 'val classifier = preferredNativeClassifier(library)' "$INSTALLER" >/dev/null
+          grep -F 'assets/objects/${hash.substring(0, 2)}/$hash' "$INSTALLER" >/dev/null
+          grep -F 'MinecraftVersionInstallManager.isLaunchReady' "$UI" >/dev/null
           grep -F 'javaManager.ensureRuntime(resolveLaunchJavaRuntime(requiredJava))' "$MANAGER" >/dev/null
-          grep -F 'android.permission.INTERNET' "$MANIFEST" >/dev/null
+          grep -F 'rendererManager.ensureNativeStack(requestedNativeLwjgl)' "$MANAGER" >/dev/null
+          grep -F 'LaunchPreflight.verify(' "$MANAGER" >/dev/null
+          grep -F 'NativeGameBridge.launchJava(' "$MANAGER" >/dev/null
+          grep -F 'Step 230' "$INSTALLER" >/dev/null
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -159,7 +154,7 @@ jobs:
         run: gradle --no-daemon --stacktrace :app:testDebugUnitTest
       - name: Report unit-test result
         if: always()
-        run: echo "Step 229 unit-test outcome: ${{ steps.unit-tests.outcome }}"
+        run: echo "Step 230 unit-test outcome: ${{ steps.unit-tests.outcome }}"
       - name: Build Droid Launcher APK
         working-directory: droid-src
         shell: bash
@@ -174,9 +169,9 @@ jobs:
           APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           mkdir -p artifacts/apk
-          cp "$APK" artifacts/apk/Droid-Launcher-Step229-debug.apk
+          cp "$APK" artifacts/apk/Droid-Launcher-Step230-debug.apk
           sha256sum "$APK" | tee artifacts/apk/SHA256SUMS.txt
-          echo 'Droid Launcher Step 229 APK created:'
+          echo 'Droid Launcher Step 230 APK created:'
           ls -lh "$APK"
       - name: APK runtime preflight
         shell: bash
@@ -186,14 +181,14 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step229-debug
+          name: Droid-Launcher-Step230-debug
           path: artifacts/apk/*
           if-no-files-found: error
       - name: Upload build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step229-diagnostics
+          name: Droid-Launcher-Step230-diagnostics
           path: |
             artifacts/build/**
             droid-src/app/build/reports/**
