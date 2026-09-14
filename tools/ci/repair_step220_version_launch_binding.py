@@ -1,17 +1,8 @@
 #!/usr/bin/env python3
-"""Step 220: bind the selected Minecraft version/profile to the real launch intent.
-
-The consolidated build generates the UI from the Step 153 archive, so this
-repair is applied after all earlier UI/launch repairs and keeps the archive
-itself reproducible.
-"""
+"""Step 220: bind the selected Minecraft version/profile to the real launch intent."""
 from pathlib import Path
 import re
 import sys
-
-PREFS = 'getSharedPreferences("droid_launcher", MODE_PRIVATE)'
-VERSION_KEY = "selected_minecraft_version"
-PROFILE_KEY = "selected_minecraft_profile"
 
 
 def find_one(root: Path, name: str) -> Path:
@@ -118,13 +109,25 @@ def patch_library_page(s: str) -> str:
     return s.replace(old, new, 1)
 
 
+def find_method_end(s: str, start: int) -> int:
+    # Locate the next top-level member after the launch method. This tolerates
+    # helper signatures that earlier repair steps may add or rewrite.
+    next_member = s.find('\n    private fun ', start + 1)
+    companion = s.find('\n    companion object', start + 1)
+    candidates = [x for x in (next_member, companion) if x >= 0]
+    if not candidates:
+        raise SystemExit('[step220] end of selected-server launch method not found')
+    return min(candidates)
+
+
 def patch_launch_method(s: str) -> str:
     marker = '    private fun launchExistingActivityWithServer() {'
     start = s.find(marker)
-    end = s.find('\n    private fun getLastLaunchState()', start)
-    if start < 0 or end < 0:
-        raise SystemExit("[step220] selected-server launch method anchors not found")
+    if start < 0:
+        raise SystemExit("[step220] selected-server launch method not found")
+    end = find_method_end(s, start)
     block = s[start:end]
+
     if 'selected_minecraft_version' not in block:
         needle = '        val endpoint = "${saved.first}:${saved.second}"\n'
         if needle not in block:
@@ -140,7 +143,7 @@ def patch_launch_method(s: str) -> str:
     extras = extras_anchor + '''            intent.putExtra("minecraft_version", selectedVersion)
             intent.putExtra("minecraft_profile", selectedProfile)
             intent.putExtra("minecraft_java", resolvedJava)
-            intent.putExtra("java_runtime", if (launchPrefs.getString("selected_java_runtime", "auto") == "auto") "auto" else launchPrefs.getString("selected_java_runtime", "auto"))
+            intent.putExtra("java_runtime", launchPrefs.getString("selected_java_runtime", "auto") ?: "auto")
 '''
     if 'intent.putExtra("minecraft_version", selectedVersion)' not in block:
         if extras_anchor not in block:
@@ -153,9 +156,8 @@ def patch_launch_log(s: str) -> str:
     needle = '            android.widget.Toast.makeText(this, "Launching Droid Launcher for $endpoint…", android.widget.Toast.LENGTH_SHORT).show()\n'
     if needle not in s:
         return s
-    replacement = needle + '''            android.widget.Toast.makeText(this, "Version $selectedVersion  ·  Profile $selectedProfile  ·  Java $resolvedJava", android.widget.Toast.LENGTH_SHORT).show()
-'''
-    if replacement not in s:
+    replacement = needle + '''            android.widget.Toast.makeText(this, "Version $selectedVersion  ·  Profile $selectedProfile  ·  Java $resolvedJava", android.widget.Toast.LENGTH_SHORT).show()\n'''
+    if 'Version $selectedVersion' not in s:
         s = s.replace(needle, replacement, 1)
     return s
 
