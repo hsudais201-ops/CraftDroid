@@ -18,19 +18,28 @@ object MinecraftLaunchPaths {
     )
 
     fun resolve(context: Context, version: String): Result {
+        val normalized = version.trim()
         val root = MinecraftStorageResolver.root(context)
-        val versionDir = MinecraftStorageResolver.version(context, version)
-        val client = File(versionDir, "$version.jar")
+        if (normalized.isBlank()) {
+            val empty = File(root, "versions/invalid")
+            return Result(normalized, root, empty, File(empty, "invalid.jar"), MinecraftStorageResolver.libraries(context), MinecraftStorageResolver.assets(context), File(empty, "natives"), false, "Minecraft version is empty")
+        }
+        if (!normalized.matches(Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"))) {
+            val invalid = File(root, "versions/invalid")
+            return Result(normalized, root, invalid, File(invalid, "invalid.jar"), MinecraftStorageResolver.libraries(context), MinecraftStorageResolver.assets(context), File(invalid, "natives"), false, "Invalid Minecraft version id")
+        }
+
+        val versionDir = MinecraftStorageResolver.version(context, normalized)
+        val client = File(versionDir, "$normalized.jar")
         val libraries = MinecraftStorageResolver.libraries(context)
         val assets = MinecraftStorageResolver.assets(context)
-        val natives = MinecraftStorageResolver.natives(context, version)
+        val natives = MinecraftStorageResolver.natives(context, normalized)
         return when {
-            version.isBlank() -> Result(version, root, versionDir, client, libraries, assets, natives, false, "Minecraft version is empty")
-            !File(versionDir, "$version.json").isFile -> Result(version, root, versionDir, client, libraries, assets, natives, false, "Version metadata is missing")
-            !client.isFile || client.length() <= 0L -> Result(version, root, versionDir, client, libraries, assets, natives, false, "Minecraft client JAR is missing")
-            !libraries.isDirectory -> Result(version, root, versionDir, client, libraries, assets, natives, false, "Minecraft libraries directory is missing")
-            !assets.isDirectory -> Result(version, root, versionDir, client, libraries, assets, natives, false, "Minecraft assets directory is missing")
-            else -> Result(version, root, versionDir, client, libraries, assets, natives, true)
+            !File(versionDir, "$normalized.json").isFile -> Result(normalized, root, versionDir, client, libraries, assets, natives, false, "Version metadata is missing")
+            !client.isFile || client.length() <= 0L -> Result(normalized, root, versionDir, client, libraries, assets, natives, false, "Minecraft client JAR is missing")
+            !libraries.isDirectory -> Result(normalized, root, versionDir, client, libraries, assets, natives, false, "Minecraft libraries directory is missing")
+            !assets.isDirectory -> Result(normalized, root, versionDir, client, libraries, assets, natives, false, "Minecraft assets directory is missing")
+            else -> Result(normalized, root, versionDir, client, libraries, assets, natives, true)
         }
     }
 }
