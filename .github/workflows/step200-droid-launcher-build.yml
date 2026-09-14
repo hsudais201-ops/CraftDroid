@@ -62,6 +62,9 @@ jobs:
       - name: Apply Step 205 Zalith-style UI
         run: python3 tools/ci/apply_step205_zalith_style_ui.py droid-src
 
+      - name: Repair Step 205 UI wiring
+        run: python3 tools/ci/repair_step205_ui.py droid-src
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
