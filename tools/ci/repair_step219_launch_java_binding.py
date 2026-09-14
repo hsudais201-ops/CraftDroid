@@ -35,20 +35,22 @@ def patch_ui(root: Path) -> None:
 def patch_manager(root: Path) -> None:
     manager = find_one(root / "app/src/main/java", "MinecraftLaunchManager.kt")
     s = manager.read_text(encoding="utf-8")
-    call = "javaManager.ensureRuntime(requiredJava)"
-    if call not in s:
-        raise SystemExit("[step219] MinecraftLaunchManager is missing ensureRuntime(requiredJava)")
+    # Minecraft Java major versions are represented as Int by JavaRuntimeManager.ensureRuntime(Int).
+    # Keep the override resolver strongly typed as Int so Kotlin cannot accidentally swap String/Int arguments.
+    old_call = "javaManager.ensureRuntime(requiredJava)"
     replacement = "javaManager.ensureRuntime(resolveLaunchJavaRuntime(requiredJava))"
     if replacement not in s:
-        s = s.replace(call, replacement, 1)
+        if old_call not in s:
+            raise SystemExit("[step219] MinecraftLaunchManager is missing ensureRuntime(requiredJava)")
+        s = s.replace(old_call, replacement, 1)
 
-    if "private fun resolveLaunchJavaRuntime(requestedJava: String): String" not in s:
+    if "private fun resolveLaunchJavaRuntime(requestedJava: Int): Int" not in s:
         helper = f'''\n    /** Applies an explicit launcher Java override; AUTO preserves the version-derived runtime. */
-    private fun resolveLaunchJavaRuntime(requestedJava: String): String {{
+    private fun resolveLaunchJavaRuntime(requestedJava: Int): Int {{
         val override = System.getProperty("{RUNTIME_KEY}")?.trim().orEmpty()
         if (override.isEmpty() || override.equals("auto", ignoreCase = true)) return requestedJava
         val normalized = override.removePrefix("Internal-")
-        return normalized.takeIf {{ it in setOf("8", "16", "17", "21", "25") }} ?: requestedJava
+        return normalized.toIntOrNull()?.takeIf {{ it in setOf(8, 16, 17, 21, 25) }} ?: requestedJava
     }}\n'''
         pos = s.rfind("\n}")
         if pos < 0:
@@ -69,7 +71,7 @@ def main() -> int:
     checks = [
         (manager, "javaManager.ensureRuntime(resolveLaunchJavaRuntime(requiredJava))"),
         (manager, f'System.getProperty("{RUNTIME_KEY}")'),
-        (manager, 'private fun resolveLaunchJavaRuntime(requestedJava: String): String'),
+        (manager, 'private fun resolveLaunchJavaRuntime(requestedJava: Int): Int'),
         (ui, f'System.setProperty("{RUNTIME_KEY}", value)'),
         (ui, 'getSharedPreferences("droid_launcher", MODE_PRIVATE)'),
     ]
@@ -79,6 +81,7 @@ def main() -> int:
     print("[step219] Java preference -> real launch runtime bridge installed")
     print("[step219] AUTO keeps the game-version-derived requiredJava")
     print("[step219] explicit Java 8/16/17/21/25 overrides are applied before ensureRuntime")
+    print("[step239] launch runtime resolver keeps requiredJava as Int")
     return 0
 
 
