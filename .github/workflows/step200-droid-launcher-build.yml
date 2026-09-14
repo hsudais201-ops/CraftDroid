@@ -68,6 +68,8 @@ jobs:
           python3 tools/ci/repair_step155_cpp.py droid-src
       - name: Apply Step 177 World Manager integration
         run: python3 tools/ci/apply_step177_world_manager.py droid-src
+      - name: Repair Step 242 World Manager test compatibility
+        run: python3 tools/ci/repair_step242_world_manager_test_junit.py droid-src
       - name: Apply Step 202 Kotlin compile repairs
         run: python3 tools/ci/repair_step202_kotlin.py droid-src
       - name: Apply Step 205 UI generation
