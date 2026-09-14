@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""Step 223: expose persistent Minecraft installation state in the launcher UI.
+
+The patch is deliberately source-oriented: the workflow first generates the launcher
+UI, then this repair augments it without requiring Android XML resources.
+"""
+from pathlib import Path
+import sys
+
+
+def main() -> int:
+    root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
+    ui = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
+    if not ui.exists():
+        raise SystemExit(f"[step223] missing UI source: {ui}")
+    s = ui.read_text(encoding="utf-8")
+
+    helper = '''    private fun minecraftInstallState(version: String): String {
+        return try {
+            MinecraftVersionInstallManager.getState(this, version)
+        } catch (_: Throwable) {
+            if (MinecraftVersionInstallManager.isInstalled(this, version)) "INSTALLED" else "NOT INSTALLED"
+        }
+    }
+
+    private fun minecraftInstallProgress(version: String): String {
+        return try {
+            val progress = MinecraftVersionInstallManager.getProgress(this, version)
+            if (progress.total > 0L) {
+                val pct = ((progress.completed * 100L) / progress.total).coerceIn(0L, 100L)
+                "$pct%  ·  ${progress.stage}"
+            } else progress.stage
+        } catch (_: Throwable) {
+            "Ready to install"
+        }
+    }
+
+    private fun installMinecraftVersion(version: String) {
+        saveMinecraftVersion(version)
+        Toast.makeText(this, "Installing Minecraft $version…", Toast.LENGTH_SHORT).show()
+        Thread {
+            try {
+                MinecraftVersionInstallManager.install(this, version, object : MinecraftVersionInstallManager.Listener {
+                    override fun onProgress(progress: MinecraftVersionInstallManager.Progress) {
+                        runOnUiThread { showPage("Search by ID") }
+                    }
+                    override fun onComplete(version: String) {
+                        runOnUiThread {
+                            Toast.makeText(this@DroidLauncherUiActivity, "Minecraft $version installed", Toast.LENGTH_LONG).show()
+                            showPage("Game")
+                        }
+                    }
+                    override fun onError(version: String, error: String) {
+                        runOnUiThread {
+                            Toast.makeText(this@DroidLauncherUiActivity, "Install failed: $error", Toast.LENGTH_LONG).show()
+                            showPage("Search by ID")
+                        }
+                    }
+                })
+            } catch (t: Throwable) {
+                runOnUiThread {
+                    Toast.makeText(this, "Install failed: ${t.message ?: "unknown error"}", Toast.LENGTH_LONG).show()
+                    showPage("Search by ID")
+                }
+            }
+        }.start()
+    }
+
+'''
+    if 'private fun minecraftInstallState(version: String)' not in s:
+        anchor = '    private fun rendererPage() {'
+        if anchor not in s:
+            raise SystemExit('[step223] rendererPage anchor not found')
+        s = s.replace(anchor, helper + anchor, 1)
+
+    # Add a compact install-status line to the existing selected-version game card.
+    marker = '        left.addView(label("Version  ·  $version", 13f, false))'
+    replacement = marker + '\n        left.addView(label("Install  ·  ${minecraftInstallState(version)}", 12f, false))'
+    if 'Install  ·  ${minecraftInstallState(version)}' not in s and marker in s:
+        s = s.replace(marker, replacement, 1)
+
+    # Add an explicit install/retry action to version cards, while preserving Select.
+    old = '''            val choose = button(if (item == selected) "Selected" else "Select", item == selected)
+            choose.setOnClickListener {
+                saveMinecraftVersion(item)
+                showPage("Game")
+            }
+            line.addView(choose, LinearLayout.LayoutParams(dp(110), dp(46)))
+'''
+    new = '''            val installed = MinecraftVersionInstallManager.isInstalled(this, item)
+            val installButton = button(if (installed) "Installed" else "Install")
+            installButton.setOnClickListener {
+                if (installed) {
+                    saveMinecraftVersion(item)
+                    showPage("Game")
+                } else {
+                    installMinecraftVersion(item)
+                }
+            }
+            line.addView(installButton, LinearLayout.LayoutParams(dp(110), dp(46)))
+            info.addView(label("${minecraftInstallState(item)}  ·  ${minecraftInstallProgress(item)}", 11f, false))
+'''
+    if old in s:
+        s = s.replace(old, new, 1)
+
+    ui.write_text(s, encoding="utf-8")
+    print('[step223] install state/progress/retry UI installed')
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
