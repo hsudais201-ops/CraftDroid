@@ -224,7 +224,6 @@ class DroidLauncherUiActivity : Activity() {
                 val i = Intent().setClassName(packageName, parts[1].removePrefix("."))
                 startActivity(i)
             } catch (_: Exception) {
-                // The UI remains usable even when the legacy activity is unavailable.
             }
         }
     }
@@ -244,7 +243,19 @@ def find_manifest(root: Path) -> Path:
 
 
 def get_launcher_component(text: str) -> str:
-    for m in re.finditer(r"<(?:activity|activity-alias)\\b[\\s\\S]*?</(?:activity|activity-alias)>", text):
+    activity_pattern = r'<(?:activity|activity-alias)\b[\s\S]*?</(?:activity|activity-alias)>'
+    for m in re.finditer(activity_pattern, text):
+        block = m.group(0)
+        if "android.intent.action.MAIN" in block and "android.intent.category.LAUNCHER" in block:
+            am = re.search(r'android:name="([^"]+)"', block)
+            if am:
+                name = am.group(1)
+                if name.startswith("."):
+                    pkg = re.search(r'<manifest[^>]*android:package="([^"]+)"', text)
+                    if pkg:
+                        name = pkg.group(1) + name
+                return name
+    for m in re.finditer(r'<(?:activity|activity-alias)\b[^>]*?/\s*>', text):
         block = m.group(0)
         if "android.intent.action.MAIN" in block and "android.intent.category.LAUNCHER" in block:
             am = re.search(r'android:name="([^"]+)"', block)
