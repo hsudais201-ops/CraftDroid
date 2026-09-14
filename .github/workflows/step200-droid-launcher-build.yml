@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: droid-launcher-step222-${{ github.ref }}
+  group: droid-launcher-step224-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -87,8 +87,10 @@ jobs:
         run: python3 tools/ci/repair_step221_version_selector.py droid-src
       - name: Apply Step 222 real Minecraft version installer
         run: python3 tools/ci/repair_step222_version_install.py droid-src
+      - name: Apply Step 224 launch preflight validation
+        run: python3 tools/ci/repair_step224_launch_preflight.py droid-src
 
-      - name: Verify Java, Minecraft launch and installer contract
+      - name: Verify Java, Minecraft launch, installer and preflight contract
         shell: bash
         run: |
           set -euo pipefail
@@ -110,7 +112,8 @@ jobs:
           grep -F 'Range' "$INSTALLER" >/dev/null
           grep -F 'MessageDigest' "$INSTALLER" >/dev/null
           grep -F 'MinecraftVersionInstallManager.install' "$UI" >/dev/null
-          grep -F 'MinecraftVersionInstallManager.isInstalled' "$UI" >/dev/null
+          grep -F 'MinecraftVersionInstallManager.isLaunchReady' "$UI" >/dev/null
+          grep -F 'fun isLaunchReady(context: Context, version: String): Boolean' "$INSTALLER" >/dev/null
           grep -F 'android.permission.INTERNET' "$MANIFEST" >/dev/null
 
       - name: Set up JDK 17
@@ -142,7 +145,7 @@ jobs:
         run: gradle --no-daemon --stacktrace :app:testDebugUnitTest
       - name: Report unit-test result
         if: always()
-        run: echo "Step 222 unit-test outcome: ${{ steps.unit-tests.outcome }}"
+        run: echo "Step 224 unit-test outcome: ${{ steps.unit-tests.outcome }}"
       - name: Build Droid Launcher APK
         working-directory: droid-src
         shell: bash
@@ -157,9 +160,9 @@ jobs:
           APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           mkdir -p artifacts/apk
-          cp "$APK" artifacts/apk/Droid-Launcher-Step222-debug.apk
+          cp "$APK" artifacts/apk/Droid-Launcher-Step224-debug.apk
           sha256sum "$APK" | tee artifacts/apk/SHA256SUMS.txt
-          echo 'Droid Launcher Step 222 APK created:'
+          echo 'Droid Launcher Step 224 APK created:'
           ls -lh "$APK"
       - name: APK runtime preflight
         shell: bash
@@ -169,14 +172,14 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step222-debug
+          name: Droid-Launcher-Step224-debug
           path: artifacts/apk/*
           if-no-files-found: error
       - name: Upload build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step222-diagnostics
+          name: Droid-Launcher-Step224-diagnostics
           path: |
             artifacts/build/**
             droid-src/app/build/reports/**
