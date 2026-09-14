@@ -52,6 +52,8 @@ jobs:
             fi
           fi
           test -d craftdroid-src
+          mkdir -p craftdroid-src/app/src/main/java/com/example/launcher
+          cp -f app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt craftdroid-src/app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt
           echo '--- extracted project root ---'
           find craftdroid-src -maxdepth 1 -mindepth 1 -printf '%f\n' | sort
 
@@ -89,6 +91,28 @@ jobs:
           set -euo pipefail
           python3 tools/ci/repair_step155_cpp.py craftdroid-src
 
+      - name: Apply Step 223 install status UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step223_install_status_ui.py craftdroid-src
+
+      - name: Verify Step 222/223 installer contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          INSTALLER="craftdroid-src/app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt"
+          UI="$(find craftdroid-src/app/src/main -type f -name 'DroidLauncherUiActivity.kt' -print -quit)"
+          test -s "$INSTALLER"
+          test -n "$UI"
+          grep -F 'version_manifest_v2.json' "$INSTALLER" >/dev/null
+          grep -F 'Range' "$INSTALLER" >/dev/null
+          grep -F 'MessageDigest' "$INSTALLER" >/dev/null
+          grep -F 'minecraftInstallState' "$UI" >/dev/null
+          grep -F 'minecraftInstallProgress' "$UI" >/dev/null
+          grep -F 'installMinecraftVersion' "$UI" >/dev/null
+          echo 'Step 222/223 installer contract verified.'
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -115,6 +139,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.6.0'
+          validate-wrappers: false
 
       - name: Validate Gradle project
         working-directory: craftdroid-src
@@ -151,7 +176,7 @@ jobs:
           APK="craftdroid-src/app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
           mkdir -p artifacts/apk
-          cp "$APK" artifacts/apk/Droid-Launcher-debug.apk
+          cp "$APK" artifacts/apk/Droid-Launcher-Step223-debug.apk
           sha256sum "$APK" | tee artifacts/apk/SHA256SUMS.txt
           echo '--- APK ---'
           ls -lh "$APK"
@@ -165,7 +190,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CraftDroid-debug-apk
+          name: CraftDroid-Step223-debug-apk
           path: artifacts/apk/*
           if-no-files-found: error
 
@@ -266,7 +291,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CraftDroid-build-diagnostics
+          name: CraftDroid-Step223-build-diagnostics
           path: |
             artifacts/build/**
             artifacts/runtime/**
