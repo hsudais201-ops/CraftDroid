@@ -11,6 +11,16 @@ def find_one(root: Path, name: str) -> Path:
     return matches[0]
 
 
+def nearest_method(s: str, pos: int) -> tuple[int, str]:
+    start = s.rfind("    private fun ", 0, pos)
+    if start < 0:
+        raise SystemExit("[step231] launch method declaration not found before launch-path marker")
+    line_end = s.find("\n", start)
+    if line_end < 0:
+        line_end = len(s)
+    return start, s[start:line_end]
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
     src = root / "app/src/main/java/com/example/launcher"
@@ -19,6 +29,11 @@ def main() -> int:
     s = ui.read_text(encoding="utf-8")
 
     anchor = '        val launchPaths = MinecraftLaunchPaths.resolve(this, version)\n'
+    pos = s.find(anchor)
+    if pos < 0:
+        raise SystemExit('[step231] canonical launch-path marker missing')
+    method_start, method_decl = nearest_method(s, pos)
+
     insertion = anchor + '''        val launchCommand = MinecraftLaunchCommandBuilder.build(this, version)
         if (!launchCommand.valid) {
             Toast.makeText(this, "Minecraft $version launch command is invalid: ${launchCommand.error ?: "unknown error"}", Toast.LENGTH_LONG).show()
@@ -27,11 +42,9 @@ def main() -> int:
         }
 '''
     if 'val launchCommand = MinecraftLaunchCommandBuilder.build(this, version)' not in s:
-        start = s.find('    private fun launchSelectedMinecraft() {')
-        pos = s.find(anchor, start)
-        if start < 0 or pos < 0:
-            raise SystemExit('[step231] launchSelectedMinecraft path anchor missing')
         s = s[:pos] + insertion + s[pos + len(anchor):]
+        # Recalculate marker position after insertion.
+        pos = s.find(anchor, method_start)
 
     extras_anchor = '            intent.putExtra("minecraft_natives_dir", launchPaths.nativesDir.absolutePath)\n'
     extras = extras_anchor + '''            intent.putExtra("minecraft_main_class", launchCommand.mainClass)
@@ -66,6 +79,7 @@ def main() -> int:
         if needle not in s:
             raise SystemExit(f'[step231] missing launch-handoff contract: {needle}')
 
+    print(f'[step231] launch handoff inserted into {method_decl.strip()}')
     print('[step231] launch command is built from the selected installed version metadata')
     print('[step231] computed main class, classpath, asset index and native directory are passed to launch')
     return 0
