@@ -42,12 +42,12 @@ object MinecraftLaunchPaths {
     )
 
     fun resolve(context: Context, version: String): Result {
-        val root = File(context.filesDir, "minecraft")
-        val versionDir = File(root, "versions/$version")
+        val root = MinecraftStorageResolver.root(context)
+        val versionDir = MinecraftStorageResolver.version(context, version)
         val client = File(versionDir, "$version.jar")
-        val libraries = File(root, "libraries")
-        val assets = File(root, "assets")
-        val natives = File(root, "versions/$version/natives")
+        val libraries = MinecraftStorageResolver.libraries(context)
+        val assets = MinecraftStorageResolver.assets(context)
+        val natives = MinecraftStorageResolver.natives(context, version)
         return when {
             version.isBlank() -> Result(version, root, versionDir, client, libraries, assets, natives, false, "Minecraft version is empty")
             !File(versionDir, "$version.json").isFile -> Result(version, root, versionDir, client, libraries, assets, natives, false, "Version metadata is missing")
@@ -80,7 +80,9 @@ def patch_method(s: str, signature: str) -> str:
         if version in block:
             block = block.replace(version, version + injection, 1)
         elif profile in block:
-            block = block.replace(profile, profile + injection, 1)
+            # The generated lower-level server launch path can have profile but no local version.
+            prefix = '        val version = selectedMinecraftVersion()\n'
+            block = block.replace(profile, profile + prefix + injection, 1)
         else:
             return s
     extras_anchor = '            intent.putExtra("minecraft_java", resolvedJava)\n'
@@ -112,7 +114,7 @@ def main() -> int:
         '    private fun launchExistingActivityWithServer() {',
     ):
         s = patch_method(s, signature)
-        if s != original and 'MinecraftLaunchPaths.resolve(this, version)' in s:
+        if s != original:
             break
     ui.write_text(s, encoding="utf-8")
 
@@ -122,14 +124,14 @@ def main() -> int:
         manager.write_text(marker + m, encoding="utf-8")
         m = marker + m
 
-    combined = s + '\n' + m
-    for needle in ('MinecraftLaunchPaths.resolve(this, version)', 'minecraft_client_jar', 'minecraft_libraries_dir', 'minecraft_assets_dir', 'minecraft_natives_dir', 'DROID_LAUNCH_PATHS_VERSION'):
+    combined = s + '\n' + m + '\n' + path_file.read_text(encoding='utf-8')
+    for needle in ('MinecraftStorageResolver.version(context, version)', 'MinecraftStorageResolver.libraries(context)', 'MinecraftStorageResolver.assets(context)', 'MinecraftStorageResolver.natives(context, version)', 'minecraft_client_jar', 'DROID_LAUNCH_PATHS_VERSION'):
         if needle not in combined:
             raise SystemExit(f'[step225] missing launch-path contract: {needle}')
 
     print('[step225] installed Minecraft filesystem paths resolved before launch')
     print('[step225] explicit client/library/assets/native paths added to launch intent')
-    print('[step225] manager launch-path contract marker added')
+    print('[step225] canonical MinecraftStorageResolver contract installed')
     return 0
 
 if __name__ == '__main__':
