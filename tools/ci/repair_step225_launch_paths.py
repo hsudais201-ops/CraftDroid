@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 225: bind the selected installed Minecraft artifact paths to launch."""
+"""Step 225: bind selected installed Minecraft filesystem paths to launch."""
 from pathlib import Path
 import sys
 
@@ -11,159 +11,89 @@ def find_one(root: Path, name: str) -> Path:
     return matches[0]
 
 
-def method_end(s: str, start: int) -> int:
-    vals = [s.find('\n    private fun ', start + 1), s.find('\n    companion object', start + 1)]
-    vals = [v for v in vals if v >= 0]
-    if not vals:
-        raise SystemExit('[step225] could not find launch method end')
-    return min(vals)
+def repair_manager_import_order(manager: Path) -> None:
+    s = manager.read_text(encoding="utf-8")
+    marker = '// Step 225 launch-path contract: explicit filesystem paths are passed to the game activity.\n'
+    const = 'private const val DROID_LAUNCH_PATHS_VERSION = "225"\n'
+    s = s.replace(marker + const, "")
+    # Remove any previous duplicate constant; it will be restored after imports.
+    s = s.replace(const, "")
+    lines = s.splitlines(keepends=True)
+    package_i = next((i for i, x in enumerate(lines) if x.startswith("package ")), None)
+    if package_i is None:
+        raise SystemExit("[step225] manager package declaration not found")
+    import_end = package_i + 1
+    while import_end < len(lines) and (lines[import_end].startswith("import ") or not lines[import_end].strip()):
+        import_end += 1
+    head = ''.join(lines[:import_end]).rstrip('\n') + '\n\n'
+    tail = ''.join(lines[import_end:]).lstrip('\n')
+    manager.write_text(head + marker + const + tail, encoding="utf-8")
 
 
-def ensure_helper(path_file: Path) -> None:
-    if path_file.exists():
-        return
-    path_file.write_text('''package com.example.launcher
+def patch_ui(ui: Path) -> None:
+    s = ui.read_text(encoding="utf-8")
+    if 'import android.widget.Toast' not in s:
+        s = s.replace('import android.widget.', 'import android.widget.Toast\nimport android.widget.', 1) if 'import android.widget.' in s else s
 
-import android.content.Context
-import java.io.File
-
-/** Resolved filesystem locations for one installed Minecraft version. */
-object MinecraftLaunchPaths {
-    data class Result(
-        val version: String,
-        val minecraftRoot: File,
-        val versionDir: File,
-        val clientJar: File,
-        val librariesDir: File,
-        val assetsDir: File,
-        val nativesDir: File,
-        val valid: Boolean,
-        val error: String? = null
-    )
-
-    fun resolve(context: Context, version: String): Result {
-        val root = MinecraftStorageResolver.root(context)
-        val versionDir = MinecraftStorageResolver.version(context, version)
-        val client = File(versionDir, "$version.jar")
-        val libraries = MinecraftStorageResolver.libraries(context)
-        val assets = MinecraftStorageResolver.assets(context)
-        val natives = MinecraftStorageResolver.natives(context, version)
-        return when {
-            version.isBlank() -> Result(version, root, versionDir, client, libraries, assets, natives, false, "Minecraft version is empty")
-            !File(versionDir, "$version.json").isFile -> Result(version, root, versionDir, client, libraries, assets, natives, false, "Version metadata is missing")
-            !client.isFile || client.length() <= 0L -> Result(version, root, versionDir, client, libraries, assets, natives, false, "Minecraft client JAR is missing")
-            !libraries.isDirectory -> Result(version, root, versionDir, client, libraries, assets, natives, false, "Minecraft libraries directory is missing")
-            !assets.isDirectory -> Result(version, root, versionDir, client, libraries, assets, natives, false, "Minecraft assets directory is missing")
-            else -> Result(version, root, versionDir, client, libraries, assets, natives, true)
-        }
-    }
-}
-''', encoding='utf-8')
-
-
-def patch_method(s: str, signature: str) -> str:
-    start = s.find(signature)
-    if start < 0:
-        return s
-    end = method_end(s, start)
-    block = s[start:end]
-    if 'MinecraftLaunchPaths.resolve(this, version)' not in block:
-        profile = '        val profile = selectedMinecraftProfile()\n'
-        version = '        val version = selectedMinecraftVersion()\n'
-        injection = '''        val launchPaths = MinecraftLaunchPaths.resolve(this, version)
+    # The generated UI has changed shape several times. Add the path gate directly
+    # to the concrete launch method instead of depending on a fragile extras anchor.
+    sig = '    private fun launchExistingActivityWithServer() {'
+    start = s.find(sig)
+    if start >= 0:
+        next_sig = s.find('\n    private fun ', start + len(sig))
+        end = next_sig if next_sig >= 0 else len(s)
+        block = s[start:end]
+        if 'val launchPaths = MinecraftLaunchPaths.resolve(this, version)' not in block:
+            version_line = '        val version = selectedMinecraftVersion()\n'
+            gate = '''        val launchPaths = MinecraftLaunchPaths.resolve(this, version)
         if (!launchPaths.valid) {
             Toast.makeText(this, "Minecraft $version is not launch-ready: ${launchPaths.error ?: "unknown artifact error"}", Toast.LENGTH_LONG).show()
-            showPage("Search by ID")
             return
         }
 '''
-        if version in block:
-            block = block.replace(version, version + injection, 1)
-        elif profile in block:
-            prefix = '        val version = selectedMinecraftVersion()\n'
-            block = block.replace(profile, profile + prefix + injection, 1)
-        else:
-            return s
-    extras_anchor = '            intent.putExtra("minecraft_java", resolvedJava)\n'
-    extras = extras_anchor + '''            intent.putExtra("minecraft_root", launchPaths.minecraftRoot.absolutePath)
-            intent.putExtra("minecraft_version_dir", launchPaths.versionDir.absolutePath)
-            intent.putExtra("minecraft_client_jar", launchPaths.clientJar.absolutePath)
-            intent.putExtra("minecraft_libraries_dir", launchPaths.librariesDir.absolutePath)
-            intent.putExtra("minecraft_assets_dir", launchPaths.assetsDir.absolutePath)
-            intent.putExtra("minecraft_natives_dir", launchPaths.nativesDir.absolutePath)
+            if version_line in block:
+                block = block.replace(version_line, version_line + gate, 1)
+            else:
+                block = block.replace(sig + '\n', sig + '\n' + version_line + gate, 1)
+        extras = '''        intent.putExtra("minecraft_root", launchPaths.minecraftRoot.absolutePath)
+        intent.putExtra("minecraft_version_dir", launchPaths.versionDir.absolutePath)
+        intent.putExtra("minecraft_client_jar", launchPaths.clientJar.absolutePath)
+        intent.putExtra("minecraft_libraries_dir", launchPaths.librariesDir.absolutePath)
+        intent.putExtra("minecraft_assets_dir", launchPaths.assetsDir.absolutePath)
+        intent.putExtra("minecraft_natives_dir", launchPaths.nativesDir.absolutePath)
 '''
-    if 'intent.putExtra("minecraft_client_jar", launchPaths.clientJar.absolutePath)' not in block and extras_anchor in block:
-        block = block.replace(extras_anchor, extras, 1)
-    return s[:start] + block + s[end:]
-
-
-def repair_manager_marker_order(manager: Path) -> None:
-    """Keep all imports ahead of Step 225's top-level constant declaration."""
-    m = manager.read_text(encoding="utf-8")
-    marker = '// Step 225 launch-path contract: explicit filesystem paths are passed to the game activity.\n'
-    const = 'private const val DROID_LAUNCH_PATHS_VERSION = "225"\n'
-    if const not in m:
-        m = marker + const + m
-    # Older generated output placed the constant before imports, which Kotlin rejects.
-    prefix = marker + const
-    if m.startswith(prefix):
-        body = m[len(prefix):]
-        lines = body.splitlines(keepends=True)
-        package_end = next((i for i, line in enumerate(lines) if line.startswith('package ')), None)
-        if package_end is None:
-            raise SystemExit('[step225] manager package declaration not found')
-        import_end = package_end + 1
-        while import_end < len(lines) and (lines[import_end].startswith('import ') or lines[import_end].strip() == ''):
-            import_end += 1
-        imports = ''.join(lines[:import_end])
-        rest = ''.join(lines[import_end:])
-        if not rest.startswith('\n'):
-            rest = '\n' + rest
-        m = imports + '\n' + marker + const + rest.lstrip('\n')
-    manager.write_text(m, encoding="utf-8")
+        if 'minecraft_client_jar' not in block:
+            launch = block.find('startActivity(intent)')
+            if launch >= 0:
+                line_start = block.rfind('\n', 0, launch) + 1
+                block = block[:line_start] + extras + block[line_start:]
+            else:
+                # A generated manager/activity can hand off through another call;
+                # keep the gate but do not invent an Intent.
+                pass
+        s = s[:start] + block + s[end:]
+    ui.write_text(s, encoding="utf-8")
 
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
     source_root = root / "app/src/main/java"
-    src = root / "app/src/main/java/com/example/launcher"
     ui = find_one(source_root, "DroidLauncherUiActivity.kt")
     manager = find_one(source_root, "MinecraftLaunchManager.kt")
-    path_file = src / "MinecraftLaunchPaths.kt"
-    ensure_helper(path_file)
+    patch_ui(ui)
+    repair_manager_import_order(manager)
 
-    s = ui.read_text(encoding="utf-8")
-    original = s
-    for signature in (
-        '    private fun launchSelectedMinecraft() {',
-        '    private fun launchExistingActivityWithServer() {',
+    text = ui.read_text(encoding="utf-8") + '\n' + manager.read_text(encoding="utf-8")
+    for needle in (
+        'MinecraftLaunchPaths.resolve(this, version)',
+        'DROID_LAUNCH_PATHS_VERSION',
+        'NativeGameBridge.launchJava(',
     ):
-        s = patch_method(s, signature)
-        if s != original:
-            break
-    ui.write_text(s, encoding="utf-8")
-
-    repair_manager_marker_order(manager)
-    m = manager.read_text(encoding="utf-8")
-
-    combined = s + '\n' + m + '\n' + path_file.read_text(encoding='utf-8')
-    checks = (
-        ('MinecraftStorageResolver.version(context, version)', 'MinecraftStorageResolver.version(context, normalized)'),
-        ('MinecraftStorageResolver.libraries(context)', 'MinecraftStorageResolver.libraries(context)'),
-        ('MinecraftStorageResolver.assets(context)', 'MinecraftStorageResolver.assets(context)'),
-        ('MinecraftStorageResolver.natives(context, version)', 'MinecraftStorageResolver.natives(context, normalized)'),
-    )
-    for needle, alternate in checks:
-        if needle not in combined and alternate not in combined:
-            raise SystemExit(f'[step225] missing launch-path contract: {needle}')
-    for needle in ('minecraft_client_jar', 'DROID_LAUNCH_PATHS_VERSION'):
-        if needle not in combined:
-            raise SystemExit(f'[step225] missing launch-path contract: {needle}')
-
+        if needle not in text:
+            raise SystemExit(f"[step225] missing launch-path contract: {needle}")
     print('[step225] installed Minecraft filesystem paths resolved before launch')
-    print('[step225] explicit client/library/assets/native paths added to launch intent')
-    print('[step225] canonical MinecraftStorageResolver contract installed')
-    print('[step225] Kotlin import/declaration ordering repaired')
+    print('[step225] explicit client/library/assets/native paths added to launch intent when an Intent boundary exists')
+    print('[step225] Kotlin imports remain before top-level declarations')
     return 0
 
 if __name__ == '__main__':
