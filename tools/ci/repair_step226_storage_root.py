@@ -33,19 +33,35 @@ def patch_installer(root: Path) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def has_version_resolver(text: str) -> bool:
+    return (
+        'MinecraftStorageResolver.version(context, version)' in text
+        or 'MinecraftStorageResolver.version(context, normalized)' in text
+    )
+
+
+def has_native_resolver(text: str) -> bool:
+    return (
+        'MinecraftStorageResolver.natives(context, version)' in text
+        or 'MinecraftStorageResolver.natives(context, normalized)' in text
+    )
+
+
 def patch_launch_paths(root: Path) -> None:
     path = find_one(root / "app/src/main/java", "MinecraftLaunchPaths.kt")
     text = path.read_text(encoding="utf-8")
     required = [
         'MinecraftStorageResolver.root(context)',
-        'MinecraftStorageResolver.version(context, version)',
         'MinecraftStorageResolver.libraries(context)',
         'MinecraftStorageResolver.assets(context)',
-        'MinecraftStorageResolver.natives(context, version)',
     ]
     for needle in required:
         if needle not in text:
             raise SystemExit(f'[step226] launch path resolver missing canonical call: {needle}')
+    if not has_version_resolver(text):
+        raise SystemExit('[step226] launch path resolver missing canonical version call')
+    if not has_native_resolver(text):
+        raise SystemExit('[step226] launch path resolver missing canonical natives call')
 
 
 def main() -> int:
@@ -64,18 +80,19 @@ def main() -> int:
 
     installer = find_one(root / "app/src/main/java", "MinecraftVersionInstallManager.kt").read_text(encoding="utf-8")
     paths = find_one(root / "app/src/main/java", "MinecraftLaunchPaths.kt").read_text(encoding="utf-8")
-    checks = [
-        (installer, 'MinecraftStorageResolver.root(context)'),
-        (installer, 'MinecraftStorageResolver.version(context, version)'),
-        (paths, 'MinecraftStorageResolver.root(context)'),
-        (paths, 'MinecraftStorageResolver.libraries(context)'),
-        (paths, 'MinecraftStorageResolver.assets(context)'),
-        (paths, 'MinecraftStorageResolver.natives(context, version)'),
-        (manager_text, 'Step 226 storage contract:'),
-    ]
-    for text, needle in checks:
-        if needle not in text:
-            raise SystemExit(f'[step226] missing storage contract: {needle}')
+    if 'MinecraftStorageResolver.root(context)' not in installer:
+        raise SystemExit('[step226] installer missing canonical root resolver')
+    if not has_version_resolver(installer):
+        raise SystemExit('[step226] installer missing canonical version resolver')
+    for needle in ('MinecraftStorageResolver.root(context)', 'MinecraftStorageResolver.libraries(context)', 'MinecraftStorageResolver.assets(context)'):
+        if needle not in paths:
+            raise SystemExit(f'[step226] launch paths missing storage contract: {needle}')
+    if not has_version_resolver(paths):
+        raise SystemExit('[step226] launch paths missing canonical version resolver')
+    if not has_native_resolver(paths):
+        raise SystemExit('[step226] launch paths missing canonical natives resolver')
+    if 'Step 226 storage contract:' not in manager_text:
+        raise SystemExit('[step226] manager missing storage contract marker')
 
     print('[step226] installer and launch-path code now share one canonical Minecraft root')
     print('[step226] generated launch manager carries the Step 226 storage contract marker')
