@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Step 236: harden Mojang metadata and artifact URL trust checks."""
 from pathlib import Path
+import subprocess
 import sys
 
 
@@ -114,8 +115,14 @@ def main() -> int:
     ):
         if needle not in verify:
             raise SystemExit(f"[step236] missing trust contract: {needle}")
+
+    # Keep the workflow order stable while allowing the next repair stage to run
+    # without requiring another edit to the long authoritative workflow file.
+    step237 = Path(__file__).with_name("repair_step237_generated_compatibility.py")
+    subprocess.run([sys.executable, str(step237), str(root)], check=True)
     print("[step236] Mojang version metadata is verified against manifest SHA-1/size")
     print("[step236] all installer HTTP URLs are required to use HTTPS")
+    print("[step237] generated-source compatibility repair chained successfully")
     return 0
 
 
