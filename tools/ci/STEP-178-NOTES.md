@@ -1,0 +1,1 @@
+Step 178 consolidation has started. The project must be assembled from the actual launcher source artifacts before an APK build can be honestly claimed.
