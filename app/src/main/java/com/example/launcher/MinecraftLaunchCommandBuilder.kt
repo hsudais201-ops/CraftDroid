@@ -20,11 +20,11 @@ object MinecraftLaunchCommandBuilder {
 
     fun build(context: Context, version: String): Result {
         val paths = MinecraftLaunchPaths.resolve(context, version)
-        if (!paths.valid) return Result(version, "", emptyList(), paths.nativesDir, null, false, paths.error)
+        if (!paths.valid) return Result(paths.version, "", emptyList(), paths.nativesDir, null, false, paths.error)
         return try {
-            val metadata = JSONObject(File(paths.versionDir, "$version.json").readText(Charsets.UTF_8))
+            val metadata = JSONObject(File(paths.versionDir, "${paths.version}.json").readText(Charsets.UTF_8))
             val mainClass = metadata.optString("mainClass").trim()
-            if (mainClass.isBlank()) return Result(version, "", emptyList(), paths.nativesDir, null, false, "Minecraft main class is missing")
+            if (mainClass.isBlank()) return Result(paths.version, "", emptyList(), paths.nativesDir, null, false, "Minecraft main class is missing")
 
             val classpath = mutableListOf<File>()
             val libraries = metadata.optJSONArray("libraries")
@@ -32,20 +32,30 @@ object MinecraftLaunchCommandBuilder {
                 for (i in 0 until libraries.length()) {
                     val library = libraries.optJSONObject(i) ?: continue
                     if (!libraryAllowed(library)) continue
-                    val artifact = library.optJSONObject("downloads")?.optJSONObject("artifact") ?: continue
-                    val path = artifact.optString("path")
-                    if (path.isNotBlank()) {
-                        val file = File(paths.librariesDir, path)
-                        if (file.isFile && file.length() > 0L) classpath += file
+                    val downloads = library.optJSONObject("downloads") ?: continue
+                    val artifact = downloads.optJSONObject("artifact")
+                    if (artifact != null) {
+                        val path = artifact.optString("path")
+                        if (path.isBlank()) return Result(paths.version, "", emptyList(), paths.nativesDir, null, false, "Library artifact path is missing")
+                        val file = File(paths.librariesDir, path).canonicalFile
+                        if (!inside(file, paths.librariesDir)) return Result(paths.version, "", emptyList(), paths.nativesDir, null, false, "Library artifact escapes libraries directory")
+                        if (!file.isFile || file.length() <= 0L) return Result(paths.version, "", emptyList(), paths.nativesDir, null, false, "Library artifact is missing: $path")
+                        classpath += file
                     }
                 }
             }
-            classpath += paths.clientJar
+            classpath += paths.clientJar.canonicalFile
             val assetIndex = metadata.optJSONObject("assetIndex")?.optString("id")?.takeIf { it.isNotBlank() }
-            Result(version, mainClass, classpath.distinctBy { it.absolutePath }, paths.nativesDir, assetIndex, true)
+            Result(paths.version, mainClass, classpath.distinctBy { it.absolutePath }, paths.nativesDir.canonicalFile, assetIndex, true)
         } catch (t: Throwable) {
-            Result(version, "", emptyList(), paths.nativesDir, null, false, t.message ?: t.javaClass.simpleName)
+            Result(paths.version, "", emptyList(), paths.nativesDir, null, false, t.message ?: t.javaClass.simpleName)
         }
+    }
+
+    private fun inside(file: File, parent: File): Boolean {
+        val child = file.canonicalFile.toPath()
+        val base = parent.canonicalFile.toPath()
+        return child.startsWith(base)
     }
 
     private fun libraryAllowed(library: JSONObject): Boolean {
