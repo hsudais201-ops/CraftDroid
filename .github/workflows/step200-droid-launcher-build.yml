@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: droid-launcher-step228-${{ github.ref }}
+  group: droid-launcher-step229-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -89,6 +89,8 @@ jobs:
         run: python3 tools/ci/repair_step221_version_selector.py droid-src
       - name: Apply Step 222 real Minecraft version installer
         run: python3 tools/ci/repair_step222_version_install.py droid-src
+      - name: Apply Step 223 install status UI
+        run: python3 tools/ci/repair_step223_install_status_ui.py droid-src
       - name: Apply Step 224 launch preflight validation
         run: python3 tools/ci/repair_step224_launch_preflight.py droid-src
       - name: Apply Step 225 installed launch-path binding
@@ -99,8 +101,10 @@ jobs:
         run: python3 tools/ci/repair_step227_library_rules.py droid-src
       - name: Apply Step 228 install resilience
         run: python3 tools/ci/repair_step228_install_resilience.py droid-src
+      - name: Apply Step 229 install progress UI
+        run: python3 tools/ci/repair_step229_install_progress_ui.py droid-src
 
-      - name: Verify Java, installer, launch paths, storage, library rules and install resilience
+      - name: Verify Java, installer, launch paths, storage, library rules and UI resilience
         shell: bash
         run: |
           set -euo pipefail
@@ -113,12 +117,16 @@ jobs:
           MANIFEST=$(find droid-src/app/src/main -type f -name 'AndroidManifest.xml' -print -quit)
           test -n "$MANAGER" && test -n "$INSTALLER" && test -n "$PATHS" && test -n "$STORAGE" && test -n "$UI" && test -n "$MANIFEST"
           grep -F 'fun cancel(context: Context, version: String)' "$INSTALLER" >/dev/null
-          grep -F 'isCancellationRequested' "$INSTALLER" >/dev/null
           grep -F 'savedProgress(context: Context, version: String)' "$INSTALLER" >/dev/null
-          grep -F 'private val cancellations' "$INSTALLER" >/dev/null
           grep -F 'if (!libraryAllowed(lib)) continue' "$INSTALLER" >/dev/null
           grep -F 'MinecraftStorageResolver.root(context)' "$INSTALLER" >/dev/null
           grep -F 'MinecraftLaunchPaths.resolve(this, version)' "$UI" >/dev/null
+          grep -F 'MinecraftVersionInstallManager.cancel(this, version)' "$UI" >/dev/null
+          grep -F 'MinecraftVersionInstallManager.cancel(this, item)' "$UI" >/dev/null
+          grep -F 'MinecraftVersionInstallManager.savedProgress(this, version)' "$UI" >/dev/null
+          grep -F 'MinecraftVersionInstallManager.lastError(this@DroidLauncherUiActivity, version)' "$UI" >/dev/null
+          grep -F 'Resume' "$UI" >/dev/null
+          grep -F 'Cancel' "$UI" >/dev/null
           grep -F 'javaManager.ensureRuntime(resolveLaunchJavaRuntime(requiredJava))' "$MANAGER" >/dev/null
           grep -F 'android.permission.INTERNET' "$MANIFEST" >/dev/null
 
@@ -151,7 +159,7 @@ jobs:
         run: gradle --no-daemon --stacktrace :app:testDebugUnitTest
       - name: Report unit-test result
         if: always()
-        run: echo "Step 228 unit-test outcome: ${{ steps.unit-tests.outcome }}"
+        run: echo "Step 229 unit-test outcome: ${{ steps.unit-tests.outcome }}"
       - name: Build Droid Launcher APK
         working-directory: droid-src
         shell: bash
@@ -166,9 +174,9 @@ jobs:
           APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           mkdir -p artifacts/apk
-          cp "$APK" artifacts/apk/Droid-Launcher-Step228-debug.apk
+          cp "$APK" artifacts/apk/Droid-Launcher-Step229-debug.apk
           sha256sum "$APK" | tee artifacts/apk/SHA256SUMS.txt
-          echo 'Droid Launcher Step 228 APK created:'
+          echo 'Droid Launcher Step 229 APK created:'
           ls -lh "$APK"
       - name: APK runtime preflight
         shell: bash
@@ -178,14 +186,14 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step228-debug
+          name: Droid-Launcher-Step229-debug
           path: artifacts/apk/*
           if-no-files-found: error
       - name: Upload build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step228-diagnostics
+          name: Droid-Launcher-Step229-diagnostics
           path: |
             artifacts/build/**
             droid-src/app/build/reports/**
