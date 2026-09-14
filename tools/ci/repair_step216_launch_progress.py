@@ -11,9 +11,14 @@ def main() -> int:
     s = ui.read_text(encoding="utf-8")
 
     start = s.find('    private fun launchExistingActivityWithServer() {')
-    end = s.find('    private fun getLastLaunchState(): String =', start)
-    if start < 0 or end < 0:
-        raise SystemExit("[step216] launch method anchors not found")
+    if start < 0:
+        raise SystemExit("[step216] launchExistingActivityWithServer method not found")
+    # Replace only this method. Later helper methods may have changed shape across earlier repair steps.
+    end = s.find('\n    private fun ', start + len('    private fun launchExistingActivityWithServer() {'))
+    if end < 0:
+        end = s.find('\n    companion object', start)
+    if end < 0:
+        raise SystemExit("[step216] end of launch method not found")
 
     new_method = '''    private fun launchExistingActivityWithServer() {
         val saved = getSavedServer()
