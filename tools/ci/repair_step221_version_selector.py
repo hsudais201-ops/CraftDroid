@@ -1,7 +1,52 @@
 #!/usr/bin/env python3
-"""Step 221: install a persistent Minecraft version selector for Droid Launcher."""
+"""Step 221/239: install a persistent Minecraft version selector for Droid Launcher."""
 from pathlib import Path
+import re
 import sys
+
+
+def remove_duplicate_functions(source: str, signature: str) -> tuple[str, int]:
+    """Keep the first top-level private function with a signature and remove later duplicates."""
+    positions = [m.start() for m in re.finditer(re.escape(signature), source)]
+    if len(positions) <= 1:
+        return source, 0
+
+    def block_end(s: str, start: int) -> int:
+        brace = s.find('{', start)
+        if brace < 0:
+            raise SystemExit(f'[step239] function body opening brace not found: {signature}')
+        depth = 0
+        in_string = False
+        escaped = False
+        for i in range(brace, len(s)):
+            ch = s[i]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == '\\':
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            if ch == '"':
+                in_string = True
+            elif ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    j = i + 1
+                    while j < len(s) and s[j] in '\r\n':
+                        j += 1
+                    return j
+        raise SystemExit(f'[step239] unterminated function body: {signature}')
+
+    removed = 0
+    for start in reversed(positions[1:]):
+        end = block_end(source, start)
+        source = source[:start] + source[end:]
+        removed += 1
+    return source, removed
 
 
 def main() -> int:
@@ -85,7 +130,6 @@ def main() -> int:
 '''
     s = s[:start] + new_game + s[end:]
 
-    # Replace library page with selectable version cards while preserving other library pages.
     start = s.find('    private fun libraryPage(page: String) {')
     end = s.find('    private fun aboutPage() {', start)
     if start < 0 or end < 0:
@@ -151,10 +195,23 @@ def main() -> int:
 '''
     s = s[:start] + new_library + s[end:]
 
+    # Canonicalize helpers after all earlier/later generators have touched the file.
+    removed_total = 0
+    for signature in (
+        '    private fun selectedMinecraftVersion(): String',
+        '    private fun saveMinecraftVersion(version: String)',
+        '    private fun selectedMinecraftProfile(): String',
+        '    private fun saveMinecraftProfile(profile: String)',
+        '    private fun launchSelectedMinecraft()',
+    ):
+        s, removed = remove_duplicate_functions(s, signature)
+        removed_total += removed
+
     ui.write_text(s, encoding="utf-8")
     print('[step221] persistent Minecraft version/profile selector installed')
     print('[step221] Game screen now reflects selected version and resolved Java')
     print('[step221] Play uses selected version/profile state')
+    print(f'[step239] duplicate version/profile/launch helpers removed: {removed_total}')
     return 0
 
 
