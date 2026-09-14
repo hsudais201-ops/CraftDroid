@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 223: expose persistent Minecraft installation state in the launcher UI."""
+"""Step 223/239: expose persistent Minecraft installation state in the launcher UI."""
 from pathlib import Path
 import sys
 
@@ -11,7 +11,7 @@ def main() -> int:
         raise SystemExit(f"[step223] missing UI source: {ui}")
     s = ui.read_text(encoding="utf-8")
 
-    helper = '''    private fun minecraftInstallState(version: String): String {
+    state_helper = '''    private fun minecraftInstallState(version: String): String {
         return MinecraftVersionInstallManager.state(this, version).name.replace('_', ' ')
     }
 
@@ -24,7 +24,17 @@ def main() -> int:
         }
     }
 
-    private fun installMinecraftVersion(version: String) {
+'''
+    if 'private fun minecraftInstallState(version: String)' not in s:
+        anchor = '    private fun rendererPage() {'
+        if anchor not in s:
+            raise SystemExit('[step223] rendererPage anchor not found')
+        s = s.replace(anchor, state_helper + anchor, 1)
+
+    # Step 222 and some generated base variants can already contain this helper.
+    # Add an installer only when the exact top-level function is truly absent.
+    if 'private fun installMinecraftVersion(version: String)' not in s:
+        install_helper = '''    private fun installMinecraftVersion(version: String) {
         saveMinecraftVersion(version)
         Toast.makeText(this, "Installing Minecraft $version…", Toast.LENGTH_SHORT).show()
         MinecraftVersionInstallManager.install(this, version, object : MinecraftVersionInstallManager.Listener {
@@ -53,11 +63,10 @@ def main() -> int:
     }
 
 '''
-    if 'private fun minecraftInstallState(version: String)' not in s:
         anchor = '    private fun rendererPage() {'
         if anchor not in s:
-            raise SystemExit('[step223] rendererPage anchor not found')
-        s = s.replace(anchor, helper + anchor, 1)
+            raise SystemExit('[step223] rendererPage anchor not found for installer helper')
+        s = s.replace(anchor, install_helper + anchor, 1)
 
     marker = '        left.addView(label("Version  ·  $version", 13f, false))'
     replacement = marker + '\n        left.addView(label("Install  ·  ${minecraftInstallState(version)}", 12f, false))'
@@ -88,8 +97,14 @@ def main() -> int:
     if old in s:
         s = s.replace(old, new, 1)
 
+    # Fail closed if this source still contains duplicate installer declarations.
+    count = s.count('    private fun installMinecraftVersion(version: String) {')
+    if count != 1:
+        raise SystemExit(f'[step239] installMinecraftVersion must have exactly one declaration, found {count}')
+
     ui.write_text(s, encoding="utf-8")
     print('[step223] persistent install state + retry UI installed')
+    print('[step239] install helper ownership is now idempotent across generated launcher variants')
     return 0
 
 
