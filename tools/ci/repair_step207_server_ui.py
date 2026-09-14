@@ -12,8 +12,15 @@ INSERT = '''        val add = button("+  Add Account")
         left.addView(label("Saved server and live online/offline status", 12f, false))
         val serverRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         val serverInfo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        serverInfo.addView(label("No server added", 14f, true))
-        serverInfo.addView(label("● Offline", 12f, false))
+        val saved = getSavedServer()
+        val serverName = label(saved?.first ?: "No server added", 14f, true)
+        serverStatusView = label(
+            if (saved == null) "● Offline" else saved.second.toString() + "  ·  " +
+                getSharedPreferences("droid_launcher", MODE_PRIVATE).getString("server_last_status", "● Checking…"),
+            12f, false
+        )
+        serverInfo.addView(serverName)
+        serverInfo.addView(serverStatusView)
         serverRow.addView(serverInfo, LinearLayout.LayoutParams(0, -2, 1f))
         val check = button("Check", false)
         check.setOnClickListener { refreshServerStatus() }
@@ -22,14 +29,7 @@ INSERT = '''        val add = button("+  Add Account")
         addServer.setOnClickListener { showServerDialog() }
         serverRow.addView(addServer, LinearLayout.LayoutParams(dp(130), dp(44)))
         left.addView(serverRow, LinearLayout.LayoutParams(-1, dp(64)))
-        val saved = getSavedServer()
-        if (saved != null) {
-            serverInfo.removeAllViews()
-            val last = getSharedPreferences("droid_launcher", MODE_PRIVATE).getString("server_last_status", "● Checking…")
-            serverInfo.addView(label(saved.first, 14f, true))
-            serverInfo.addView(label(saved.second.toString() + "  ·  " + last, 12f, false))
-            refreshServerStatus()
-        }
+        if (saved != null) refreshServerStatus()
 '''
 
 DIALOG = '''
@@ -50,10 +50,9 @@ DIALOG = '''
         }
         box.addView(host, LinearLayout.LayoutParams(-1, dp(54)))
         box.addView(port, LinearLayout.LayoutParams(-1, dp(54)))
-        val saved = getSavedServer()
-        if (saved != null) {
-            host.setText(saved.first)
-            port.setText(saved.second.toString())
+        getSavedServer()?.let {
+            host.setText(it.first)
+            port.setText(it.second.toString())
         }
         android.app.AlertDialog.Builder(this)
             .setTitle("Add Server")
@@ -61,7 +60,7 @@ DIALOG = '''
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Save") { _, _ ->
                 val address = host.text.toString().trim()
-                val serverPort = port.text.toString().trim().toIntOrNull() ?: 25565
+                val serverPort = port.text.toString().trim().toIntOrNull()?.coerceIn(1, 65535) ?: 25565
                 if (address.isNotBlank()) saveServer(address, serverPort)
                 showPage("Game")
             }
@@ -85,12 +84,12 @@ DIALOG = '''
 
     private fun refreshServerStatus() {
         val saved = getSavedServer() ?: return
-        val target = saved
+        serverStatusView?.text = saved.second.toString() + "  ·  Checking…"
         Thread {
             val online = try {
-                val socket = java.net.Socket()
-                socket.connect(java.net.InetSocketAddress(target.first, target.second), 1800)
-                socket.close()
+                java.net.Socket().use { socket ->
+                    socket.connect(java.net.InetSocketAddress(saved.first, saved.second), 1800)
+                }
                 true
             } catch (_: Exception) {
                 false
@@ -100,10 +99,7 @@ DIALOG = '''
                 .putString("server_last_status", status)
                 .apply()
             runOnUiThread {
-                if (currentPage == "Game") {
-                    // Refresh only when the user is already on the Game page; no recursive status polling.
-                    pageArea.postDelayed({ showPage("Game") }, 120)
-                }
+                serverStatusView?.text = saved.second.toString() + "  ·  " + status
             }
         }.start()
     }
@@ -123,6 +119,12 @@ def main() -> int:
     if not ui.exists():
         raise SystemExit(f"[step208] missing UI source: {ui}")
     source = ui.read_text(encoding="utf-8")
+    # Generated UI gets a field so the async reachability check can update only the status label.
+    if "private var serverStatusView: TextView? = null" not in source:
+        anchor = '    private var currentPage = "Game"\n'
+        if anchor not in source:
+            raise SystemExit("[step208] currentPage anchor not found")
+        source = source.replace(anchor, anchor + '    private var serverStatusView: TextView? = null\n', 1)
     if 'val serverHeader = label("Servers"' not in source:
         if MARKER not in source:
             raise SystemExit("[step208] expected Game page account block not found")
@@ -142,8 +144,9 @@ def main() -> int:
     manifests = list(root.glob("**/src/main/AndroidManifest.xml"))
     if manifests:
         patch_manifest(manifests[0])
-    print("[step208] saved server address/port fields installed")
-    print("[step208] TCP reachability status and persistence installed")
+    print("[step208] server name/address/port persistence installed")
+    print("[step208] asynchronous TCP reachability status installed")
+    print("[step208] status updates no longer recurse through page rendering")
     print("[step208] INTERNET permission ensured")
     return 0
 
