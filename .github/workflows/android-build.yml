@@ -42,7 +42,6 @@ jobs:
           rm -rf craftdroid-src
           mkdir -p craftdroid-src
           unzip -q "$ARCHIVE" -d craftdroid-src
-
           if [ ! -f craftdroid-src/gradlew ]; then
             PROJECT_DIR="$(find craftdroid-src -type f -name gradlew -print -quit | xargs -r dirname)"
             test -n "$PROJECT_DIR" || { echo 'gradlew not found anywhere in extracted archive.' >&2; exit 1; }
@@ -52,7 +51,6 @@ jobs:
               rmdir "$PROJECT_DIR"
             fi
           fi
-
           test -d craftdroid-src
           echo '--- extracted project root ---'
           find craftdroid-src -maxdepth 1 -mindepth 1 -printf '%f\n' | sort
@@ -189,7 +187,7 @@ jobs:
           AVAIL_KB="$(df -Pk /home/runner | awk 'NR==2 {print $4}')"
           test "$AVAIL_KB" -ge 9000000 || { echo "Insufficient free disk for emulator: ${AVAIL_KB} KiB available; need at least 9000000 KiB." >&2; exit 1; }
 
-      - name: Step 197 Android emulator smoke test
+      - name: Step 199 Android emulator smoke test
         id: runtime-smoke
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
@@ -201,11 +199,11 @@ jobs:
           disk-size: 2G
           heap-size: 512M
           ram-size: 2048M
-          script: bash tools/ci/runtime_smoke_step174.sh craftdroid-src/app/build/outputs/apk/debug/app-debug.apk artifacts/runtime
+          script: timeout 180s bash tools/ci/runtime_smoke_step174.sh craftdroid-src/app/build/outputs/apk/debug/app-debug.apk artifacts/runtime
           cores: 4
           avd-name: test
           force-avd-creation: true
-          emulator-boot-timeout: 600
+          emulator-boot-timeout: 300
           emulator-port: 5554
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
@@ -213,7 +211,7 @@ jobs:
           enable-hw-keyboard: false
           channel: stable
 
-      - name: Capture Step 197 emulator diagnostics
+      - name: Capture Step 199 emulator diagnostics
         if: always()
         shell: bash
         run: |
@@ -238,18 +236,18 @@ jobs:
             timeout 15s "$ADB" shell dumpsys dropbox --print 2>&1 | grep -Ei -A8 -B2 'data_app_crash|system_app_crash|app_native_crash|system_server_crash|CraftDroid' | tail -n 160 || true
             echo '--- logcat tail ---'
             timeout 15s "$ADB" logcat -d -v threadtime -t 2000 2>&1 || true
-          } > artifacts/runtime/step197-runner-diagnostics.txt 2>&1
-          echo 'Step 197 runner diagnostics captured.'
+          } > artifacts/runtime/step199-runner-diagnostics.txt 2>&1
+          echo 'Step 199 runner diagnostics captured.'
           find artifacts/runtime -maxdepth 2 -type f -printf '%p\n' | sort || true
 
-      - name: Report Step 197 runtime smoke status
+      - name: Report Step 199 runtime smoke status
         if: always()
         shell: bash
         run: |
           if [ "${{ steps.runtime-smoke.outcome }}" = "success" ]; then
-            echo 'Step 197 Android runtime smoke passed.'
+            echo 'Step 199 Android runtime smoke passed.'
           else
-            echo '::warning::Step 197 Android emulator smoke test did not complete successfully. This does not invalidate the APK build; see uploaded runtime diagnostics.'
+            echo '::warning::Step 199 Android emulator smoke test did not complete successfully. This does not invalidate the APK build; see uploaded runtime diagnostics.'
           fi
 
       - name: Snapshot repaired source tree
