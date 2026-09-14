@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
-"""Step 231: pass verified Minecraft classpath/entrypoint paths through launch handoff."""
+"""Step 231/238: pass verified Minecraft launch inputs through the UI handoff.
+
+The generated Step 153 launcher can expose the native-directory path under either
+Step 225's plural extra or a direct launch-native extra. Keep the repair
+pattern-based and fail closed only when no Intent boundary exists at all.
+"""
 from pathlib import Path
+import re
 import sys
 
 
@@ -21,6 +27,17 @@ def nearest_method(s: str, pos: int) -> tuple[int, str]:
     return start, s[start:line_end]
 
 
+def insert_after_line(s: str, anchor_regex: str, insertion: str) -> bool:
+    match = re.search(anchor_regex, s)
+    if not match:
+        return False
+    line_end = s.find("\n", match.end())
+    if line_end < 0:
+        line_end = len(s)
+    s_new = s[:line_end + 1] + insertion + s[line_end + 1:]
+    return s_new
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
     src = root / "app/src/main/java/com/example/launcher"
@@ -34,28 +51,41 @@ def main() -> int:
         raise SystemExit('[step231] canonical launch-path marker missing')
     method_start, method_decl = nearest_method(s, pos)
 
-    insertion = anchor + '''        val launchCommand = MinecraftLaunchCommandBuilder.build(this, version)
-        if (!launchCommand.valid) {
-            Toast.makeText(this, "Minecraft $version launch command is invalid: ${launchCommand.error ?: "unknown error"}", Toast.LENGTH_LONG).show()
-            showPage("Search by ID")
-            return
-        }
-'''
-    if 'val launchCommand = MinecraftLaunchCommandBuilder.build(this, version)' not in s:
-        s = s[:pos] + insertion + s[pos + len(anchor):]
-        # Recalculate marker position after insertion.
-        pos = s.find(anchor, method_start)
+    launch_builder = '        val launchCommand = MinecraftLaunchCommandBuilder.build(this, version)\n'
+    insertion = launch_builder + '''        if (!launchCommand.valid) {\n            Toast.makeText(this, "Minecraft $version launch command is invalid: ${launchCommand.error ?: "unknown error"}", Toast.LENGTH_LONG).show()\n            showPage("Search by ID")\n            return\n        }\n'''
+    if launch_builder not in s:
+        s = s[:pos] + anchor + insertion + s[pos + len(anchor):]
 
-    extras_anchor = '            intent.putExtra("minecraft_natives_dir", launchPaths.nativesDir.absolutePath)\n'
-    extras = extras_anchor + '''            intent.putExtra("minecraft_main_class", launchCommand.mainClass)
-            intent.putExtra("minecraft_classpath", launchCommand.classpathString)
-            intent.putExtra("minecraft_asset_index", launchCommand.assetIndex ?: "")
-            intent.putExtra("minecraft_native_dir", launchCommand.nativeDir.absolutePath)
-'''
+    # Prefer the Step 225 plural native-dir extra when present.
+    extras = '''            intent.putExtra("minecraft_main_class", launchCommand.mainClass)\n            intent.putExtra("minecraft_classpath", launchCommand.classpathString)\n            intent.putExtra("minecraft_asset_index", launchCommand.assetIndex ?: "")\n            intent.putExtra("minecraft_native_dir", launchCommand.nativeDir.absolutePath)\n'''
     if 'intent.putExtra("minecraft_classpath", launchCommand.classpathString)' not in s:
-        if extras_anchor not in s:
-            raise SystemExit('[step231] launch native directory extra anchor missing')
-        s = s.replace(extras_anchor, extras, 1)
+        native_anchor_patterns = (
+            r'^\s*intent\.putExtra\("minecraft_natives_dir", launchPaths\.nativesDir\.absolutePath\)\s*$',
+            r'^\s*intent\.putExtra\("minecraft_native_dir", launchPaths\.nativesDir\.absolutePath\)\s*$',
+        )
+        updated = None
+        for pattern in native_anchor_patterns:
+            candidate = insert_after_line(s, pattern, extras)
+            if candidate:
+                updated = candidate
+                break
+        if updated is None:
+            # Some generated variants already have an Intent but no Step-225 native extra.
+            # Anchor after the first launch-related extra in the selected method.
+            method_end = s.find("\n    private fun ", method_start + 1)
+            if method_end < 0:
+                method_end = len(s)
+            method = s[method_start:method_end]
+            generic = re.search(r'^\s*intent\.putExtra\([^\n]+\)\s*$', method, re.MULTILINE)
+            if generic:
+                abs_line_end = method_start + generic.end()
+                newline = s.find("\n", abs_line_end)
+                if newline < 0:
+                    newline = abs_line_end
+                updated = s[:newline + 1] + extras + s[newline + 1:]
+        if updated is None:
+            raise SystemExit('[step231] no usable launch Intent extra anchor found')
+        s = updated
 
     marker = '// Step 231 launch handoff: verified main class, classpath, asset index and native directory.\n'
     if marker not in s:
@@ -82,6 +112,7 @@ def main() -> int:
     print(f'[step231] launch handoff inserted into {method_decl.strip()}')
     print('[step231] launch command is built from the selected installed version metadata')
     print('[step231] computed main class, classpath, asset index and native directory are passed to launch')
+    print('[step238] native-directory extra anchor now accepts generated launcher variants')
     return 0
 
 
