@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: droid-launcher-step231-${{ github.ref }}
+  group: droid-launcher-step232-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -40,6 +40,7 @@ jobs:
           cp -f app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt droid-src/app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt
           cp -f app/src/main/java/com/example/launcher/MinecraftLaunchPaths.kt droid-src/app/src/main/java/com/example/launcher/MinecraftLaunchPaths.kt
           cp -f app/src/main/java/com/example/launcher/MinecraftLaunchCommandBuilder.kt droid-src/app/src/main/java/com/example/launcher/MinecraftLaunchCommandBuilder.kt
+          cp -f app/src/main/java/com/example/launcher/MinecraftLaunchHandoff.kt droid-src/app/src/main/java/com/example/launcher/MinecraftLaunchHandoff.kt
           cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
           cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
           cp -f app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt droid-src/app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt
@@ -108,27 +109,33 @@ jobs:
         run: python3 tools/ci/repair_step230_complete_launch_preflight.py droid-src
       - name: Apply Step 231 verified launch handoff
         run: python3 tools/ci/repair_step231_launch_handoff.py droid-src
+      - name: Apply Step 232 launch handoff consumer
+        run: python3 tools/ci/repair_step232_launch_handoff_consumer.py droid-src
 
-      - name: Verify complete Minecraft launch handoff
+      - name: Verify complete Minecraft launch handoff consumer
         shell: bash
         run: |
           set -euo pipefail
-          MANAGER=$(find droid-src/app/src/main -type f -name 'MinecraftLaunchManager.kt' -print -quit)
           INSTALLER=$(find droid-src/app/src/main -type f -name 'MinecraftVersionInstallManager.kt' -print -quit)
           UI=$(find droid-src/app/src/main -type f -name 'DroidLauncherUiActivity.kt' -print -quit)
           BUILDER=$(find droid-src/app/src/main -type f -name 'MinecraftLaunchCommandBuilder.kt' -print -quit)
-          test -n "$MANAGER" && test -n "$INSTALLER" && test -n "$UI" && test -n "$BUILDER"
+          HANDOFF=$(find droid-src/app/src/main -type f -name 'MinecraftLaunchHandoff.kt' -print -quit)
+          MANAGER=$(find droid-src/app/src/main -type f -name 'MinecraftLaunchManager.kt' -print -quit)
+          test -n "$INSTALLER" && test -n "$UI" && test -n "$BUILDER" && test -n "$HANDOFF" && test -n "$MANAGER"
           grep -F 'fun isLaunchReady(context: Context, version: String): Boolean' "$INSTALLER" >/dev/null
-          grep -F 'MinecraftVersionInstallManager.isLaunchReady' "$UI" >/dev/null
           grep -F 'MinecraftLaunchCommandBuilder.build(this, version)' "$UI" >/dev/null
           grep -F 'intent.putExtra("minecraft_main_class", launchCommand.mainClass)' "$UI" >/dev/null
           grep -F 'intent.putExtra("minecraft_classpath", launchCommand.classpathString)' "$UI" >/dev/null
           grep -F 'intent.putExtra("minecraft_asset_index", launchCommand.assetIndex ?: "")' "$UI" >/dev/null
           grep -F 'intent.putExtra("minecraft_native_dir", launchCommand.nativeDir.absolutePath)' "$UI" >/dev/null
-          grep -F 'object MinecraftLaunchCommandBuilder' "$BUILDER" >/dev/null
-          grep -F 'classpathString' "$BUILDER" >/dev/null
-          grep -F 'nativeDir' "$BUILDER" >/dev/null
-          grep -F 'mainClass' "$BUILDER" >/dev/null
+          grep -F 'object MinecraftLaunchHandoffReader' "$HANDOFF" >/dev/null
+          grep -F 'fun read(intent: Intent): MinecraftLaunchHandoff' "$HANDOFF" >/dev/null
+          grep -F 'intent.getStringExtra("minecraft_version")' "$HANDOFF" >/dev/null
+          grep -F 'intent.getStringExtra("minecraft_main_class")' "$HANDOFF" >/dev/null
+          grep -F 'intent.getStringExtra("minecraft_classpath")' "$HANDOFF" >/dev/null
+          grep -F 'intent.getStringExtra("minecraft_native_dir")' "$HANDOFF" >/dev/null
+          grep -F 'classpath.any { !it.isFile || it.length() <= 0L }' "$HANDOFF" >/dev/null
+          grep -F 'if (!nativeDir.isDirectory)' "$HANDOFF" >/dev/null
           grep -F 'javaManager.ensureRuntime(resolveLaunchJavaRuntime(requiredJava))' "$MANAGER" >/dev/null
           grep -F 'rendererManager.ensureNativeStack(requestedNativeLwjgl)' "$MANAGER" >/dev/null
           grep -F 'LaunchPreflight.verify(' "$MANAGER" >/dev/null
@@ -163,7 +170,7 @@ jobs:
         run: gradle --no-daemon --stacktrace :app:testDebugUnitTest
       - name: Report unit-test result
         if: always()
-        run: echo "Step 231 unit-test outcome: ${{ steps.unit-tests.outcome }}"
+        run: echo "Step 232 unit-test outcome: ${{ steps.unit-tests.outcome }}"
       - name: Build Droid Launcher APK
         working-directory: droid-src
         shell: bash
@@ -178,9 +185,9 @@ jobs:
           APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           mkdir -p artifacts/apk
-          cp "$APK" artifacts/apk/Droid-Launcher-Step231-debug.apk
+          cp "$APK" artifacts/apk/Droid-Launcher-Step232-debug.apk
           sha256sum "$APK" | tee artifacts/apk/SHA256SUMS.txt
-          echo 'Droid Launcher Step 231 APK created:'
+          echo 'Droid Launcher Step 232 APK created:'
           ls -lh "$APK"
       - name: APK runtime preflight
         shell: bash
@@ -190,14 +197,14 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step231-debug
+          name: Droid-Launcher-Step232-debug
           path: artifacts/apk/*
           if-no-files-found: error
       - name: Upload build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step231-diagnostics
+          name: Droid-Launcher-Step232-diagnostics
           path: |
             artifacts/build/**
             droid-src/app/build/reports/**
