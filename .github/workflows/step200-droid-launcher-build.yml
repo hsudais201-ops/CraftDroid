@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: droid-launcher-step220-${{ github.ref }}
+  group: droid-launcher-step221-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -19,7 +19,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Prepare consolidated source
         shell: bash
         run: |
@@ -43,66 +42,48 @@ jobs:
 
       - name: Apply Droid Launcher branding
         run: python3 tools/ci/apply_droid_launcher_branding.py droid-src
-
       - name: Apply Step 153 source repairs
         run: python3 tools/ci/repair_step153.py droid-src
-
       - name: Apply Step 154 test repairs
         run: python3 tools/ci/repair_step154_tests.py droid-src
-
       - name: Apply Step 155 native repairs
         run: python3 tools/ci/repair_step155_cpp.py droid-src
-
       - name: Apply Step 177 World Manager integration
         run: python3 tools/ci/apply_step177_world_manager.py droid-src
-
       - name: Apply Step 202 Kotlin compile repairs
         run: python3 tools/ci/repair_step202_kotlin.py droid-src
-
       - name: Apply Step 205 Zalith-style UI
         run: python3 tools/ci/apply_step205_zalith_style_ui.py droid-src
-
       - name: Repair Step 205 UI wiring
         run: python3 tools/ci/repair_step205_ui.py droid-src
-
       - name: Apply Step 207 home server panel
         run: python3 tools/ci/repair_step207_server_ui.py droid-src
-
       - name: Apply Step 209 multi-server management
         run: python3 tools/ci/repair_step209_server_list.py droid-src
-
       - name: Apply Step 210 selected-server launch integration
         run: python3 tools/ci/repair_step210_server_launch.py droid-src
-
       - name: Apply Step 211 Minecraft server status query
         run: python3 tools/ci/repair_step211_minecraft_server_query.py droid-src
-
       - name: Apply Step 212 server UI polish
         run: python3 tools/ci/repair_step212_server_ui.py droid-src
-
       - name: Apply Step 213 server card styling and refresh fix
         run: python3 tools/ci/repair_step213_server_cards.py droid-src
-
       - name: Apply Step 214 server detail screen
         run: python3 tools/ci/repair_step214_server_detail.py droid-src
-
       - name: Apply Step 215 launch validation and feedback
         run: python3 tools/ci/repair_step215_launch_feedback.py droid-src
-
       - name: Apply Step 216 launch progress overlay
         run: python3 tools/ci/repair_step216_launch_progress.py droid-src
-
       - name: Apply Step 217 Java Runtime Manager UI
         run: python3 tools/ci/repair_step217_java_runtime_ui.py droid-src
-
       - name: Apply Step 218 Minecraft-version Java profile resolver
         run: python3 tools/ci/repair_step218_java_profile.py droid-src
-
       - name: Apply Step 219 Java preference launch binding
         run: python3 tools/ci/repair_step219_launch_java_binding.py droid-src
-
       - name: Apply Step 220 Minecraft version/profile launch binding
         run: python3 tools/ci/repair_step220_version_launch_binding.py droid-src
+      - name: Apply Step 221 launcher-style version selector
+        run: python3 tools/ci/repair_step221_version_selector.py droid-src
 
       - name: Verify Java and Minecraft launch contract
         shell: bash
@@ -117,7 +98,9 @@ jobs:
           grep -F 'intent.putExtra("minecraft_version", selectedVersion)' "$UI" >/dev/null
           grep -F 'intent.putExtra("minecraft_profile", selectedProfile)' "$UI" >/dev/null
           grep -F 'intent.putExtra("minecraft_java", resolvedJava)' "$UI" >/dev/null
-          grep -F 'private fun recommendedJavaForVersion(version: String): Int' "$UI" >/dev/null
+          grep -F 'private fun selectedMinecraftVersion(): String' "$UI" >/dev/null
+          grep -F 'private fun selectedMinecraftProfile(): String' "$UI" >/dev/null
+          grep -F 'private fun launchSelectedMinecraft()' "$UI" >/dev/null
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -125,38 +108,30 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
-
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
-
       - name: Install Android SDK, NDK and CMake
         shell: bash
         run: |
           set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
-
       - name: Set up Gradle 9.6.0 directly
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.6.0'
           validate-wrappers: false
-
       - name: Validate project
         working-directory: droid-src
         run: gradle --no-daemon --stacktrace :app:tasks --all
-
       - name: Run unit tests
         id: unit-tests
         continue-on-error: true
         working-directory: droid-src
         run: gradle --no-daemon --stacktrace :app:testDebugUnitTest
-
       - name: Report unit-test result
         if: always()
-        run: |
-          echo "Step 220 unit-test outcome: ${{ steps.unit-tests.outcome }}"
-
+        run: echo "Step 221 unit-test outcome: ${{ steps.unit-tests.outcome }}"
       - name: Build Droid Launcher APK
         working-directory: droid-src
         shell: bash
@@ -164,7 +139,6 @@ jobs:
           set -o pipefail
           mkdir -p ../artifacts/build
           gradle --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee ../artifacts/build/assembleDebug.log
-
       - name: Verify Droid Launcher APK
         shell: bash
         run: |
@@ -172,29 +146,26 @@ jobs:
           APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           mkdir -p artifacts/apk
-          cp "$APK" artifacts/apk/Droid-Launcher-Step220-debug.apk
+          cp "$APK" artifacts/apk/Droid-Launcher-Step221-debug.apk
           sha256sum "$APK" | tee artifacts/apk/SHA256SUMS.txt
-          echo 'Droid Launcher Step 220 APK created:'
+          echo 'Droid Launcher Step 221 APK created:'
           ls -lh "$APK"
-
       - name: APK runtime preflight
         shell: bash
         run: |
           set -euo pipefail
           python3 tools/ci/verify_runtime_preflight.py droid-src/app/build/outputs/apk/debug/app-debug.apk | tee artifacts/build/runtime-preflight.txt
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step220-debug
+          name: Droid-Launcher-Step221-debug
           path: artifacts/apk/*
           if-no-files-found: error
-
       - name: Upload build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step220-diagnostics
+          name: Droid-Launcher-Step221-diagnostics
           path: |
             artifacts/build/**
             droid-src/app/build/reports/**
