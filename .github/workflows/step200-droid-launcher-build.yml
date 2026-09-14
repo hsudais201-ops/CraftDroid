@@ -1,0 +1,111 @@
+name: Step 200 - Droid Launcher consolidated build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: droid-launcher-step200-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare consolidated source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf droid-src
+          mkdir -p droid-src
+          unzip -q CraftDroid_Launcher_2.4_GitHubActions_Step153.zip -d droid-src
+          if [ ! -f droid-src/gradlew ]; then
+            ROOT="$(find droid-src -type f -name gradlew -print -quit | xargs -r dirname)"
+            test -n "$ROOT"
+            shopt -s dotglob
+            mv "$ROOT"/* droid-src/
+            rmdir "$ROOT"
+          fi
+          # Overlay newer source that was restored into the repository.
+          cp -f app/src/main/java/com/example/launcher/LaunchArgumentResolver.kt droid-src/app/src/main/java/com/example/launcher/LaunchArgumentResolver.kt
+          cp -f app/src/main/java/com/example/launcher/LaunchArgumentsValidator.kt droid-src/app/src/main/java/com/example/launcher/LaunchArgumentsValidator.kt
+          cp -f app/src/main/java/com/example/launcher/LaunchArtifactResolver.kt droid-src/app/src/main/java/com/example/launcher/LaunchArtifactResolver.kt
+          cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
+          cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
+          cp -f app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt droid-src/app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt
+
+      - name: Apply Droid Launcher branding
+        run: python3 tools/ci/apply_droid_launcher_branding.py droid-src
+
+      - name: Apply Step 153 source repairs
+        run: python3 tools/ci/repair_step153.py droid-src
+
+      - name: Apply Step 154 test repairs
+        run: python3 tools/ci/repair_step154_tests.py droid-src
+
+      - name: Apply Step 155 native repairs
+        run: python3 tools/ci/repair_step155_cpp.py droid-src
+
+      - name: Apply Step 177 World Manager integration
+        run: python3 tools/ci/apply_step177_world_manager.py droid-src
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android SDK, NDK and CMake
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+
+      - name: Set up Gradle 9.6.0 directly
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Validate project
+        working-directory: droid-src
+        run: gradle --no-daemon --stacktrace help
+
+      - name: Run unit tests
+        working-directory: droid-src
+        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest
+
+      - name: Build Droid Launcher APK
+        working-directory: droid-src
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Verify Droid Launcher APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          mkdir -p artifacts
+          cp "$APK" artifacts/Droid-Launcher-Step200-debug.apk
+          sha256sum "$APK" | tee artifacts/SHA256SUMS.txt
+          echo 'Droid Launcher APK created:'
+          ls -lh "$APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Droid-Launcher-Step200-debug
+          path: artifacts/*
+          if-no-files-found: error
