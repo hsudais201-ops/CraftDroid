@@ -15,7 +15,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 70
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -189,7 +189,7 @@ jobs:
           AVAIL_KB="$(df -Pk /home/runner | awk 'NR==2 {print $4}')"
           test "$AVAIL_KB" -ge 9000000 || { echo "Insufficient free disk for emulator: ${AVAIL_KB} KiB available; need at least 9000000 KiB." >&2; exit 1; }
 
-      - name: Step 174 Android emulator smoke test
+      - name: Step 195 Android emulator smoke test
         id: runtime-smoke
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
@@ -200,12 +200,12 @@ jobs:
           profile: pixel_2
           disk-size: 2G
           heap-size: 512M
-          ram-size: 1024M
+          ram-size: 2048M
           script: bash tools/ci/runtime_smoke_step174.sh craftdroid-src/app/build/outputs/apk/debug/app-debug.apk artifacts/runtime
-          cores: 2
+          cores: 4
           avd-name: test
           force-avd-creation: true
-          emulator-boot-timeout: 300
+          emulator-boot-timeout: 600
           emulator-port: 5554
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
@@ -213,7 +213,7 @@ jobs:
           enable-hw-keyboard: false
           channel: stable
 
-      - name: Capture Step 174 emulator diagnostics
+      - name: Capture Step 195 emulator diagnostics
         if: always()
         shell: bash
         run: |
@@ -238,15 +238,15 @@ jobs:
             timeout 15s "$ADB" shell dumpsys dropbox --print 2>&1 | grep -Ei -A8 -B2 'data_app_crash|system_app_crash|app_native_crash|system_server_crash|CraftDroid' | tail -n 160 || true
             echo '--- logcat tail ---'
             timeout 15s "$ADB" logcat -d -v threadtime -t 2000 2>&1 || true
-          } > artifacts/runtime/step174-runner-diagnostics.txt 2>&1
-          echo 'Step 174 runner diagnostics captured.'
+          } > artifacts/runtime/step195-runner-diagnostics.txt 2>&1
+          echo 'Step 195 runner diagnostics captured.'
           find artifacts/runtime -maxdepth 2 -type f -printf '%p\n' | sort || true
 
-      - name: Fail when Step 174 runtime smoke fails
+      - name: Fail when Step 195 runtime smoke fails
         if: steps.runtime-smoke.outcome != 'success'
         shell: bash
         run: |
-          echo 'Step 174 runtime smoke failed. See uploaded emulator diagnostics.' >&2
+          echo 'Step 195 runtime smoke failed. See uploaded emulator diagnostics.' >&2
           exit 1
 
       - name: Snapshot repaired source tree
