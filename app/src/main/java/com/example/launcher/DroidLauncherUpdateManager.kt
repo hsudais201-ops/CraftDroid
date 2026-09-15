@@ -8,6 +8,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URI
 import java.security.MessageDigest
 import java.util.concurrent.Executors
 
@@ -23,6 +24,7 @@ object DroidLauncherUpdateManager {
     private const val CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
     private const val MAX_APK_BYTES = 512L * 1024L * 1024L
     private const val MAX_TEXT_BYTES = 2L * 1024L * 1024L
+    private const val MAX_REDIRECTS = 3
     private val executor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -127,25 +129,45 @@ object DroidLauncherUpdateManager {
     }
 
     private fun open(rawUrl: String): HttpURLConnection {
-        val parsed = URL(rawUrl)
-        require(parsed.protocol.equals("https", true)) { "HTTPS required" }
-        require(isGithubDownloadUrl(rawUrl) || parsed.host.equals("api.github.com", true)) {
-            "Untrusted updater host"
+        var current = URL(rawUrl)
+        repeat(MAX_REDIRECTS + 1) { attempt ->
+            requireTrustedUrl(current)
+            val connection = (current.openConnection() as HttpURLConnection).apply {
+                connectTimeout = 20_000
+                readTimeout = 60_000
+                instanceFollowRedirects = false
+                requestMethod = "GET"
+                setRequestProperty("User-Agent", "Droid-Launcher/${Build.VERSION.SDK_INT}")
+                setRequestProperty("Accept", "application/json, application/octet-stream, */*")
+            }
+            val code = connection.responseCode
+            if (code !in 300..399) return connection
+            val location = connection.getHeaderField("Location")
+            connection.disconnect()
+            if (location.isNullOrBlank()) error("Redirect has no Location header")
+            if (attempt >= MAX_REDIRECTS) error("Too many redirects")
+            current = URI(current.toString()).resolve(location).toURL()
         }
-        return (parsed.openConnection() as HttpURLConnection).apply {
-            connectTimeout = 20_000
-            readTimeout = 60_000
-            instanceFollowRedirects = false
-            requestMethod = "GET"
-            setRequestProperty("User-Agent", "Droid-Launcher/${Build.VERSION.SDK_INT}")
-            setRequestProperty("Accept", "application/json, application/octet-stream, */*")
-        }
+        error("Redirect resolution failed")
+    }
+
+    private fun requireTrustedUrl(url: URL) {
+        require(url.protocol.equals("https", true)) { "HTTPS required" }
+        val host = url.host.lowercase()
+        require(
+            host == "api.github.com" ||
+                host == "github.com" ||
+                host == "objects.githubusercontent.com" ||
+                host.endsWith(".githubusercontent.com")
+        ) { "Untrusted updater host" }
     }
 
     private fun isGithubDownloadUrl(rawUrl: String): Boolean = try {
-        val host = URL(rawUrl).host.lowercase()
-        URL(rawUrl).protocol.equals("https", true) &&
-            (host == "github.com" || host == "objects.githubusercontent.com" || host.endsWith(".githubusercontent.com"))
+        val url = URL(rawUrl)
+        url.protocol.equals("https", true) && when (url.host.lowercase()) {
+            "github.com", "objects.githubusercontent.com" -> true
+            else -> url.host.lowercase().endsWith(".githubusercontent.com")
+        }
     } catch (_: Throwable) {
         false
     }
