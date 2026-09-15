@@ -184,9 +184,15 @@ jobs:
         run: |
           set -euo pipefail
           APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
-          aapt2 dump badging "$APK" | tee artifacts/build/apk-badging.txt
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
+          test -x "$BUILD_TOOLS/aapt2"
+          test -x "$BUILD_TOOLS/aapt"
+          test -x "$BUILD_TOOLS/apksigner"
+          export PATH="$BUILD_TOOLS:$PATH"
+          "$BUILD_TOOLS/aapt2" dump badging "$APK" | tee artifacts/build/apk-badging.txt
           grep -F "package: name='com.craftdroid.launcher'" artifacts/build/apk-badging.txt
-          apksigner verify --verbose "$APK" | tee artifacts/build/apk-signature.txt
+          "$BUILD_TOOLS/apksigner" verify --verbose "$APK" | tee artifacts/build/apk-signature.txt
+          echo "APK package/signature verification: PASS"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
