@@ -58,16 +58,22 @@ class MinecraftProcessMonitor(
                 val lower = chunk.lowercase()
                 classifyFailure(lower)?.let { emit(it.first, it.second) }
                 if (!lwjglReady && (("lwjgl" in lower && ("initialized" in lower || "version" in lower)) || "opengl version" in lower)) {
-                    lwjglReady = true; emit(EventType.LWJGL_READY, "Minecraft reached LWJGL/OpenGL initialization")
+                    lwjglReady = true
+                    emit(EventType.LWJGL_READY, "Minecraft reached LWJGL/OpenGL initialization")
                 }
                 if (!resourceReady && ("reloading resourcemanager" in lower || "resource reload" in lower || "resource manager" in lower)) {
-                    resourceReady = true; emit(EventType.RESOURCE_READY, "Minecraft resource system initialized")
+                    resourceReady = true
+                    emit(EventType.RESOURCE_READY, "Minecraft resource system initialized")
                 }
                 if (!audioReady && ("sound engine started" in lower || ("openal" in lower && "initialized" in lower))) {
-                    audioReady = true; emit(EventType.AUDIO_READY, "Minecraft audio system initialized")
+                    audioReady = true
+                    emit(EventType.AUDIO_READY, "Minecraft audio system initialized")
                 }
                 if ("joining world" in lower || "loading world" in lower || "preparing spawn" in lower || "entering world" in lower) {
-                    if (!inGame) { inGame = true; emit(EventType.IN_GAME, "Minecraft world/in-game state detected") }
+                    if (!inGame) {
+                        inGame = true
+                        emit(EventType.IN_GAME, "Minecraft world/in-game state detected")
+                    }
                 }
             }
 
@@ -75,20 +81,27 @@ class MinecraftProcessMonitor(
             if (state != lastObservedState) {
                 lastObservedState = state
                 if (state == 2) emit(EventType.JVM_RUNNING, "Embedded Minecraft JVM entered RUNNING state")
-                if (state == 4) { emit(EventType.JVM_STOPPED, "Embedded Minecraft JVM exited"); return }
+                if (state == 4) {
+                    emit(EventType.JVM_STOPPED, "Embedded Minecraft JVM exited")
+                    return
+                }
             }
             if (!menuReady && !inGame && lwjglReady && resourceReady && audioReady && now - startedAt >= 1500L) {
-                menuReady = true; emit(EventType.MENU_READY, "Minecraft menu readiness inferred from renderer + resources + audio")
+                menuReady = true
+                emit(EventType.MENU_READY, "Minecraft menu readiness inferred from renderer + resources + audio")
             }
 
             val frames = NativeGameBridge.renderFrameCount()
-            if (frames > lastFrameCount) { lastFrameCount = frames; lastProgressAt = now }
-            else if (lwjglReady && now - lastProgressAt >= 8_000L) {
+            if (frames > lastFrameCount) {
+                lastFrameCount = frames
+                lastProgressAt = now
+            } else if (lwjglReady && now - lastProgressAt >= 8_000L) {
                 emit(EventType.GLFW_FAILURE, "Renderer heartbeat stalled for at least 8 seconds; investigate GLFW/EGL/native graphics logs")
                 lastProgressAt = now
             }
             if (state == 0 && now - startedAt >= 120_000L) {
-                emit(EventType.MONITOR_TIMEOUT, "Minecraft monitor reached its 120-second observation window"); return
+                emit(EventType.MONITOR_TIMEOUT, "Minecraft monitor reached its 120-second observation window")
+                return
             }
             delay(250L)
         }
@@ -99,14 +112,30 @@ class MinecraftProcessMonitor(
         runCatching {
             val length = logFile.length()
             if (length <= currentOffset) return
+
+            // Never materialize an unbounded Minecraft log into RAM. On a 2GB
+            // phone a runaway log can otherwise compete directly with the JVM.
+            val maxBytes = 256L * 1024L
+            val start = maxOf(currentOffset, length - maxBytes)
             logFile.inputStream().use { input ->
-                var skipped = input.skip(currentOffset)
-                while (skipped < currentOffset) {
-                    val more = input.skip(currentOffset - skipped)
-                    if (more <= 0) break
-                    skipped += more
+                var skipped = 0L
+                while (skipped < start) {
+                    val requested = minOf(start - skipped, 64L * 1024L).toInt()
+                    val skippedNow = input.skip(requested.toLong())
+                    if (skippedNow <= 0L) break
+                    skipped += skippedNow
                 }
-                consumer(input.readBytes().toString(Charsets.UTF_8), length)
+                val buffer = ByteArray(64 * 1024)
+                val builder = StringBuilder(minOf(maxBytes, length - start).toInt())
+                var totalRead = 0L
+                while (totalRead < maxBytes) {
+                    val requested = minOf(buffer.size.toLong(), maxBytes - totalRead).toInt()
+                    val read = input.read(buffer, 0, requested)
+                    if (read <= 0) break
+                    builder.append(String(buffer, 0, read, Charsets.UTF_8))
+                    totalRead += read.toLong()
+                }
+                consumer(builder.toString(), length)
             }
         }.onFailure { LauncherLogger.warn("Minecraft process monitor could not read log: ${it.message}") }
     }
