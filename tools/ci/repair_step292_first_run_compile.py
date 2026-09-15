@@ -2,6 +2,39 @@
 from pathlib import Path
 import sys
 
+TEXT_EXTENSIONS = {
+    ".kt", ".java", ".xml", ".properties", ".md", ".txt", ".py",
+    ".yml", ".yaml", ".gradle", ".kts", ".json", ".html", ".css", ".js",
+}
+
+
+def scrub_generated_branding(root: Path) -> int:
+    legacy_brand = "Za" + "lith Launcher"
+    legacy_style = "Za" + "lith-style"
+    changed = 0
+    for path in root.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in TEXT_EXTENSIONS:
+            continue
+        try:
+            source = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        updated = source.replace(legacy_brand, "Droid Launcher").replace(legacy_style, "Droid-style")
+        if updated != source:
+            path.write_text(updated, encoding="utf-8")
+            changed += 1
+    for path in root.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in TEXT_EXTENSIONS:
+            continue
+        try:
+            source = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        if legacy_brand in source or legacy_style in source:
+            raise SystemExit(f"[step292] legacy launcher branding remains in {path}")
+    return changed
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
     ui = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
@@ -31,7 +64,8 @@ def main() -> int:
     s = s.replace("setTextColor(this@DroidLauncherUiActivity.text)", "setTextColor(primaryText)")
     s = s.replace("setTextColor(text)", "setTextColor(primaryText)")
     ui.write_text(s, encoding="utf-8")
-    print("[step300] hardened first-run component gate applied")
+    changed = scrub_generated_branding(root)
+    print(f"[step300] hardened first-run component gate applied; branding_files_scrubbed={changed}")
     return 0
 
 if __name__ == "__main__":
