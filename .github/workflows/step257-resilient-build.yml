@@ -36,7 +36,8 @@ jobs:
             rmdir "$ROOT"
           fi
           mkdir -p droid-src/app/src/main/java/com/example/launcher
-          for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "droid-src/app/src/main/java/com/example/launcher/$f"; done
+          for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt MinecraftLaunchManager.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "droid-src/app/src/main/java/com/example/launcher/$f"; done
+          mkdir -p droid-src/app/src/main/java/com/example/logs droid-src/app/src/main/java/com/example/renderer
           cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
           cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
           cp -f app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt droid-src/app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt
@@ -132,6 +133,22 @@ jobs:
         run: python3 tools/ci/repair_step295_final_navigation.py droid-src
       - name: Repair Android EditText property mappings
         run: python3 tools/ci/repair_step297_android_edittext_properties.py droid-src
+      - name: Restore canonical launch-contract sources after final UI generation
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC=droid-src/app/src/main/java/com/example/launcher
+          for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt MinecraftLaunchManager.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "$SRC/$f"; done
+          cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
+          cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
+          cp -f app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt droid-src/app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt
+      - name: Reapply final launch handoff validation and trust hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step234_handoff_validation_launch_gate.py droid-src
+          python3 tools/ci/repair_step235_launch_runtime_guard.py droid-src
+          python3 tools/ci/repair_step236_download_trust.py droid-src
       - name: Deep source quality pass - 1000 content-dependent checks
         shell: bash
         run: |
@@ -202,10 +219,7 @@ jobs:
           gradle --no-daemon --stacktrace :app:lintDebug 2>&1 | tee ../artifacts/build/lintDebug.log
           status=${PIPESTATUS[0]}
           echo "LINT_EXIT=$status"
-          echo '--- LINT REPORT SUMMARY ---'
           if [ -f app/build/reports/lint-results-debug.txt ]; then sed -n '1,240p' app/build/reports/lint-results-debug.txt; fi
-          if [ -f app/build/reports/lint-results-debug.xml ]; then grep -o '<issue[^>]*severity="error"[^>]*' app/build/reports/lint-results-debug.xml | head -80 || true; fi
-          find app/build/reports -type f -maxdepth 4 -print 2>/dev/null | sort | head -100 || true
           exit "$status"
       - name: Run unit tests
         working-directory: droid-src
