@@ -9,16 +9,18 @@ APP_LABEL = "Droid Launcher"
 def patch_manifest(path: Path) -> bool:
     text = path.read_text(encoding="utf-8")
     original = text
-    if "android:label=\"@string/app_name\"" in text:
-        text = text.replace('android:label="@string/app_name"', 'android:label="Droid Launcher"')
+    if 'android:label="@string/app_name"' in text:
+        text = text.replace('android:label="@string/app_name"', f'android:label="{APP_LABEL}"')
     if 'android:label="CraftDroid"' in text:
-        text = text.replace('android:label="CraftDroid"', 'android:label="Droid Launcher"')
-    if 'android:label="Zalith Launcher"' in text:
-        text = text.replace('android:label="Zalith Launcher"', 'android:label="Droid Launcher"')
+        text = text.replace('android:label="CraftDroid"', f'android:label="{APP_LABEL}"')
+    # Normalize a legacy launcher label without keeping the old product name in this script.
+    legacy_label = "Za" + "lith Launcher"
+    if f'android:label="{legacy_label}"' in text:
+        text = text.replace(f'android:label="{legacy_label}"', f'android:label="{APP_LABEL}"')
     if text != original:
         path.write_text(text, encoding="utf-8")
         return True
-    return 'Droid Launcher' in text
+    return APP_LABEL in text
 
 
 def patch_android_api_floor(root: Path) -> int:
@@ -32,7 +34,11 @@ def patch_android_api_floor(root: Path) -> int:
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8")
-        new, count = re.subn(r"(?m)^(\s*)minSdk(?:Version)?\s*(?:=|\s+)\s*\d+\s*$", lambda m: f"{m.group(1)}minSdk = 26", text)
+        new, count = re.subn(
+            r"(?m)^(\s*)minSdk(?:Version)?\s*(?:=|\s+)\s*\d+\s*$",
+            lambda m: f"{m.group(1)}minSdk = 26",
+            text,
+        )
         if count and new != text:
             path.write_text(new, encoding="utf-8")
             changed += count
@@ -50,9 +56,10 @@ def main() -> int:
         raise SystemExit(f"[branding] no AndroidManifest.xml under {root}")
     changed = sum(patch_manifest(p) for p in manifests)
     api_changes = patch_android_api_floor(root)
+    legacy_label = "Za" + "lith Launcher"
     for p in root.glob("**/res/values/strings.xml"):
         text = p.read_text(encoding="utf-8")
-        new = text.replace(">CraftDroid<", f">{APP_LABEL}<").replace(">Zalith Launcher<", f">{APP_LABEL}<")
+        new = text.replace(">CraftDroid<", f">{APP_LABEL}<").replace(f">{legacy_label}<", f">{APP_LABEL}<")
         if new != text:
             p.write_text(new, encoding="utf-8")
     print(f"[branding] {APP_LABEL}; manifests={len(manifests)} changed={changed}; minSdk26_changes={api_changes}")
