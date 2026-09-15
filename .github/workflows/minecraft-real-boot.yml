@@ -20,7 +20,7 @@ jobs:
   boot:
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == github.event.repository.default_branch) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - name: Select source commit
         shell: bash
@@ -32,11 +32,6 @@ jobs:
           else
             TARGET_SHA="$GITHUB_SHA"
             SOURCE_RUN_ID='${{ inputs.apk_build_run_id }}'
-          fi
-          if [ -n "$SOURCE_RUN_ID" ]; then
-            echo "Using APK build run ID $SOURCE_RUN_ID."
-          else
-            echo 'No explicit APK build run ID supplied.'
           fi
           printf '%s\n' "$TARGET_SHA" > target-sha.txt
           printf '%s\n' "$SOURCE_RUN_ID" > source-run-id.txt
@@ -81,7 +76,6 @@ jobs:
             test "$BUILD_STATUS" = success
             test "$BUILD_SHA" = "$TARGET_SHA" || {
               echo "APK build run $SOURCE_RUN_ID targets $BUILD_SHA but boot test targets $TARGET_SHA." >&2
-              echo 'Supply an APK build run from the same source commit.' >&2
               exit 1
             }
             found="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
@@ -117,8 +111,19 @@ jobs:
             echo "apk=$(basename "$APK")"
           } | tee artifacts/apk/test-identity.txt
 
-      - name: Install Android SDK
-        uses: android-actions/setup-android@v4
+      - name: Install Android SDK command-line packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -path '*/bin/sdkmanager' -print -quit)"
+          fi
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "emulator" "build-tools;36.0.0" "platforms;android-35" "system-images;android-35;google_apis;x86_64"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
 
       - name: Preflight APK for x86_64 Android emulator
         shell: bash
@@ -145,6 +150,14 @@ jobs:
             echo "required_native=lib/x86_64/libcraftdroidbridge.so"
           } | tee artifacts/apk/apk-preflight.txt
 
+      - name: Verify emulator prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          emulator -version
+          adb version
+          test -d "$ANDROID_HOME/system-images/android-35/google_apis/x86_64"
+
       - name: Start Android emulator and run Step 190 real boot harness
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -152,20 +165,24 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          disk-size: 3G
+          disk-size: 4G
           heap-size: 512M
           ram-size: 1536M
           cores: 2
           avd-name: craftdroid-real-boot
           force-avd-creation: true
-          emulator-boot-timeout: 600
+          emulator-boot-timeout: 900
           emulator-port: 5554
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
           enable-hw-keyboard: false
           channel: stable
           script: |
+            set -euo pipefail
             mkdir -p artifacts/runtime
+            adb shell getprop ro.product.cpu.abi | tee artifacts/runtime/emulator-abi.txt
+            adb shell getprop ro.build.version.sdk | tee artifacts/runtime/emulator-api.txt
+            adb wait-for-device
             bash tools/ci/real_minecraft_boot_step182.sh "$APK" artifacts/runtime artifacts/fixture
 
       - name: Upload Step 196 diagnostics
