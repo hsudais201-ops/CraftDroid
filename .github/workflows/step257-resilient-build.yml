@@ -40,6 +40,10 @@ jobs:
           cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
           cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
           cp -f app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt droid-src/app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt
+          if [ -d app/src/main/assets ]; then
+            mkdir -p droid-src/app/src/main/assets
+            cp -a app/src/main/assets/. droid-src/app/src/main/assets/
+          fi
       - name: Normalize Gradle settings for CI
         shell: bash
         run: |
@@ -116,6 +120,10 @@ jobs:
           python3 tools/ci/repair_step236_download_trust.py droid-src
       - name: Step 257 final Feature Center repair
         run: python3 tools/ci/repair_step257_feature_center_after_ui.py droid-src
+      - name: Step 286 final Home and Account GUI
+        run: python3 tools/ci/apply_step286_home_account_gui.py droid-src
+      - name: Step 287 first-run launcher components GUI
+        run: python3 tools/ci/apply_step287_first_run_components_gui.py droid-src
       - name: Verify generated source contracts
         shell: bash
         run: |
@@ -125,6 +133,7 @@ jobs:
           python3 tools/ci/verify_step235_audit.py droid-src
           python3 tools/ci/verify_step236_download_trust.py droid-src
           python3 tools/ci/verify_step239_generated_kotlin.py droid-src
+          python3 tools/ci/verify_step287_first_run_components.py droid-src
           grep -F '"Features" -> featuresPage()' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
           grep -F 'private fun featuresPage()' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
           grep -F '"✦" to "Features"' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
