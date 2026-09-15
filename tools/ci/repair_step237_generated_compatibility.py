@@ -33,12 +33,9 @@ def repair_ui(root: Path) -> None:
         s = s.replace("import android.widget.", "import android.widget.Toast\nimport android.widget.", 1)
 
     saved_server = '''\n    private fun getSavedServer(): Pair<String, Int> {\n        val prefs = getSharedPreferences("droid_launcher_servers", MODE_PRIVATE)\n        val host = prefs.getString("selected_host", "localhost")?.trim().orEmpty().ifBlank { "localhost" }\n        val port = prefs.getInt("selected_port", 25565).coerceIn(1, 65535)\n        return host to port\n    }\n\n'''
-    java_helper = '''    private fun getResolvedJavaForLaunch(version: String): Int {\n        val saved = getSharedPreferences("droid_launcher", MODE_PRIVATE).getInt("java_runtime_override", 0)\n        if (saved in intArrayOf(8, 16, 17, 21, 25)) return saved\n        val parts = version.split('.', '-', '_').mapNotNull { it.toIntOrNull() }\n        val major = parts.firstOrNull() ?: 21\n        val minor = parts.getOrNull(1) ?: 0\n        return when {\n            major >= 25 -> 25\n            major >= 24 -> 21\n            major == 1 && minor >= 20 -> if (version >= "1.20.5") 21 else 17\n            major == 1 && minor >= 17 -> 17\n            else -> 8\n        }\n    }\n\n'''
+    java_helper = '''    private fun getResolvedJavaForLaunch(version: String): Int {\n        val saved = getSharedPreferences("droid_launcher", MODE_PRIVATE).getInt("java_runtime_override", 0)\n        if (saved in intArrayOf(8, 16, 17, 21, 25)) return saved\n        val parts = version.split('.', '-', '_').mapNotNull { it.toIntOrNull() }\n        val major = parts.firstOrNull() ?: 21\n        val minor = parts.getOrNull(1) ?: 0\n        val patch = parts.getOrNull(2) ?: 0\n        return when {\n            major >= 26 -> 25\n            major == 1 && minor >= 21 -> 21\n            major == 1 && minor == 20 && patch >= 5 -> 21\n            major == 1 && minor >= 17 -> 17\n            else -> 8\n        }\n    }\n\n'''
     launch_helper = '''    private fun launchSelectedMinecraft() {\n        val version = selectedMinecraftVersion()\n        if (!MinecraftVersionInstallManager.isLaunchReady(this, version)) {\n            Toast.makeText(this, "Minecraft $version is not ready. Install/repair it first.", Toast.LENGTH_LONG).show()\n            showPage("Search by ID")\n            return\n        }\n        launchExistingActivityWithServer()\n    }\n\n'''
 
-    # Each compatibility helper is independently idempotent. Earlier Step 221
-    # may already have supplied launchSelectedMinecraft while the generated
-    # archive still needs the server/runtime helpers.
     if "private fun getSavedServer(): Pair<String, Int>" not in s:
         s = insert_before_renderer(s, saved_server)
     if "private fun getResolvedJavaForLaunch(version: String): Int" not in s:
@@ -120,6 +117,7 @@ def main() -> int:
     print("[step237] GameActivity lifecycle hooks and invalid kill() call repaired")
     print("[step237] installer exposes stable isInstalled contract")
     print("[step237] launcher ViewModel reset compatibility checked")
+    print("[step237] Java resolver maps 1.20.5+ to Java 21 and 26+ to Java 25")
     print("[step241] compatibility helpers are independently idempotent; no launch helper duplication")
     return 0
 
