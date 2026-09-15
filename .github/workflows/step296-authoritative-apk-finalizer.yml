@@ -52,7 +52,7 @@ jobs:
               rmdir "$ROOT"
             fi
             mkdir -p droid-src/app/src/main/java/com/example/launcher
-            for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt MinecraftLaunchManager.kt; do
+            for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt; do
               cp -f "app/src/main/java/com/example/launcher/$f" "droid-src/app/src/main/java/com/example/launcher/$f"
             done
             mkdir -p droid-src/app/src/main/java/com/example/logs droid-src/app/src/main/java/com/example/renderer
@@ -63,7 +63,6 @@ jobs:
               mkdir -p droid-src/app/src/main/assets
               cp -a app/src/main/assets/. droid-src/app/src/main/assets/
             fi
-            for step in 153 154_tests 155_cpp; do :; done
             python3 tools/ci/apply_droid_launcher_branding.py droid-src
             python3 tools/ci/repair_step153.py droid-src
             python3 tools/ci/repair_step154_tests.py droid-src
@@ -117,7 +116,7 @@ jobs:
         run: |
           set -euo pipefail
           SRC=droid-src/app/src/main/java/com/example/launcher
-          for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt MinecraftLaunchManager.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "$SRC/$f"; done
+          for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "$SRC/$f"; done
           cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
           cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
           cp -f app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt droid-src/app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt
@@ -138,7 +137,7 @@ jobs:
         run: |
           set -euo pipefail
           SRC=droid-src/app/src/main/java/com/example/launcher
-          for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt MinecraftLaunchManager.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "$SRC/$f"; done
+          for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "$SRC/$f"; done
           cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
           cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
           cp -f app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt droid-src/app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt
