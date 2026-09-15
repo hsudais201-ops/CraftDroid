@@ -176,7 +176,7 @@ jobs:
           set -euo pipefail
           APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
-          cp "$APK" artifacts/apk/Droid-Launcher-Step236-debug.apk
+          cp "$APK" artifacts/apk/Droid-Launcher-Step250-debug.apk
           sha256sum "$APK" | tee artifacts/apk/SHA256SUMS.txt
           python3 tools/ci/verify_runtime_preflight.py "$APK" | tee artifacts/build/runtime-preflight.txt
       - name: Verify APK package and signature structure
@@ -188,15 +188,20 @@ jobs:
           test -x "$BUILD_TOOLS/aapt2"
           test -x "$BUILD_TOOLS/aapt"
           test -x "$BUILD_TOOLS/apksigner"
+          test -x "$BUILD_TOOLS/zipalign"
           export PATH="$BUILD_TOOLS:$PATH"
           "$BUILD_TOOLS/aapt2" dump badging "$APK" | tee artifacts/build/apk-badging.txt
           grep -F "package: name='com.craftdroid.launcher'" artifacts/build/apk-badging.txt
           "$BUILD_TOOLS/apksigner" verify --verbose "$APK" | tee artifacts/build/apk-signature.txt
-          echo "APK package/signature verification: PASS"
+          "$BUILD_TOOLS/zipalign" -c -P 16 -v 4 "$APK" | tee artifacts/build/apk-zipalign.txt
+          unzip -l "$APK" > artifacts/build/apk-contents.txt
+          grep -Eq '[[:space:]]AndroidManifest.xml$' artifacts/build/apk-contents.txt
+          grep -Eq '[[:space:]]classes(2)?\.dex$' artifacts/build/apk-contents.txt
+          echo "APK package/signature/alignment/content verification: PASS"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step236-debug
+          name: Droid-Launcher-Step250-debug
           path: artifacts/apk/*
           if-no-files-found: error
       - name: Archive generated source on failure
@@ -211,7 +216,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step236-diagnostics
+          name: Droid-Launcher-Step250-diagnostics
           path: |
             artifacts/build/**
             droid-src/app/build/reports/**
