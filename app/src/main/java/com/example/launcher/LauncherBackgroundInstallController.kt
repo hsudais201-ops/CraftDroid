@@ -47,7 +47,14 @@ object LauncherBackgroundInstallController {
         val key = "${kind.name.lowercase()}:${source.absolutePath}"
         submit(key, kind, listener) {
             when (kind) {
-                Kind.MODPACK, Kind.WORLD -> MinecraftContentManager.importArchive(context, MinecraftContentManager.Kind.valueOf(kind.name), source)
+                Kind.MODPACK -> {
+                    if (source.extension.equals("mrpack", true)) {
+                        MinecraftModpackManager.install(context, source)
+                    } else {
+                        MinecraftContentManager.importArchive(context, MinecraftContentManager.Kind.MODPACK, source)
+                    }
+                }
+                Kind.WORLD -> MinecraftContentManager.importArchive(context, MinecraftContentManager.Kind.WORLD, source)
                 Kind.MOD, Kind.SHADER, Kind.RESOURCE_PACK -> MinecraftContentManager.importFile(context, MinecraftContentManager.Kind.valueOf(kind.name), source)
                 Kind.MINECRAFT_VERSION -> error("Use installMinecraft for versions")
             }
