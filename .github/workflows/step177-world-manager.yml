@@ -43,6 +43,18 @@ jobs:
             rmdir "$PROJECT_DIR"
           fi
 
+      - name: Copy shared launcher implementation sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p craftdroid-src/app/src/main/java/com/example/launcher
+          mkdir -p craftdroid-src/app/src/main/java/com/example/renderer
+          mkdir -p craftdroid-src/app/src/main/java/com/example/logs
+          for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "craftdroid-src/app/src/main/java/com/example/launcher/$f"; done
+          cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt craftdroid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
+          cp -f app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt craftdroid-src/app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt
+          cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt craftdroid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
+
       - name: Apply Steps 153-155 base compatibility repairs
         shell: bash
         run: |
