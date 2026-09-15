@@ -141,10 +141,12 @@ jobs:
           cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
           cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
           cp -f app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt droid-src/app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt
-      - name: Reapply final launch handoff validation and trust hardening
+      - name: Reapply final launch producer and validation hardening
         shell: bash
         run: |
           set -euo pipefail
+          python3 tools/ci/repair_step231_launch_handoff.py droid-src
+          python3 tools/ci/repair_step232_launch_handoff_consumer.py droid-src
           python3 tools/ci/repair_step234_handoff_validation_launch_gate.py droid-src
           python3 tools/ci/repair_step235_launch_runtime_guard.py droid-src
           python3 tools/ci/repair_step236_download_trust.py droid-src
