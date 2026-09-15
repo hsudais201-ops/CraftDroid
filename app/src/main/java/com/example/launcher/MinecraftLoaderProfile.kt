@@ -30,6 +30,4 @@ object MinecraftLoaderProfile {
         Loader.NEOFORGE -> Profile(loader, "NeoForge")
         Loader.QUILT -> Profile(loader, "Quilt")
     }
-
-    fun supportsModernJava(loader: Loader): Boolean = loader != Loader.VANILLA || true
 }
