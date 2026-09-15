@@ -3,8 +3,8 @@ package com.example.launcher
 /**
  * Minecraft Java runtime compatibility policy.
  *
- * Minecraft 26.1+ requires Java 25. Older releases retain their historically
- * compatible runtimes so existing installations are not broken by an upgrade.
+ * Minecraft 26.1+ requires Java 25. Minecraft 1.20.5+ requires Java 21.
+ * Older releases retain their historically compatible runtimes.
  */
 object MinecraftRuntimeProfile {
     data class Profile(
@@ -21,11 +21,10 @@ object MinecraftRuntimeProfile {
 
         return when {
             first >= 26 -> Profile(25, "Minecraft 26.x+ requires Java 25")
-            first == 1 && second >= 21 && patch >= 6 -> Profile(21, "Modern 1.21.x runtime")
-            first == 1 && second >= 21 -> Profile(21, "Minecraft 1.21 runtime")
-            first == 1 && second >= 17 -> Profile(17, "Minecraft 1.17–1.20 runtime")
-            first == 1 && second >= 16 -> Profile(8, "Minecraft 1.16 legacy runtime")
-            first == 1 && second >= 13 -> Profile(8, "Minecraft 1.13–1.15 legacy runtime")
+            first == 1 && second >= 21 -> Profile(21, "Minecraft 1.21.x runtime")
+            first == 1 && second == 20 && patch >= 5 -> Profile(21, "Minecraft 1.20.5+ requires Java 21")
+            first == 1 && second >= 17 -> Profile(17, "Minecraft 1.17–1.20.4 runtime")
+            first == 1 && second <= 16 -> Profile(8, "Minecraft 1.16 and older legacy runtime")
             else -> Profile(8, "Legacy Minecraft runtime")
         }
     }
