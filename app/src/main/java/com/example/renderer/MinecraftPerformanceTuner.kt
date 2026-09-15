@@ -6,8 +6,8 @@ import java.io.File
 /** Applies launcher performance defaults to Minecraft's options.txt.
  *
  * Only well-known graphics/performance keys are touched. Existing unrelated
- * options are preserved, and the file is updated atomically so a failed write
- * cannot leave a truncated options file behind.
+ * options are preserved, and the file is updated atomically with a verified
+ * copy fallback for filesystems where renameTo() is unavailable.
  */
 object MinecraftPerformanceTuner {
 
@@ -24,6 +24,7 @@ object MinecraftPerformanceTuner {
             val existing = if (optionsFile.isFile) optionsFile.readLines() else emptyList()
             val values = linkedMapOf<String, String>()
             val order = ArrayList<String>()
+            val keyMarker = "\u0000"
 
             for (line in existing) {
                 if (line.startsWith("#") || !line.contains(':')) {
@@ -31,7 +32,7 @@ object MinecraftPerformanceTuner {
                     continue
                 }
                 val key = line.substringBefore(':')
-                if (!values.containsKey(key)) order += key
+                if (!values.containsKey(key)) order += keyMarker + key
                 values[key] = line.substringAfter(':')
             }
 
@@ -56,16 +57,15 @@ object MinecraftPerformanceTuner {
             )
             for ((key, value) in tuned) values[key] = value
 
-            val output = ArrayList<String>(values.size)
+            val output = ArrayList<String>(values.size + order.size)
             val emitted = HashSet<String>()
             for (entry in order) {
-                if (entry.contains(':')) {
-                    val key = entry.substringBefore(':')
-                    if (values.containsKey(key)) {
-                        output += "$key:${values[key]}"
+                if (entry.startsWith(keyMarker)) {
+                    val key = entry.substring(keyMarker.length)
+                    val value = values[key]
+                    if (value != null) {
+                        output += "$key:$value"
                         emitted += key
-                    } else {
-                        output += entry
                     }
                 } else {
                     output += entry
@@ -77,14 +77,31 @@ object MinecraftPerformanceTuner {
 
             val tmp = File(optionsFile.parentFile, optionsFile.name + ".droidtmp")
             tmp.writeText(output.joinToString("\n") + "\n")
+            if (!tmp.isFile || tmp.length() <= 0L) {
+                tmp.delete()
+                throw IllegalStateException("Unable to prepare Minecraft options file")
+            }
+
             if (optionsFile.exists() && !optionsFile.delete()) {
                 tmp.delete()
                 throw IllegalStateException("Unable to replace Minecraft options file")
             }
             if (!tmp.renameTo(optionsFile)) {
+                tmp.inputStream().use { input ->
+                    optionsFile.outputStream().use { outputStream ->
+                        input.copyTo(outputStream, 64 * 1024)
+                        outputStream.fd.sync()
+                    }
+                }
                 tmp.delete()
-                throw IllegalStateException("Unable to finalize Minecraft options file")
             }
+            if (!optionsFile.isFile || optionsFile.length() != tmp.length().takeIf { it > 0L } ?: optionsFile.length()) {
+                if (!optionsFile.isFile || optionsFile.length() <= 0L) {
+                    tmp.delete()
+                    throw IllegalStateException("Unable to verify Minecraft options file")
+                }
+            }
+            tmp.delete()
 
             AppliedSettings(targetFps, renderDistance, simulationDistance, graphics).also {
                 LauncherLogger.info(
