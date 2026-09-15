@@ -1,19 +1,14 @@
 #!/usr/bin/env python3
-"""Add a broad launcher Feature Center to the generated Droid Launcher UI.
-
-The repository keeps the Android launcher source in the Step 153 archive, so this
-script patches the generated activity during the authoritative CI build. The
-Feature Center is intentionally local/offline-safe: it exposes feature toggles
-and navigation without pretending that an unimplemented cloud service exists.
-"""
+"""Install the broad Droid Launcher Feature Center during the CI build."""
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
 FEATURE_METHOD = r'''
     private fun featuresPage() {
-        pageArea.addView(section("Feature Center", "Everyday launcher tools, customization and quality-of-life controls"))
+        pageArea.addView(section("Feature Center", "Launcher tools, customization, content management and quality-of-life controls"))
         val groups = listOf(
             "Launcher & Instances" to listOf(
                 "Instance profiles" to "Separate game setups with their own mods, worlds, packs and settings.",
@@ -97,46 +92,44 @@ FEATURE_METHOD = r'''
 '''
 
 
+def patch_show_page(text: str) -> tuple[str, bool]:
+    if '"Features" -> featuresPage()' in text:
+        return text, False
+    match = re.search(r'(?m)^(\s*)"Game"\s*->\s*gamePage\(\)\s*$', text)
+    if not match:
+        return text, False
+    insertion = match.group(0) + f'\n{match.group(1)}"Features" -> featuresPage()'
+    return text[:match.start()] + insertion + text[match.end():], True
+
+
+def patch_nav(text: str) -> tuple[str, bool]:
+    if '"✦" to "Features"' in text:
+        return text, False
+    pattern = r'(?m)^(\s*)(.*"⌕"\s+to\s+"Search by ID",)(.*)$'
+    match = re.search(pattern, text)
+    if match:
+        replacement = f'{match.group(1)}{match.group(2)} "✦" to "Features",{match.group(3)}'
+        return text[:match.start()] + replacement + text[match.end():], True
+    return text, False
+
+
 def patch(text: str) -> str:
     changed = False
-    if '"Features" -> featuresPage()' not in text:
-        show_page_anchors = [
-            ('            "Game" -> gamePage()\n            "Renderer" -> rendererPage()',
-             '            "Game" -> gamePage()\n            "Features" -> featuresPage()\n            "Renderer" -> rendererPage()'),
-        ]
-        for old, new in show_page_anchors:
-            if old in text:
-                text = text.replace(old, new, 1)
-                changed = True
-                break
-        if not changed and '"Game" -> gamePage()' in text:
-            marker = '            "Game" -> gamePage()'
-            text = text.replace(marker, marker + '\n            "Features" -> featuresPage()', 1)
-            changed = True
-        if not changed:
-            raise SystemExit("[step253] showPage anchor not found")
-
-    if '"✦" to "Features"' not in text:
-        nav_anchor = '            "⌕" to "Search by ID",\n            "⚙" to "Renderer",'
-        if nav_anchor in text:
-            text = text.replace(nav_anchor,
-                                '            "⌕" to "Search by ID", "✦" to "Features",\n            "⚙" to "Renderer",', 1)
-        else:
-            nav_line = '            "⌕" to "Search by ID",'
-            if nav_line not in text:
-                raise SystemExit("[step253] navigation anchor not found")
-            text = text.replace(nav_line,
-                                '            "⌕" to "Search by ID",\n            "✦" to "Features",', 1)
-        changed = True
-
+    text, did = patch_show_page(text)
+    changed = changed or did
+    text, did = patch_nav(text)
+    changed = changed or did
+    if not changed and 'private fun featuresPage()' not in text:
+        raise SystemExit("[step254] could not locate generated UI navigation/showPage anchors")
     if 'private fun featuresPage()' not in text:
         anchor = '    private fun rendererPage() {'
         pos = text.find(anchor)
         if pos < 0:
-            raise SystemExit("[step253] rendererPage anchor not found")
+            raise SystemExit("[step254] rendererPage anchor not found")
         text = text[:pos] + FEATURE_METHOD + '\n' + text[pos:]
         changed = True
-
+    if not changed:
+        raise SystemExit("[step254] Feature Center patch made no changes")
     return text
 
 
@@ -144,14 +137,11 @@ def main() -> int:
     root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.cwd().resolve()
     ui = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
     if not ui.exists():
-        raise SystemExit(f"[step253] UI source not found: {ui}")
+        raise SystemExit(f"[step254] UI source not found: {ui}")
     original = ui.read_text(encoding="utf-8")
     patched = patch(original)
-    if patched == original:
-        raise SystemExit("[step253] Feature Center patch made no changes")
     ui.write_text(patched, encoding="utf-8")
-    print(f"[step253] Feature Center installed: {ui}")
-    print("[step253] Added launcher/instance/content/account/server/performance/customization/maintenance/advanced feature groups")
+    print(f"[step254] Feature Center installed: {ui}")
     return 0
 
 
