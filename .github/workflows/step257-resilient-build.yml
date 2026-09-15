@@ -120,23 +120,20 @@ jobs:
           python3 tools/ci/repair_step236_download_trust.py droid-src
       - name: Step 257 final Feature Center repair
         run: python3 tools/ci/repair_step257_feature_center_after_ui.py droid-src
-      - name: Restore Steps 207-216 after final Feature Center repair
+      - name: Stabilize server contracts after final UI transforms
         shell: bash
         run: |
           set -euo pipefail
-          python3 tools/ci/repair_step207_server_ui.py droid-src
-          python3 tools/ci/repair_step209_server_list.py droid-src
-          python3 tools/ci/repair_step210_server_launch.py droid-src
-          python3 tools/ci/repair_step211_minecraft_server_query.py droid-src
-          python3 tools/ci/repair_step212_server_ui.py droid-src
-          python3 tools/ci/repair_step213_server_cards.py droid-src
-          python3 tools/ci/repair_step214_server_detail.py droid-src
-          python3 tools/ci/repair_step215_launch_feedback.py droid-src
-          python3 tools/ci/repair_step216_launch_progress.py droid-src
+          python3 tools/ci/repair_step293_server_contracts_after_final_ui.py droid-src
+          python3 tools/ci/repair_step292_first_run_compile.py droid-src
       - name: Step 286 final Home and Account GUI
         run: python3 tools/ci/apply_step286_home_account_gui.py droid-src
       - name: Step 287 first-run launcher components GUI
         run: python3 tools/ci/apply_step287_first_run_components_gui.py droid-src
+      - name: Repair final generated Kotlin after UI generation
+        run: python3 tools/ci/repair_step292_first_run_compile.py droid-src
+      - name: Reapply final server contracts after UI generation
+        run: python3 tools/ci/repair_step293_server_contracts_after_final_ui.py droid-src
       - name: Verify generated source contracts
         shell: bash
         run: |
@@ -147,9 +144,9 @@ jobs:
           python3 tools/ci/verify_step236_download_trust.py droid-src
           python3 tools/ci/verify_step239_generated_kotlin.py droid-src
           python3 tools/ci/verify_step287_first_run_components.py droid-src
-          grep -F '"Features" -> featuresPage()' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
-          grep -F 'private fun featuresPage()' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
-          grep -F '"✦" to "Features"' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
+          grep -F 'private fun showBootstrapGate()' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
+          grep -F 'private fun showServerDialog(index: Int)' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
+          grep -F 'private fun getSavedServers(): List<Pair<String, Int>>' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
           if grep -RInE 'TODO|FIXME|NotImplementedException' droid-src/app/src/main/java; then exit 1; fi
       - name: Set up JDK 17
         uses: actions/setup-java@v5
