@@ -130,6 +130,8 @@ jobs:
         run: python3 tools/ci/repair_step293_server_contracts_after_final_ui.py droid-src
       - name: Restore Feature Center navigation after final UI replacement
         run: python3 tools/ci/repair_step295_final_navigation.py droid-src
+      - name: Repair Android EditText property mappings
+        run: python3 tools/ci/repair_step297_android_edittext_properties.py droid-src
       - name: Verify generated source contracts
         shell: bash
         run: |
