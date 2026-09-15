@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 243: fix concrete core-unit defects and keep tests aligned with hardened launch behavior."""
+"""Step 243/244: fix concrete core-unit defects and keep tests aligned with hardened launch behavior."""
 from pathlib import Path
 import sys
 
@@ -9,18 +9,6 @@ def find_one(root: Path, name: str) -> Path:
     if len(hits) != 1:
         raise SystemExit(f"[step243] expected exactly one {name}, found {len(hits)}")
     return hits[0]
-
-
-def patch_file(path: Path, replacements: list[tuple[str, str]], label: str) -> None:
-    s = path.read_text(encoding="utf-8")
-    changed = False
-    for old, new in replacements:
-        if old in s:
-            s = s.replace(old, new, 1)
-            changed = True
-    if changed:
-        path.write_text(s, encoding="utf-8")
-        print(f"[step243] patched {label}")
 
 
 def patch_sources(root: Path) -> None:
@@ -53,6 +41,8 @@ def patch_sources(root: Path) -> None:
 
     crash = find_one(root / "app/src/main/java", "CrashAnalyzer.kt")
     s = crash.read_text(encoding="utf-8")
+    # CrashAnalyzer delegates the final human-readable summary to LaunchFailureClassifier.
+    # Keep the classifier summaries aligned with the public analyzer/test contract.
     replacements = [
         ('Result(Kind.MEMORY, "The JVM/device ran out of memory."', 'Result(Kind.MEMORY, "Out of Memory: the JVM/device ran out of memory."'),
         ('Result(Kind.NATIVE_LIBRARY, "An Android native library could not be linked."', 'Result(Kind.NATIVE_LIBRARY, "Native library linkage failure: an Android native library could not be linked."'),
@@ -63,9 +53,33 @@ def patch_sources(root: Path) -> None:
             s = s.replace(old, new, 1)
     crash.write_text(s, encoding="utf-8")
 
+    classifier = find_one(root / "app/src/main/java", "LaunchFailureClassifier.kt")
+    s = classifier.read_text(encoding="utf-8")
+    replacements = [
+        ('Result(Kind.MEMORY, "The JVM/device ran out of memory."', 'Result(Kind.MEMORY, "Out of Memory: the JVM/device ran out of memory."'),
+        ('Result(Kind.NATIVE_LIBRARY, "An Android native library could not be linked."', 'Result(Kind.NATIVE_LIBRARY, "Native library linkage: an Android native library could not be linked."'),
+        ('Result(Kind.JAVA_VERSION, "The selected Java runtime is incompatible with the Minecraft classes."', 'Result(Kind.JAVA_VERSION, "Java version incompatibility: the selected Java runtime is incompatible with the Minecraft classes."'),
+    ]
+    changed = False
+    for old, new in replacements:
+        if old in s:
+            s = s.replace(old, new, 1)
+            changed = True
+    if not changed:
+        # Do not fail a rerun merely because another compatible source variant already
+        # carries the hardened strings; verify the required public substrings instead.
+        required = (
+            "Out of Memory:",
+            "Native library linkage:",
+            "Java version incompatibility:",
+        )
+        if not all(item in s for item in required):
+            raise SystemExit("[step244] LaunchFailureClassifier summary anchors missing")
+    classifier.write_text(s, encoding="utf-8")
+
+    print("[step244] LaunchFailureClassifier summaries now preserve analyzer-visible failure names")
     print("[step243] unknown account provider now fails closed to Microsoft instead of offline mode")
     print("[step243] local test fixture ids remain isolated from online authentication")
-    print("[step243] crash classification summaries preserve actionable test-visible error names")
 
 
 def patch_launch_test(root: Path) -> None:
