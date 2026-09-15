@@ -1,0 +1,218 @@
+name: Step 257 - Droid Launcher resilient authoritative build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: droid-launcher-authoritative-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate CI helper scripts
+        run: python3 -m compileall -q tools/ci
+      - name: Prepare generated launcher source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf droid-src artifacts
+          mkdir -p droid-src artifacts/build artifacts/apk
+          unzip -q CraftDroid_Launcher_2.4_GitHubActions_Step153.zip -d droid-src
+          if [ ! -f droid-src/gradlew ]; then
+            ROOT="$(find droid-src -type f -name gradlew -print -quit | xargs -r dirname)"
+            test -n "$ROOT"
+            shopt -s dotglob
+            mv "$ROOT"/* droid-src/
+            rmdir "$ROOT"
+          fi
+          mkdir -p droid-src/app/src/main/java/com/example/launcher
+          for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "droid-src/app/src/main/java/com/example/launcher/$f"; done
+          cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
+          cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
+          cp -f app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt droid-src/app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt
+      - name: Normalize Gradle settings for CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          for SETTINGS in droid-src/settings.gradle.kts droid-src/settings.gradle; do
+            if [ -f "$SETTINGS" ]; then sed -i '/org\.gradle\.toolchains\.foojay-resolver-convention/d' "$SETTINGS"; fi
+          done
+      - name: Apply Droid Launcher branding
+        run: python3 tools/ci/apply_droid_launcher_branding.py droid-src
+      - name: Apply Steps 153-155 base repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step153.py droid-src
+          python3 tools/ci/repair_step154_tests.py droid-src
+          python3 tools/ci/repair_step155_cpp.py droid-src
+      - name: Apply Step 177 World Manager integration
+        run: python3 tools/ci/apply_step177_world_manager.py droid-src
+      - name: Repair Step 242 World Manager test compatibility
+        run: python3 tools/ci/repair_step242_world_manager_test_junit.py droid-src
+      - name: Repair Step 243 core unit contracts
+        run: python3 tools/ci/repair_step243_core_unit_contracts.py droid-src
+      - name: Apply Step 202 Kotlin compile repairs
+        run: python3 tools/ci/repair_step202_kotlin.py droid-src
+      - name: Apply Step 205 UI generation
+        run: python3 tools/ci/apply_step205_zalith_style_ui.py droid-src
+      - name: Repair Step 205 UI wiring
+        run: python3 tools/ci/repair_step205_ui.py droid-src
+      - name: Apply Step 253 comprehensive Feature Center
+        run: python3 tools/ci/apply_step253_feature_center.py droid-src
+      - name: Apply Steps 207-216 server and launch UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step207_server_ui.py droid-src
+          python3 tools/ci/repair_step209_server_list.py droid-src
+          python3 tools/ci/repair_step210_server_launch.py droid-src
+          python3 tools/ci/repair_step211_minecraft_server_query.py droid-src
+          python3 tools/ci/repair_step212_server_ui.py droid-src
+          python3 tools/ci/repair_step213_server_cards.py droid-src
+          python3 tools/ci/repair_step214_server_detail.py droid-src
+          python3 tools/ci/repair_step215_launch_feedback.py droid-src
+          python3 tools/ci/repair_step216_launch_progress.py droid-src
+      - name: Apply Steps 217-220 Java/runtime binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step217_java_runtime_ui.py droid-src
+          python3 tools/ci/repair_step218_java_profile.py droid-src
+          python3 tools/ci/repair_step219_launch_java_binding.py droid-src
+          python3 tools/ci/repair_step220_version_launch_binding.py droid-src
+      - name: Apply Steps 221-230 install and launch preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step221_version_selector.py droid-src
+          python3 tools/ci/repair_step222_version_install.py droid-src
+          python3 tools/ci/repair_step223_install_status_ui.py droid-src
+          python3 tools/ci/repair_step224_launch_preflight.py droid-src
+          python3 tools/ci/repair_step225_launch_paths.py droid-src
+          python3 tools/ci/repair_step226_storage_root.py droid-src
+          python3 tools/ci/repair_step227_library_rules.py droid-src
+          python3 tools/ci/repair_step228_install_resilience.py droid-src
+          python3 tools/ci/repair_step229_install_progress_ui.py droid-src
+          python3 tools/ci/repair_step230_complete_launch_preflight.py droid-src
+      - name: Apply Steps 231-236 launch handoff and trust hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step231_launch_handoff.py droid-src
+          python3 tools/ci/repair_step232_launch_handoff_consumer.py droid-src
+          python3 tools/ci/repair_step234_handoff_validation_launch_gate.py droid-src
+          python3 tools/ci/repair_step235_launch_runtime_guard.py droid-src
+          python3 tools/ci/repair_step236_download_trust.py droid-src
+      - name: Step 257 final Feature Center repair
+        run: python3 tools/ci/repair_step257_feature_center_after_ui.py droid-src
+      - name: Verify generated source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_minecraft_launch_contract.py droid-src
+          python3 tools/ci/verify_step233_handoff_validator.py droid-src
+          python3 tools/ci/verify_step235_audit.py droid-src
+          python3 tools/ci/verify_step236_download_trust.py droid-src
+          python3 tools/ci/verify_step239_generated_kotlin.py droid-src
+          grep -F '"Features" -> featuresPage()' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
+          grep -F 'private fun featuresPage()' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
+          grep -F '"✦" to "Features"' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
+          if grep -RInE 'TODO|FIXME|NotImplementedException' droid-src/app/src/main/java; then exit 1; fi
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+      - name: Install Android SDK, NDK and CMake
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+      - name: Set up Gradle 9.6.0 directly
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.6.0'
+          validate-wrappers: false
+      - name: Validate Gradle project
+        working-directory: droid-src
+        run: gradle --no-daemon --stacktrace :app:tasks --all
+      - name: Run Android Lint
+        working-directory: droid-src
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :app:lintDebug 2>&1 | tee ../artifacts/build/lintDebug.log
+      - name: Run unit tests
+        working-directory: droid-src
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :app:testDebugUnitTest 2>&1 | tee ../artifacts/build/testDebugUnitTest.log
+      - name: Build Droid Launcher debug APK
+        working-directory: droid-src
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee ../artifacts/build/assembleDebug.log
+      - name: Verify debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          cp "$APK" artifacts/apk/Droid-Launcher-Step257-debug.apk
+          sha256sum "$APK" | tee artifacts/apk/SHA256SUMS.txt
+          python3 tools/ci/verify_runtime_preflight.py "$APK" | tee artifacts/build/runtime-preflight.txt
+      - name: Verify APK package and signature structure
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
+          export PATH="$BUILD_TOOLS:$PATH"
+          aapt2 dump badging "$APK" | tee artifacts/build/apk-badging.txt
+          grep -F "package: name='com.craftdroid.launcher'" artifacts/build/apk-badging.txt
+          apksigner verify --verbose "$APK" | tee artifacts/build/apk-signature.txt
+          zipalign -c -P 16 -v 4 "$APK" | tee artifacts/build/apk-zipalign.txt
+          unzip -l "$APK" > artifacts/build/apk-contents.txt
+          grep -Eq '[[:space:]]AndroidManifest.xml$' artifacts/build/apk-contents.txt
+          grep -Eq '[[:space:]]classes(2)?\.dex$' artifacts/build/apk-contents.txt
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Droid-Launcher-Step257-debug
+          path: artifacts/apk/*
+          if-no-files-found: error
+      - name: Archive generated source on failure
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d droid-src ]; then tar -czf artifacts/build/generated-source.tgz --exclude='droid-src/.gradle' --exclude='droid-src/app/build' droid-src; fi
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Droid-Launcher-Step257-diagnostics
+          path: |
+            artifacts/build/**
+            droid-src/app/build/reports/**
+            droid-src/app/build/test-results/**
+          if-no-files-found: ignore
