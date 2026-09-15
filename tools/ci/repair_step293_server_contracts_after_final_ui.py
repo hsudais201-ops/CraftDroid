@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Restore the server feature contract after the Step 286 whole-UI replacement.
 
-Step 286 intentionally rebuilds the visual UI and can remove older helper
-methods. This patch supplies a self-contained, Android-safe implementation so
-Add/Edit/Delete/Select/Refresh work without depending on earlier generators.
-Server reachability checks run on background threads.
+Also restores the authoritative modern runtime/content managers after UI generation
+so the final generated source contains the complete Step 315-326 feature set.
 """
 from pathlib import Path
+import shutil
 import sys
 
 MARKER = "// STEP293_SERVER_CONTRACTS"
@@ -131,6 +130,28 @@ private fun refreshServerStatus(host: String, port: Int) {
 '''
 
 
+def copy_modern_sources(root: Path) -> None:
+    project = Path.cwd().resolve()
+    src = project / "app/src/main/java/com/example/launcher"
+    dst = root / "app/src/main/java/com/example/launcher"
+    dst.mkdir(parents=True, exist_ok=True)
+    names = (
+        "MinecraftRuntimeProfile.kt",
+        "MinecraftLatestVersionManager.kt",
+        "MinecraftContentManager.kt",
+        "MinecraftModpackManager.kt",
+        "MinecraftLoaderProfile.kt",
+        "LauncherBackgroundInstallController.kt",
+        "DroidLauncherUpdateManager.kt",
+    )
+    missing = [name for name in names if not (src / name).is_file()]
+    if missing:
+        raise SystemExit(f"[step327] missing repository modern sources: {', '.join(missing)}")
+    for name in names:
+        shutil.copy2(src / name, dst / name)
+    print(f"[step327] restored {len(names)} runtime/content/update sources into generated tree")
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
     ui = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
@@ -156,6 +177,7 @@ def main() -> int:
     ):
         if needle not in source:
             raise SystemExit(f"[step293] missing server contract: {needle}")
+    copy_modern_sources(root)
     print("[step293] self-contained server Add/Edit/Delete/Select/Refresh contracts installed")
     print("[step293] server reachability checks run off the Android UI thread")
     return 0
