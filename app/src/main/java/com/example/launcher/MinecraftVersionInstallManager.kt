@@ -11,12 +11,16 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Step 222: downloads and verifies a complete vanilla Minecraft client from the
- * official Mojang/Piston metadata endpoints. Downloads are resumable via .part
- * files and installation state is persisted in SharedPreferences.
+ * Downloads and verifies a complete vanilla Minecraft client from the official
+ * Mojang/Piston metadata endpoints. Downloads are resumable via .part files and
+ * installation state is persisted in SharedPreferences.
+ *
+ * Finalization is deliberately Android-safe: File.renameTo() is attempted first,
+ * but a verified stream-copy fallback is used when Android/filesystem semantics
+ * reject the rename. This is important for the assets/objects tree on some
+ * Android storage/filesystem combinations.
  */
 object MinecraftVersionInstallManager {
     private const val PREFS = "droid_launcher"
@@ -25,6 +29,7 @@ object MinecraftVersionInstallManager {
     private const val CONNECT_TIMEOUT_MS = 20_000
     private const val READ_TIMEOUT_MS = 60_000
     private const val BUFFER_SIZE = 64 * 1024
+    private const val FINALIZE_ATTEMPTS = 3
 
     private val executor = Executors.newCachedThreadPool()
 
@@ -204,49 +209,47 @@ object MinecraftVersionInstallManager {
     }
 
     private fun downloadResumable(task: DownloadTask, version: String, onProgress: (Long, Long) -> Unit) {
-        task.target.parentFile?.mkdirs()
+        task.target.parentFile?.let { parent ->
+            if (!parent.exists() && !parent.mkdirs() && !parent.isDirectory) {
+                throw IOException("Could not create directory ${parent.absolutePath} for ${task.label}")
+            }
+        }
         if (isArtifactHealthy(task.target, task.sha1, task.size)) {
             onProgress(task.target.length(), task.size.coerceAtLeast(task.target.length()))
             return
         }
 
-        val part = File(task.target.parentFile, task.target.name + ".part")
+        val parent = task.target.parentFile ?: throw IOException("Missing parent directory for ${task.target}")
+        val part = File(parent, task.target.name + ".part")
         var resume = if (part.isFile) part.length() else 0L
         var connection: HttpURLConnection? = null
         try {
-            connection = (URL(task.url).openConnection() as HttpURLConnection).apply {
-                connectTimeout = CONNECT_TIMEOUT_MS
-                readTimeout = READ_TIMEOUT_MS
-                instanceFollowRedirects = true
-                requestMethod = "GET"
-                if (resume > 0L) setRequestProperty("Range", "bytes=$resume-")
-            }
-            val code = connection.responseCode
-            if (resume > 0L && code != HttpURLConnection.HTTP_PARTIAL) {
+            connection = openDownloadConnection(task.url, resume)
+            var responseCode = connection.responseCode
+            if (resume > 0L && responseCode != HttpURLConnection.HTTP_PARTIAL) {
                 connection.disconnect()
+                connection = openDownloadConnection(task.url, 0L)
                 resume = 0L
                 part.delete()
-                connection = (URL(task.url).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = CONNECT_TIMEOUT_MS
-                    readTimeout = READ_TIMEOUT_MS
-                    instanceFollowRedirects = true
-                    requestMethod = "GET"
-                }
+                responseCode = connection.responseCode
             }
-            val finalCode = connection.responseCode
-            if (finalCode !in 200..299) throw IOException("Download failed: HTTP $finalCode for ${task.label}")
-            val mode = if (resume > 0L && finalCode == HttpURLConnection.HTTP_PARTIAL) "append" else "overwrite"
-            if (mode == "overwrite") {
-                resume = 0L
+
+            if (responseCode !in 200..299) {
+                throw IOException("Download failed: HTTP $responseCode for ${task.label}")
             }
+
+            val append = resume > 0L && responseCode == HttpURLConnection.HTTP_PARTIAL
+            if (!append) resume = 0L
+
             val expectedTotal = when {
                 task.size > 0L -> task.size
-                finalCode == HttpURLConnection.HTTP_PARTIAL -> resume + connection.contentLengthLong.coerceAtLeast(0L)
+                append -> resume + connection.contentLengthLong.coerceAtLeast(0L)
                 connection.contentLengthLong > 0L -> connection.contentLengthLong
                 else -> -1L
             }
+
             BufferedInputStream(connection.inputStream, BUFFER_SIZE).use { input ->
-                FileOutputStream(part, mode == "append").use { output ->
+                FileOutputStream(part, append).use { output ->
                     val buffer = ByteArray(BUFFER_SIZE)
                     var downloaded = resume
                     while (true) {
@@ -259,20 +262,106 @@ object MinecraftVersionInstallManager {
                     output.fd.sync()
                 }
             }
+
             if (expectedTotal > 0L && part.length() != expectedTotal) {
                 throw IOException("Incomplete download for ${task.label}: ${part.length()}/$expectedTotal")
             }
             if (!isArtifactHealthy(part, task.sha1, task.size)) {
+                part.delete()
                 throw IOException("SHA-1 verification failed for ${task.label}")
             }
-            if (task.target.exists() && !task.target.delete()) {
-                throw IOException("Could not replace ${task.target}")
-            }
-            if (!part.renameTo(task.target)) {
-                throw IOException("Could not finalize ${task.target}")
-            }
+
+            finalizeVerifiedFile(part, task.target, task.label, task.sha1, task.size)
         } finally {
             connection?.disconnect()
+        }
+    }
+
+    private fun openDownloadConnection(url: String, resume: Long): HttpURLConnection =
+        (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            instanceFollowRedirects = true
+            requestMethod = "GET"
+            if (resume > 0L) setRequestProperty("Range", "bytes=$resume-")
+        }
+
+    /**
+     * Finalizes a fully verified .part file without relying solely on File.renameTo().
+     * Android vendors/filesystems can return false from renameTo() even when both
+     * files live in the same app-private tree. The fallback copies the already
+     * verified bytes into the destination, fsyncs them, verifies the destination,
+     * and only then removes the .part file.
+     */
+    private fun finalizeVerifiedFile(
+        part: File,
+        target: File,
+        label: String,
+        expectedSha1: String,
+        expectedSize: Long
+    ) {
+        target.parentFile?.let { parent ->
+            if (!parent.exists() && !parent.mkdirs() && !parent.isDirectory) {
+                throw IOException("Could not create destination directory ${parent.absolutePath} for $label")
+            }
+        }
+
+        var lastError: Throwable? = null
+        repeat(FINALIZE_ATTEMPTS) { attempt ->
+            if (isArtifactHealthy(target, expectedSha1, expectedSize)) {
+                if (!part.delete() && part.exists()) {
+                    throw IOException("Finalized $label but could not remove temporary file")
+                }
+                return
+            }
+
+            try {
+                if (target.exists() && !target.delete() && target.exists()) {
+                    // Do not overwrite the destination with the fallback while a
+                    // stale file cannot be removed; retrying may still recover.
+                    throw IOException("Could not replace existing destination ${target.absolutePath}")
+                }
+
+                if (part.renameTo(target) && isArtifactHealthy(target, expectedSha1, expectedSize)) {
+                    return
+                }
+
+                // renameTo() failed or produced a destination that cannot be verified.
+                // Re-create the destination via a streamed copy from the verified part.
+                if (target.exists() && !target.delete() && target.exists()) {
+                    throw IOException("Could not clear failed destination ${target.absolutePath}")
+                }
+                copyFileAndSync(part, target)
+                if (!isArtifactHealthy(target, expectedSha1, expectedSize)) {
+                    target.delete()
+                    throw IOException("Destination verification failed while finalizing $label")
+                }
+                if (!part.delete() && part.exists()) {
+                    throw IOException("Finalized $label but could not remove temporary file")
+                }
+                return
+            } catch (t: Throwable) {
+                lastError = t
+                if (attempt + 1 < FINALIZE_ATTEMPTS) {
+                    Thread.sleep((100L * (attempt + 1)))
+                }
+            }
+        }
+
+        throw IOException("Could not finalize ${target.absolutePath} for $label after $FINALIZE_ATTEMPTS attempts", lastError)
+    }
+
+    private fun copyFileAndSync(source: File, target: File) {
+        BufferedInputStream(FileInputStream(source), BUFFER_SIZE).use { input ->
+            FileOutputStream(target, false).use { output ->
+                val buffer = ByteArray(BUFFER_SIZE)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    output.write(buffer, 0, count)
+                }
+                output.fd.sync()
+            }
         }
     }
 
@@ -297,15 +386,18 @@ object MinecraftVersionInstallManager {
     }
 
     private fun writeVerifiedText(target: File, content: String, sha1: String?) {
-        target.parentFile?.mkdirs()
+        target.parentFile?.let { parent ->
+            if (!parent.exists() && !parent.mkdirs() && !parent.isDirectory) {
+                throw IOException("Could not create metadata directory ${parent.absolutePath}")
+            }
+        }
         val part = File(target.parentFile, target.name + ".part")
         part.writeText(content, Charsets.UTF_8)
         if (!sha1.isNullOrBlank() && !sha1(part).equals(sha1, true)) {
             part.delete()
             throw IOException("SHA-1 verification failed for ${target.name}")
         }
-        if (target.exists()) target.delete()
-        if (!part.renameTo(target)) throw IOException("Could not finalize ${target.name}")
+        finalizeVerifiedFile(part, target, target.name, sha1.orEmpty(), content.toByteArray(Charsets.UTF_8).size.toLong())
     }
 
     private fun httpText(url: String): String {
