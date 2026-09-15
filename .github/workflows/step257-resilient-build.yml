@@ -137,14 +137,33 @@ jobs:
           cache: gradle
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
-        with:
           packages: platform-tools
-      - name: Install Android SDK, NDK and CMake
+      - name: Install Android SDK, NDK and CMake incrementally
         shell: bash
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          required=(
+            "platform-tools"
+            "platforms;android-36"
+            "build-tools;36.0.0"
+            "ndk;27.2.12479018"
+            "cmake;3.22.1"
+          )
+          missing=()
+          installed="$($SDKMANAGER --list_installed 2>/dev/null || true)"
+          for pkg in "${required[@]}"; do
+            if ! grep -Fq "${pkg}" <<< "$installed"; then missing+=("$pkg"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf '%s\n' "Installing missing Android packages:" "${missing[@]}"
+            timeout 25m "$SDKMANAGER" "${missing[@]}"
+          else
+            echo 'All required Android SDK packages are already installed.'
+          fi
+          "$SDKMANAGER" --list_installed | grep -E 'platform-tools|platforms;android-36|build-tools;36.0.0|ndk;27.2.12479018|cmake;3.22.1'
       - name: Set up Gradle 9.6.0 directly
         uses: gradle/actions/setup-gradle@v6
         with:
