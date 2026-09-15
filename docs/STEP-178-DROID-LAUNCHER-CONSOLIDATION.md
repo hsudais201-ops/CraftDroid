@@ -2,17 +2,17 @@
 
 ## Goal
 
-Droid Launcher is being consolidated into one maintainable Android project with feature parity targets inspired by current open-source Minecraft Java launchers, especially Zalith Launcher 2 and the PojavLauncher ecosystem.
+Droid Launcher is being consolidated into one maintainable Android project with feature-parity targets inspired by modern open-source Minecraft Java launchers.
 
 ## Repository audit
 
-The current CraftDroid repository contains multiple CI workflows, repair/verification tooling, documentation, and the Step 153 launcher ZIP. The next implementation pass must recover the actual Android source from the available project artifacts before claiming the app is fully buildable.
+The current CraftDroid repository contains multiple CI workflows, repair/verification tooling, documentation, and the Step 153 launcher ZIP. The implementation is assembled through the authoritative build pipeline rather than treating historical artifacts as the product.
 
 ## Feature-parity target
 
 The target is practical feature parity, not a byte-for-byte copy: version management, game-directory configuration, renderer selection/plugin architecture, direct downloads for supported content, customizable launcher appearance, themes, account management, mod/resource-pack/shader/world management, Java/runtime management, diagnostics, and advanced touch controls.
 
-Zalith Launcher 2 is GPL-3.0 and includes additional terms for modified distributions. Any source copied from GPL projects must remain license-compatible, retain required notices/terms, and keep Droid Launcher clearly distinguished from the original project. Prefer clean-room reimplementation or compatible dependencies when that is safer.
+External source reuse is license-sensitive. Droid Launcher must remain clearly distinguished from any upstream project, retain applicable copyright/license notices and terms, and prefer clean-room reimplementation or compatible dependencies where appropriate.
 
 ## Required assembly
 
