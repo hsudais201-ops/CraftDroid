@@ -164,6 +164,9 @@ jobs:
       - name: Validate Gradle project
         working-directory: droid-src
         run: gradle --no-daemon --stacktrace :app:tasks --all
+      - name: Run Android Lint
+        working-directory: droid-src
+        run: gradle --no-daemon --stacktrace :app:lintDebug 2>&1 | tee ../artifacts/build/lintDebug.log
       - name: Run unit tests
         working-directory: droid-src
         run: gradle --no-daemon --stacktrace :app:testDebugUnitTest
@@ -176,7 +179,7 @@ jobs:
           set -euo pipefail
           APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
-          cp "$APK" artifacts/apk/Droid-Launcher-Step250-debug.apk
+          cp "$APK" artifacts/apk/Droid-Launcher-Step251-debug.apk
           sha256sum "$APK" | tee artifacts/apk/SHA256SUMS.txt
           python3 tools/ci/verify_runtime_preflight.py "$APK" | tee artifacts/build/runtime-preflight.txt
       - name: Verify APK package and signature structure
@@ -201,7 +204,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step250-debug
+          name: Droid-Launcher-Step251-debug
           path: artifacts/apk/*
           if-no-files-found: error
       - name: Archive generated source on failure
@@ -216,7 +219,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Droid-Launcher-Step250-diagnostics
+          name: Droid-Launcher-Step251-diagnostics
           path: |
             artifacts/build/**
             droid-src/app/build/reports/**
