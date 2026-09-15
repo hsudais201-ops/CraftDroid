@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 239/291/292: verify generated Kotlin without destroying later UI stages."""
+"""Step 239/291/292/293: verify generated Kotlin without destroying later UI stages."""
 from pathlib import Path
 import re
 import runpy
@@ -28,13 +28,11 @@ def patch_base_navigation(ui: str) -> str:
             if anchor not in ui:
                 raise SystemExit('[step291] showPage navigation anchor missing')
             ui = ui.replace(anchor, anchor + '\n            "Features" -> featuresPage()', 1)
-
     if '"✦" to "Features"' not in ui:
         match = re.search(r'(?m)^(\s*)(.*"⌕"\s+to\s+"Search by ID",)(.*)$', ui)
         if match:
             replacement = f'{match.group(1)}{match.group(2)} "✦" to "Features",{match.group(3)}'
             ui = ui[:match.start()] + replacement + ui[match.end():]
-
     if 'contentDescription = "Account mockup home"' not in ui and 'private fun accountPage()' in ui:
         marker = '    private fun accountPage() {\n'
         if marker in ui:
@@ -43,46 +41,20 @@ def patch_base_navigation(ui: str) -> str:
     return ui
 
 
-def repair_bootstrap_source(root: Path, ui_path: Path) -> None:
+def repair_bootstrap_source(root: Path) -> None:
     script = root.parent / "tools/ci/repair_step292_first_run_compile.py"
     if not script.is_file():
         raise SystemExit(f"[step292] missing compile repair: {script}")
     subprocess.run([sys.executable, str(script), str(root)], check=True)
 
 
-def restore_server_contracts_if_needed(root: Path, ui_path: Path) -> str:
-    ui = ui_path.read_text(encoding="utf-8")
-    if "private fun showBootstrapGate()" not in ui:
-        return ui
-    required = (
-        'private fun showServerDialog(',
-        'private fun getSavedServers()',
-        'private fun refreshServerStatus(',
-        'private fun deleteServer(',
-        'private fun selectServer(',
-    )
-    if all(needle in ui for needle in required):
-        return ui
-
-    scripts = (
-        "repair_step207_server_ui.py",
-        "repair_step209_server_list.py",
-        "repair_step210_server_launch.py",
-        "repair_step211_minecraft_server_query.py",
-        "repair_step212_server_ui.py",
-        "repair_step213_server_cards.py",
-        "repair_step214_server_detail.py",
-        "repair_step215_launch_feedback.py",
-        "repair_step216_launch_progress.py",
-    )
-    for name in scripts:
-        script = root.parent / "tools/ci" / name
-        if not script.is_file():
-            raise SystemExit(f"[step292] missing server repair script: {script}")
-        subprocess.run([sys.executable, str(script), str(root)], check=True)
-    ui = ui_path.read_text(encoding="utf-8")
-    print("[step292] server/launch contracts restored after final Feature Center UI repair")
-    return ui
+def restore_server_contracts(root: Path) -> str:
+    script = root.parent / "tools/ci/repair_step293_server_contracts_after_final_ui.py"
+    if not script.is_file():
+        raise SystemExit(f"[step293] missing server contract repair: {script}")
+    subprocess.run([sys.executable, str(script), str(root)], check=True)
+    ui_path = find_one(root / "app/src/main/java", "DroidLauncherUiActivity.kt")
+    return ui_path.read_text(encoding="utf-8")
 
 
 def main() -> int:
@@ -104,13 +76,12 @@ def main() -> int:
         ui_path.write_text(ui, encoding="utf-8")
         ui = ui_path.read_text(encoding="utf-8")
     else:
-        repair_bootstrap_source(root, ui_path)
-        ui = restore_server_contracts_if_needed(root, ui_path)
+        repair_bootstrap_source(root)
+        ui = restore_server_contracts(root)
         if 'setTextColor(this@DroidLauncherUiActivity.text)' in ui or 'setTextColor(text)' in ui:
             raise SystemExit('[step292] invalid generated text color reference remains')
 
     manager = find_one(src, "MinecraftLaunchManager.kt").read_text(encoding="utf-8")
-
     for signature in (
         'private fun launchSelectedMinecraft()',
         'private fun installMinecraftVersion(version: String)',
@@ -127,7 +98,6 @@ def main() -> int:
     ):
         if needle not in manager:
             raise SystemExit(f"[step239] missing manager type-safety contract: {needle}")
-
     if 'resolveLaunchJavaRuntime(requestedJava: String): String' in manager:
         raise SystemExit('[step239] stale String-based launch Java resolver remains')
     if 'private fun installMinecraftVersion(version: String) {' not in ui:
@@ -150,20 +120,21 @@ def main() -> int:
 
     if "private fun showBootstrapGate()" in ui:
         for needle in (
-            'private fun showServerDialog(',
-            'private fun getSavedServers()',
-            'private fun refreshServerStatus(',
-            'private fun deleteServer(',
-            'private fun selectServer(',
+            'private fun showServerDialog(index: Int)',
+            'private fun getSavedServers(): List<Pair<String, Int>>',
+            'private fun refreshServerStatus(host: String, port: Int)',
+            'private fun deleteServer(index: Int)',
+            'private fun selectServer(host: String, port: Int)',
         ):
             if needle not in ui:
-                raise SystemExit(f'[step292] server contract missing: {needle}')
+                raise SystemExit(f'[step293] server contract missing: {needle}')
         print('[step287] bootstrap gate preserved during generated-source verification')
 
     print('[step239] generated UI helper declarations are unique')
     print('[step239] MinecraftLaunchManager Java resolver is Int -> Int')
     print('[step239] no stale String-based Java launch resolver remains')
     print('[step291] Home + Account/Profile mockups finalized with preserved Feature Center navigation')
+    print('[step293] final server contracts are self-contained and background-safe')
     return 0
 
 
