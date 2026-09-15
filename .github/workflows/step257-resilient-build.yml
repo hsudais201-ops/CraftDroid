@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
 
-aConcurrency:
+concurrency:
   group: step257-resilient-build-${{ github.ref }}
   cancel-in-progress: true
 
