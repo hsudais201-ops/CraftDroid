@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 239/287: verify generated Kotlin and apply the final supplied UI shell."""
+"""Step 239/288: verify generated Kotlin and apply the final supplied UI shell."""
 from pathlib import Path
 import re
 import runpy
@@ -19,12 +19,16 @@ def count_decl(source: str, signature: str) -> int:
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
-
-    # runpy must use __main__ so the final UI script's main() actually executes.
     final_ui_script = root.parent / "tools/ci/apply_step286_home_account_gui.py"
     if not final_ui_script.is_file():
-        raise SystemExit(f"[step287] final UI script not found: {final_ui_script}")
-    runpy.run_path(str(final_ui_script), run_name="__main__")
+        raise SystemExit(f"[step288] final UI script not found: {final_ui_script}")
+
+    # Load without executing the helper's __main__ block, then call main()
+    # explicitly so its SystemExit does not abort this verifier.
+    namespace = runpy.run_path(str(final_ui_script), run_name="step286_helper")
+    result = namespace["main"]()
+    if result not in (None, 0):
+        raise SystemExit(f"[step288] final UI helper returned {result}")
 
     src = root / "app/src/main/java"
     ui = find_one(src, "DroidLauncherUiActivity.kt").read_text(encoding="utf-8")
@@ -59,12 +63,12 @@ def main() -> int:
         '"Game" -> homePage()',
     ):
         if needle not in ui:
-            raise SystemExit(f'[step287] final GUI contract missing: {needle}')
+            raise SystemExit(f'[step288] final GUI contract missing: {needle}')
 
     print('[step239] generated UI helper declarations are unique')
     print('[step239] MinecraftLaunchManager Java resolver is Int -> Int')
     print('[step239] no stale String-based Java launch resolver remains')
-    print('[step287] supplied Home + Account/Profile GUI applied and verified')
+    print('[step288] supplied Home + Account/Profile GUI applied and verified')
     return 0
 
 
