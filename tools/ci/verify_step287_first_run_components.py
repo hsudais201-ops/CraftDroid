@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Static verification for the isolated first-run component extraction gate."""
 from pathlib import Path
-import re
 import sys
 
 REQUIRED = [
@@ -16,6 +15,11 @@ REQUIRED = [
     "Launcher Components",
     "LWJGL 3.3.3",
 ]
+
+TEXT_EXTENSIONS = {
+    ".kt", ".java", ".xml", ".properties", ".md", ".txt", ".py",
+    ".yml", ".yaml", ".gradle", ".kts", ".json", ".html", ".css", ".js",
+}
 
 
 def main() -> int:
@@ -36,11 +40,23 @@ def main() -> int:
         'putBoolean("components_extracted", true)',
         'showBootstrapGate()',
         'showPage("Game")',
-        '"Zalith Launcher"',
+        '"Droid Launcher"',
         '"Install"',
     ):
         if needle not in s:
             raise SystemExit(f"[step287] missing gate contract: {needle}")
+
+    legacy_brand = "Za" + "lith Launcher"
+    legacy_style = "Za" + "lith-style"
+    for path in root.rglob("*"):
+        if not path.is_file() or path.suffix.lower() not in TEXT_EXTENSIONS:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        if legacy_brand in text or legacy_style in text:
+            raise SystemExit(f"[step287] legacy launcher branding remains in {path}")
 
     # The first-run gate must not render the normal navigation toolbar.
     gate_start = s.index('private fun showBootstrapGate()')
@@ -50,7 +66,6 @@ def main() -> int:
         if forbidden in gate:
             raise SystemExit(f"[step287] first-run gate contains normal navigation: {forbidden}")
 
-    # Completion must be set only inside the successful extraction branch.
     completion_count = s.count('putBoolean("components_extracted", true)')
     if completion_count != 1:
         raise SystemExit(f"[step287] expected one successful completion write, found {completion_count}")
@@ -62,6 +77,7 @@ def main() -> int:
 
     print('[step287] all 10 required component entries present')
     print('[step287] first-run gate is isolated from normal navigation')
+    print('[step287] generated branding is Droid Launcher only')
     print('[step287] Install completion is persisted only after extraction verification')
     print('[step287] retry/failure path keeps the gate active')
     return 0
