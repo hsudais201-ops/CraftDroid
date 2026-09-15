@@ -191,8 +191,15 @@ jobs:
         working-directory: droid-src
         shell: bash
         run: |
-          set -o pipefail
+          set +e
           gradle --no-daemon --stacktrace :app:lintDebug 2>&1 | tee ../artifacts/build/lintDebug.log
+          status=${PIPESTATUS[0]}
+          echo "LINT_EXIT=$status"
+          echo '--- LINT REPORT SUMMARY ---'
+          if [ -f app/build/reports/lint-results-debug.txt ]; then sed -n '1,240p' app/build/reports/lint-results-debug.txt; fi
+          if [ -f app/build/reports/lint-results-debug.xml ]; then grep -o '<issue[^>]*severity="error"[^>]*' app/build/reports/lint-results-debug.xml | head -80 || true; fi
+          find app/build/reports -type f -maxdepth 4 -print 2>/dev/null | sort | head -100 || true
+          exit "$status"
       - name: Run unit tests
         working-directory: droid-src
         shell: bash
