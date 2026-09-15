@@ -1,0 +1,115 @@
+name: Step 294 - Finalize Droid Launcher after resilient source generation
+
+on:
+  workflow_run:
+    workflows: ["Step 257 - Droid Launcher resilient authoritative build"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  finalize:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact source commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Download Step 257 generated-source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Droid-Launcher-Step257-diagnostics
+          path: step257-diagnostics
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Restore generated source
+        shell: bash
+        run: |
+          set -euo pipefail
+          TGZ="$(find step257-diagnostics -type f -name generated-source.tgz -print -quit)"
+          test -n "$TGZ"
+          rm -rf droid-src
+          tar -xzf "$TGZ"
+          test -f droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
+      - name: Apply final Home and Account GUI
+        run: python3 tools/ci/apply_step286_home_account_gui.py droid-src
+      - name: Apply first-run components gate
+        run: python3 tools/ci/apply_step287_first_run_components_gui.py droid-src
+      - name: Repair first-run generated Kotlin
+        run: python3 tools/ci/repair_step292_first_run_compile.py droid-src
+      - name: Install final self-contained server contracts
+        run: python3 tools/ci/repair_step293_server_contracts_after_final_ui.py droid-src
+      - name: Verify generated source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_minecraft_launch_contract.py droid-src
+          python3 tools/ci/verify_step233_handoff_validator.py droid-src
+          python3 tools/ci/verify_step235_audit.py droid-src
+          python3 tools/ci/verify_step236_download_trust.py droid-src
+          python3 tools/ci/verify_step239_generated_kotlin.py droid-src
+          python3 tools/ci/verify_step287_first_run_components.py droid-src
+          grep -F 'private fun showBootstrapGate()' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
+          grep -F 'private fun showServerDialog(index: Int)' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
+          grep -F 'private fun getSavedServers(): List<Pair<String, Int>>' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
+          if grep -RInE 'TODO|FIXME|NotImplementedException' droid-src/app/src/main/java; then exit 1; fi
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+      - name: Install Android SDK, NDK and CMake
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+      - name: Set up Gradle 9.6.0 directly
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.6.0'
+          validate-wrappers: false
+      - name: Run Android Lint
+        working-directory: droid-src
+        run: gradle --no-daemon --stacktrace :app:lintDebug
+      - name: Run unit tests
+        working-directory: droid-src
+        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest
+      - name: Build debug APK
+        working-directory: droid-src
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+      - name: Verify APK completely
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
+          export PATH="$BUILD_TOOLS:$PATH"
+          aapt2 dump badging "$APK" | tee apk-badging.txt
+          grep -F "package: name='com.craftdroid.launcher'" apk-badging.txt
+          apksigner verify --verbose "$APK"
+          zipalign -c -P 16 -v 4 "$APK"
+          python3 tools/ci/verify_runtime_preflight.py "$APK"
+          unzip -l "$APK" | grep -Eq '[[:space:]]AndroidManifest.xml$'
+          unzip -l "$APK" | grep -Eq '[[:space:]]classes(2)?\.dex$'
+          mkdir -p artifacts
+          cp "$APK" artifacts/Droid-Launcher-Step294-debug.apk
+          sha256sum "$APK" | tee artifacts/SHA256SUMS.txt
+      - name: Upload final APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Droid-Launcher-Step294-final
+          path: artifacts/*
+          if-no-files-found: error
