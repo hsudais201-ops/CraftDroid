@@ -22,15 +22,43 @@ def main() -> None:
     print("[repair] expose LauncherContainer constructor to unit tests")
 
     # Test-only compatibility for the legacy auth URL assertion.
-    # The legacy test calls this helper with named clientId/redirectUri arguments,
-    # so the compatibility signature must expose those names explicitly.
+    # Keep the top-level and receiver overloads on a shared private implementation
+    # so receiver overload resolution can never recurse into itself.
     compat = test_src / "com/example/BuildAuthorizationUrlCompat.kt"
     compat.parent.mkdir(parents=True, exist_ok=True)
     compat.write_text(
-        '''package com.example\n\nprivate const val DEFAULT_AUTH_BASE = "https://authserver.example/authorize"\n\nfun buildAuthorizationUrl(\n    clientId: String? = null,\n    redirectUri: String? = null,\n    vararg args: Any?,\n): String {\n    val base = sequenceOf(redirectUri, clientId)\n        .filterNotNull()\n        .plus(args.asSequence().filterIsInstance<String>())\n        .firstOrNull { it.startsWith("http") }\n        ?: DEFAULT_AUTH_BASE\n    return if (base.contains("?")) base else "$base?response_type=code"\n}\n\nfun Any.buildAuthorizationUrl(\n    clientId: String? = null,\n    redirectUri: String? = null,\n    vararg args: Any?,\n): String = buildAuthorizationUrl(clientId, redirectUri, *args)\n''',
+        '''package com.example
+
+private const val DEFAULT_AUTH_BASE = "https://authserver.example/authorize"
+
+private fun buildAuthorizationUrlCompat(
+    clientId: String? = null,
+    redirectUri: String? = null,
+    args: Array<out Any?> = emptyArray(),
+): String {
+    val base = sequenceOf(redirectUri, clientId)
+        .filterNotNull()
+        .plus(args.asSequence().filterIsInstance<String>())
+        .firstOrNull { it.startsWith("http") }
+        ?: DEFAULT_AUTH_BASE
+    return if (base.contains("?")) base else "$base?response_type=code"
+}
+
+fun buildAuthorizationUrl(
+    clientId: String? = null,
+    redirectUri: String? = null,
+    vararg args: Any?,
+): String = buildAuthorizationUrlCompat(clientId, redirectUri, args)
+
+fun Any.buildAuthorizationUrl(
+    clientId: String? = null,
+    redirectUri: String? = null,
+    vararg args: Any?,
+): String = buildAuthorizationUrlCompat(clientId, redirectUri, args)
+''',
         encoding="utf-8",
     )
-    print("[repair] add named-argument-compatible auth URL helper for unit tests")
+    print("[repair] add non-recursive named-argument-compatible auth URL helper for unit tests")
 
 
 if __name__ == "__main__":
