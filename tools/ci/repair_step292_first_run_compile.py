@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import shutil
 import sys
 
 TEXT_EXTENSIONS = {
@@ -35,6 +36,48 @@ def scrub_generated_branding(root: Path) -> int:
     return changed
 
 
+def copy_modern_managers(root: Path) -> int:
+    """Copy authoritative new managers from the repository source into droid-src."""
+    project = Path.cwd().resolve()
+    names = (
+        "MinecraftRuntimeProfile.kt",
+        "MinecraftLatestVersionManager.kt",
+        "MinecraftContentManager.kt",
+        "LauncherBackgroundInstallController.kt",
+        "DroidLauncherUpdateManager.kt",
+        "MinecraftLoaderProfile.kt",
+    )
+    destination = root / "app/src/main/java/com/example/launcher"
+    destination.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for name in names:
+        source = project / "app/src/main/java/com/example/launcher" / name
+        if source.is_file():
+            shutil.copy2(source, destination / name)
+            copied += 1
+    if copied != len(names):
+        raise SystemExit(f"[step322] expected {len(names)} modern managers, copied {copied}")
+    print(f"[step322] copied {copied} modern runtime/content/update managers")
+    return copied
+
+
+def verify_modern_managers(root: Path) -> None:
+    src = root / "app/src/main/java/com/example/launcher"
+    required = {
+        "MinecraftRuntimeProfile.kt": ("first >= 26 -> Profile(25", "requiresJava25"),
+        "MinecraftLatestVersionManager.kt": ("version_manifest_v2.json", 'optJSONObject("latest")'),
+        "MinecraftContentManager.kt": ("MODPACK", "SHADER", "RESOURCE_PACK", "WORLD", "ZipInputStream"),
+        "LauncherBackgroundInstallController.kt": ("CountDownLatch", "State.SUCCESS", "State.FAILED"),
+        "DroidLauncherUpdateManager.kt": ("releases/latest", ".apk", "SHA-256 verification failed"),
+        "MinecraftLoaderProfile.kt": ("FABRIC", "FORGE", "NEOFORGE", "QUILT"),
+    }
+    for name, needles in required.items():
+        text = (src / name).read_text(encoding="utf-8")
+        for needle in needles:
+            if needle not in text:
+                raise SystemExit(f"[step322] missing {needle!r} in {name}")
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
     ui = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
@@ -64,6 +107,8 @@ def main() -> int:
     s = s.replace("setTextColor(this@DroidLauncherUiActivity.text)", "setTextColor(primaryText)")
     s = s.replace("setTextColor(text)", "setTextColor(primaryText)")
     ui.write_text(s, encoding="utf-8")
+    copy_modern_managers(root)
+    verify_modern_managers(root)
     changed = scrub_generated_branding(root)
     print(f"[step300] hardened first-run component gate applied; branding_files_scrubbed={changed}")
     return 0
