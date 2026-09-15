@@ -18,7 +18,10 @@ def find_one(root: Path, name: str) -> Path:
 
 
 def replace_function_body(text: str, signature_regex: str, replacement: str) -> tuple[str, bool]:
-    pattern = re.compile(signature_regex + r"[\\s\\S]*?(?=^    (?:private|public|internal|protected) fun |^}", re.MULTILINE)
+    pattern = re.compile(
+        signature_regex + r"[\s\S]*?(?=^    (?:private|public|internal|protected) fun |^})",
+        re.MULTILINE,
+    )
     match = pattern.search(text)
     if not match:
         return text, False
@@ -29,48 +32,40 @@ def patch_installer(root: Path) -> None:
     path = find_one(root / "app/src/main/java", "MinecraftVersionInstallManager.kt")
     text = path.read_text(encoding="utf-8")
 
-    # Idempotent normalization of both helper methods.  We locate the method
-    # signature and stop at the next Kotlin method, rather than matching a
-    # particular implementation that may have been hardened by another step.
-    text2, root_changed = replace_function_body(
+    text, root_changed = replace_function_body(
         text,
         r"^    private fun minecraftRoot\(context: Context\): File =",
         '''    private fun minecraftRoot(context: Context): File =
-        MinecraftStorageResolver.root(context)'''
+        MinecraftStorageResolver.root(context)''',
     )
-    text3, version_changed = replace_function_body(
-        text2,
+    text, version_changed = replace_function_body(
+        text,
         r"^    private fun versionRoot\(context: Context, version: String\): File =",
         '''    private fun versionRoot(context: Context, version: String): File =
-        MinecraftStorageResolver.version(context, version)'''
+        MinecraftStorageResolver.version(context, version)''',
     )
 
-    # A generated installer may use expression-bodied helpers on one line or
-    # block-bodied helpers. If a helper is absent, insert canonical definitions
-    # immediately before the prefs helper so the source remains valid.
-    if 'MinecraftStorageResolver.root(context)' not in text3:
-        anchor = '    private fun fileLength(file: File): Long ='
-        idx = text3.find(anchor)
-        if idx < 0:
-            raise SystemExit('[step226] installer root anchor not found')
-        text3 = text3[:idx] + '''    private fun minecraftRoot(context: Context): File =
+    # Some fixtures can omit the helpers completely. Insert canonical definitions
+    # once before the file-length helper; this keeps the pass idempotent.
+    anchor = '    private fun fileLength(file: File): Long ='
+    idx = text.find(anchor)
+    if idx < 0:
+        raise SystemExit('[step226] installer fileLength anchor not found')
+    if 'MinecraftStorageResolver.root(context)' not in text:
+        text = text[:idx] + '''    private fun minecraftRoot(context: Context): File =
         MinecraftStorageResolver.root(context)
 
-''' + text3[idx:]
+''' + text[idx:]
         root_changed = True
-
-    if 'MinecraftStorageResolver.version(context, version)' not in text3:
-        anchor = '    private fun fileLength(file: File): Long ='
-        idx = text3.find(anchor)
-        if idx < 0:
-            raise SystemExit('[step226] installer version anchor not found')
-        text3 = text3[:idx] + '''    private fun versionRoot(context: Context, version: String): File =
+    if 'MinecraftStorageResolver.version(context, version)' not in text:
+        idx = text.find(anchor)
+        text = text[:idx] + '''    private fun versionRoot(context: Context, version: String): File =
         MinecraftStorageResolver.version(context, version)
 
-''' + text3[idx:]
+''' + text[idx:]
         version_changed = True
 
-    path.write_text(text3, encoding="utf-8")
+    path.write_text(text, encoding="utf-8")
     print(f"[step226] installer root normalized: changed={int(root_changed)}")
     print(f"[step226] installer version root normalized: changed={int(version_changed)}")
 
