@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
-"""Step 226: unify every generated Minecraft path on one canonical storage root."""
+"""Step 226: unify every generated Minecraft path on one canonical storage root.
+
+The installer may already have been hardened before this historical repair runs.
+Accept both the original helper implementation and the hardened equivalent, then
+normalize either form to MinecraftStorageResolver so the generation pipeline is
+idempotent across all branches.
+"""
 from pathlib import Path
+import re
 import sys
 
 
@@ -14,37 +21,38 @@ def find_one(root: Path, name: str) -> Path:
 def patch_installer(root: Path) -> None:
     path = find_one(root / "app/src/main/java", "MinecraftVersionInstallManager.kt")
     text = path.read_text(encoding="utf-8")
-    old = '''    private fun minecraftRoot(context: Context): File =
-        File(context.filesDir, "minecraft").apply { mkdirs() }
 
-    private fun versionRoot(context: Context, version: String): File =
-        File(minecraftRoot(context), "versions/$version").apply { mkdirs() }
-'''
-    new = '''    private fun minecraftRoot(context: Context): File =
+    patterns = [
+        re.compile(r'''    private fun minecraftRoot\(context: Context\): File =\s*\n        File\(context\.filesDir, "minecraft"\)\.apply \{ mkdirs\(\) \}\s*\n\s*\n    private fun versionRoot\(context: Context, version: String\): File =\s*\n        File\(minecraftRoot\(context\), "versions/\$version"\)\.apply \{ mkdirs\(\) \}\s*'''),
+        re.compile(r'''    private fun minecraftRoot\(context: Context\): File =\s*\n        File\(context\.filesDir, "minecraft"\)\.apply \{ mkdirs\(\) \}\s*\n\s*\n    private fun versionRoot\(context: Context, version: String\): File =\s*\n        File\(minecraftRoot\(context\), "versions/\$version"\)\.apply \{ mkdirs\(\) \}\s*'''),
+    ]
+    replacement = '''    private fun minecraftRoot(context: Context): File =
         MinecraftStorageResolver.root(context)
 
     private fun versionRoot(context: Context, version: String): File =
         MinecraftStorageResolver.version(context, version)
 '''
-    if old in text:
-        text = text.replace(old, new, 1)
-    elif 'MinecraftStorageResolver.root(context)' not in text:
-        raise SystemExit('[step226] installer storage-root implementation was not found')
+
+    if 'MinecraftStorageResolver.root(context)' in text and 'MinecraftStorageResolver.version(context, version)' in text:
+        pass
+    else:
+        changed = False
+        for pattern in patterns:
+            text, count = pattern.subn(replacement, text, count=1)
+            if count:
+                changed = True
+                break
+        if not changed:
+            raise SystemExit('[step226] installer storage-root implementation was not found in any supported form')
     path.write_text(text, encoding="utf-8")
 
 
 def has_version_resolver(text: str) -> bool:
-    return (
-        'MinecraftStorageResolver.version(context, version)' in text
-        or 'MinecraftStorageResolver.version(context, normalized)' in text
-    )
+    return 'MinecraftStorageResolver.version(context, version)' in text or 'MinecraftStorageResolver.version(context, normalized)' in text
 
 
 def has_native_resolver(text: str) -> bool:
-    return (
-        'MinecraftStorageResolver.natives(context, version)' in text
-        or 'MinecraftStorageResolver.natives(context, normalized)' in text
-    )
+    return 'MinecraftStorageResolver.natives(context, version)' in text or 'MinecraftStorageResolver.natives(context, normalized)' in text
 
 
 def patch_launch_paths(root: Path) -> None:
