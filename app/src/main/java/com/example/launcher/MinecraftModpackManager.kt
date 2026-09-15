@@ -219,7 +219,8 @@ object MinecraftModpackManager {
 
     private fun downloadVerified(rawUrl: String, target: File, expectedSha1: String, expectedSize: Long) {
         var current = URL(rawUrl)
-        repeat(MAX_REDIRECTS + 1) { attempt ->
+        var attempt = 0
+        while (attempt <= MAX_REDIRECTS) {
             require(isAllowedDownloadUrl(current)) { "Untrusted modpack download host" }
             val c = (current.openConnection() as HttpURLConnection).apply {
                 connectTimeout = CONNECT_TIMEOUT
@@ -232,8 +233,9 @@ object MinecraftModpackManager {
                 if (response in 300..399) {
                     val location = c.getHeaderField("Location")
                     if (location.isNullOrBlank()) throw IOException("Redirect has no Location header")
-                    if (attempt >= MAX_REDIRECTS) throw IOException("Too many modpack download redirects")
+                    if (attempt == MAX_REDIRECTS) throw IOException("Too many modpack download redirects")
                     current = URI(current.toString()).resolve(location).toURL()
+                    attempt++
                     continue
                 }
                 if (response !in 200..299) throw IOException("HTTP $response while downloading $rawUrl")
