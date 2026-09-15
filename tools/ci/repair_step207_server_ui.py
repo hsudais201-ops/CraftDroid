@@ -3,10 +3,7 @@ from pathlib import Path
 import re
 import sys
 
-MARKER = '        val add = button("+  Add Account")\n        left.addView(add, LinearLayout.LayoutParams(-1, dp(48)))\n'
-INSERT = '''        val add = button("+  Add Account")
-        left.addView(add, LinearLayout.LayoutParams(-1, dp(48)))
-
+INSERT = '''
         val serverHeader = label("Servers", 17f, true)
         left.addView(serverHeader)
         left.addView(label("Saved server and live online/offline status", 12f, false))
@@ -78,8 +75,9 @@ DIALOG = '''
 
     private fun getSavedServer(): Pair<String, Int>? {
         val prefs = getSharedPreferences("droid_launcher", MODE_PRIVATE)
-        val address = prefs.getString("server_address", null) ?: return null
-        return address to prefs.getInt("server_port", 25565)
+        val address = prefs.getString("server_address", null)?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        val port = prefs.getInt("server_port", 25565).coerceIn(1, 65535)
+        return address to port
     }
 
     private fun refreshServerStatus() {
@@ -88,6 +86,7 @@ DIALOG = '''
         Thread {
             val online = try {
                 java.net.Socket().use { socket ->
+                    socket.soTimeout = 1800
                     socket.connect(java.net.InetSocketAddress(saved.first, saved.second), 1800)
                 }
                 true
@@ -109,8 +108,45 @@ DIALOG = '''
 def patch_manifest(manifest: Path) -> None:
     text = manifest.read_text(encoding="utf-8")
     if "android.permission.INTERNET" not in text:
-        text = re.sub(r'(</manifest>)', '    <uses-permission android:name="android.permission.INTERNET" />\n\\1', text, count=1)
+        text = re.sub(r"(</manifest>)", '    <uses-permission android:name="android.permission.INTERNET" />\n\\1', text, count=1)
         manifest.write_text(text, encoding="utf-8")
+
+
+def insert_server_section(source: str) -> str:
+    if 'val serverHeader = label("Servers"' in source:
+        return source
+
+    # Prefer the account button added by the home/account GUI, regardless of minor
+    # formatting changes made by later UI generators.
+    account_patterns = [
+        r'^\s*val\s+add\s*=\s*button\("\+\s*Add Account"\).*$',
+        r'^\s*val\s+addAccount\s*=\s*button\("\+\s*Add Account"\).*$',
+    ]
+    for pattern in account_patterns:
+        match = re.search(pattern, source, re.MULTILINE)
+        if not match:
+            continue
+        line_end = source.find("\n", match.end())
+        if line_end < 0:
+            line_end = len(source)
+        # Insert after the corresponding add-account button setup line and any
+        # immediately adjacent addView line, so the server panel stays in the
+        # same left-column region in all supported GUI variants.
+        cursor = line_end + 1
+        add_view = re.match(r'^\s*left\.addView\([^\n]+\)\s*\n', source[cursor:])
+        if add_view:
+            cursor += add_view.end()
+        return source[:cursor] + INSERT + source[cursor:]
+
+    # Fallback: anchor on the literal account label and its next few lines.
+    label_match = re.search(r'left\.addView\([^\n]*Add Account[^\n]*\)\s*', source)
+    if label_match:
+        line_end = source.find("\n", label_match.end())
+        if line_end < 0:
+            line_end = len(source)
+        return source[:line_end + 1] + INSERT + source[line_end + 1:]
+
+    raise SystemExit("[step208] no supported Game-page Add Account anchor found")
 
 
 def main() -> int:
@@ -119,16 +155,13 @@ def main() -> int:
     if not ui.exists():
         raise SystemExit(f"[step208] missing UI source: {ui}")
     source = ui.read_text(encoding="utf-8")
-    # Generated UI gets a field so the async reachability check can update only the status label.
     if "private var serverStatusView: TextView? = null" not in source:
         anchor = '    private var currentPage = "Game"\n'
         if anchor not in source:
             raise SystemExit("[step208] currentPage anchor not found")
         source = source.replace(anchor, anchor + '    private var serverStatusView: TextView? = null\n', 1)
-    if 'val serverHeader = label("Servers"' not in source:
-        if MARKER not in source:
-            raise SystemExit("[step208] expected Game page account block not found")
-        source = source.replace(MARKER, INSERT, 1)
+
+    source = insert_server_section(source)
     start = source.find('    private fun showServerDialog() {')
     if start >= 0:
         end = source.find('    private fun rendererPage() {', start)
@@ -141,12 +174,13 @@ def main() -> int:
             raise SystemExit("[step208] rendererPage anchor not found")
         source = source.replace(anchor, DIALOG + '\n' + anchor, 1)
     ui.write_text(source, encoding="utf-8")
+
     manifests = list(root.glob("**/src/main/AndroidManifest.xml"))
     if manifests:
         patch_manifest(manifests[0])
     print("[step208] server name/address/port persistence installed")
     print("[step208] asynchronous TCP reachability status installed")
-    print("[step208] status updates no longer recurse through page rendering")
+    print("[step208] repair now accepts final Home/Account GUI variants")
     print("[step208] INTERNET permission ensured")
     return 0
 
