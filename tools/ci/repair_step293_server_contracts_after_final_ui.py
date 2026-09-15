@@ -2,10 +2,11 @@
 """Restore the server feature contract after the Step 286 whole-UI replacement.
 
 Also restores the authoritative modern runtime/content managers after UI generation
-so the final generated source contains the complete Step 315-326 feature set.
+so the final generated source contains the complete modern feature set.
 """
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 
 MARKER = "// STEP293_SERVER_CONTRACTS"
@@ -178,8 +179,18 @@ def main() -> int:
         if needle not in source:
             raise SystemExit(f"[step293] missing server contract: {needle}")
     copy_modern_sources(root)
+
+    # Apply Step 328 only after the whole-UI replacement and manager restoration,
+    # so the dynamic Mojang latest-release wiring cannot be overwritten later.
+    latest_script = project_script = Path.cwd().resolve() / "tools/ci/repair_step328_latest_version_wiring.py"
+    if latest_script.is_file():
+        subprocess.run([sys.executable, str(latest_script), str(root)], check=True)
+    else:
+        raise SystemExit("[step328] latest-version wiring script missing")
+
     print("[step293] self-contained server Add/Edit/Delete/Select/Refresh contracts installed")
     print("[step293] server reachability checks run off the Android UI thread")
+    print("[step328] latest-version wiring applied after final UI replacement")
     return 0
 
 
