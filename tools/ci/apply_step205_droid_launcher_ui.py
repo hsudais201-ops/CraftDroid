@@ -1,13 +1,13 @@
-#!/usr/bin/env python3
-"""Generate the Droid Launcher landscape UI shell.
+# Droid Launcher UI generator
+# NOTE: this helper is kept self-contained so the build can reconstruct the UI
+# source without requiring another launcher project.
 
-This file intentionally contains no dependency on another launcher's branding.
-Later CI repair passes add the server, feature, account, and launch integrations.
-"""
 from pathlib import Path
 import re
 import sys
 
+# The full UI source is generated in the checked-in ACTIVITY template below.
+# Keep the implementation in the repository; do not substitute external branded code.
 ACTIVITY = r'''package com.example.launcher
 
 import android.app.Activity
@@ -244,7 +244,11 @@ def find_manifest(root: Path) -> Path:
 
 
 def get_launcher_component(text: str) -> str:
-    patterns = [r'<(?:activity|activity-alias)\\b[\\s\\S]*?</(?:activity|activity-alias)>', r'<(?:activity|activity-alias)\\b[^>]*?/\\s*>']
+    # Correct Python regex escaping: a raw string needs one backslash here.
+    patterns = [
+        r'<(?:activity|activity-alias)\b[\s\S]*?</(?:activity|activity-alias)>',
+        r'<(?:activity|activity-alias)\b[^>]*?/\s*>',
+    ]
     for pattern in patterns:
         for match in re.finditer(pattern, text):
             block = match.group(0)
@@ -281,6 +285,7 @@ def main() -> int:
     print(f"[step205] Droid Launcher UI installed: {src}")
     print(f"[step205] existing launcher preserved: {existing or 'none detected'}")
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
