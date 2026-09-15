@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       apk_build_run_id:
-        description: 'Optional successful Build CraftDroid APK workflow run ID to test'
+        description: 'Optional successful Droid Launcher authoritative build workflow run ID to test'
         required: false
         type: string
   workflow_run:
-    workflows: [Build CraftDroid APK]
+    workflows: ["Step 200 - Droid Launcher authoritative build"]
     types: [completed]
     branches: [main, master]
 
@@ -85,13 +85,13 @@ jobs:
               exit 1
             }
             found="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
-              --jq '.artifacts[] | select(.name=="CraftDroid-debug-apk" and .expired==false) | .id' \
+              --jq '.artifacts[] | select((.name|startswith("Droid-Launcher-Step")) and (.name|endswith("-debug")) and .expired==false) | .id' \
               | head -n 1)"
           fi
           if [ -z "$found" ]; then
             echo "Falling back to exact source-commit artifact lookup for $TARGET_SHA."
             found="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
-              --jq '.artifacts[] | select(.name=="CraftDroid-debug-apk" and .expired==false) | [.id,.workflow_run.head_sha,.workflow_run.conclusion] | @tsv' \
+              --jq '.artifacts[] | select((.name|startswith("Droid-Launcher-Step")) and (.name|endswith("-debug")) and .expired==false) | [.id,.workflow_run.head_sha,.workflow_run.conclusion] | @tsv' \
               | awk -v sha="$TARGET_SHA" '$2==sha && $3=="success" {print $1; exit}')"
             printf '%s\n' "$TARGET_SHA" > artifacts/apk/build-head-sha.txt
             printf '%s\n' "success" > artifacts/apk/build-conclusion.txt
