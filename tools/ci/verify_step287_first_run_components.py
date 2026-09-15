@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Static verification for the isolated first-run component extraction gate."""
 from pathlib import Path
+import re
 import sys
 
 REQUIRED = [
@@ -20,6 +21,21 @@ TEXT_EXTENSIONS = {
     ".kt", ".java", ".xml", ".properties", ".md", ".txt", ".py",
     ".yml", ".yaml", ".gradle", ".kts", ".json", ".html", ".css", ".js",
 }
+
+
+def next_top_level_method(source: str, start: int) -> int:
+    """Return the first later Kotlin private method declaration, or EOF.
+
+    The generated UI pipeline can place the bootstrap helpers either before or
+    after buildUi(). The verifier must validate the gate in both layouts.
+    """
+    pattern = re.compile(r"^    private fun [A-Za-z_][A-Za-z0-9_]*\s*\(", re.MULTILINE)
+    match = pattern.search(source, start)
+    while match:
+        if match.start() != start:
+            return match.start()
+        match = pattern.search(source, match.end())
+    return len(source)
 
 
 def main() -> int:
@@ -58,9 +74,12 @@ def main() -> int:
         if legacy_brand in text or legacy_style in text:
             raise SystemExit(f"[step287] legacy launcher branding remains in {path}")
 
-    # The first-run gate must not render the normal navigation toolbar.
+    # The first-run gate must not render the normal navigation toolbar. The
+    # generator is allowed to place the gate before or after buildUi(). Bound
+    # the check to the gate's own contiguous helper/method section instead of
+    # assuming a particular function order.
     gate_start = s.index('private fun showBootstrapGate()')
-    gate_end = s.index('    private fun buildUi()', gate_start)
+    gate_end = next_top_level_method(s, gate_start + len('private fun showBootstrapGate()'))
     gate = s[gate_start:gate_end]
     for forbidden in ('"Accounts"', '"Downloads"', '"Settings"'):
         if forbidden in gate:
