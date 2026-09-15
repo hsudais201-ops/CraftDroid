@@ -1,0 +1,172 @@
+name: Step 261 - Resilient Real Minecraft Android Boot
+
+on:
+  workflow_dispatch:
+    inputs:
+      apk_build_run_id:
+        description: 'Successful Step 200 build run ID (optional; auto-detects when empty)'
+        required: false
+        type: string
+  workflow_run:
+    workflows: ["Step 200 - Droid Launcher authoritative build"]
+    types: [completed]
+    branches: [main, master]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: step261-real-boot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  boot:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == github.event.repository.default_branch) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - name: Select source commit and build run
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            TARGET_SHA='${{ github.event.workflow_run.head_sha }}'
+            SOURCE_RUN_ID='${{ github.event.workflow_run.id }}'
+          else
+            TARGET_SHA="$GITHUB_SHA"
+            SOURCE_RUN_ID='${{ inputs.apk_build_run_id }}'
+          fi
+          printf '%s\n' "$TARGET_SHA" > target-sha.txt
+          printf '%s\n' "$SOURCE_RUN_ID" > source-run-id.txt
+          echo "TARGET_SHA=$TARGET_SHA" >> "$GITHUB_ENV"
+          echo "SOURCE_RUN_ID=$SOURCE_RUN_ID" >> "$GITHUB_ENV"
+
+      - name: Checkout exact source commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 1
+
+      - name: Materialize real Minecraft 1.21.1 fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/fixture
+          CRAFTDROID_FIXTURE_DIR="$GITHUB_WORKSPACE/artifacts/fixture" \
+            python3 tools/ci/verify_minecraft_install_fixture.py | tee artifacts/fixture/fixture-result.txt
+          test -s artifacts/fixture/versions/1.21.1/1.21.1.jar
+          test -s artifacts/fixture/versions/1.21.1/1.21.1.json
+          test -s artifacts/fixture/assets/indexes/*.json
+          find artifacts/fixture/libraries -type f -print -quit | grep -q .
+
+      - name: Download APK from exact successful build
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/apk
+          found=''
+          if [ -n "$SOURCE_RUN_ID" ]; then
+            RUN_JSON="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/$SOURCE_RUN_ID")"
+            BUILD_SHA="$(printf '%s' "$RUN_JSON" | jq -r '.head_sha // empty')"
+            BUILD_STATUS="$(printf '%s' "$RUN_JSON" | jq -r '.conclusion // empty')"
+            test "$BUILD_STATUS" = success
+            test "$BUILD_SHA" = "$TARGET_SHA"
+            found="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
+              --jq '.artifacts[] | select((.name|startswith("Droid-Launcher-Step")) and (.name|endswith("-debug")) and .expired==false) | .id' \
+              | head -n 1)"
+          fi
+          if [ -z "$found" ]; then
+            found="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
+              --jq '.artifacts[] | select((.name|startswith("Droid-Launcher-Step")) and (.name|endswith("-debug")) and .expired==false) | [.id,.workflow_run.head_sha,.workflow_run.conclusion] | @tsv' \
+              | awk -v sha="$TARGET_SHA" '$2==sha && $3=="success" {print $1; exit}')"
+          fi
+          test -n "$found"
+          printf '%s\n' "$TARGET_SHA" > artifacts/apk/source-sha.txt
+          printf '%s\n' "$found" > artifacts/apk/artifact-id.txt
+          gh api -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/artifacts/$found/zip" > artifacts/apk/artifact.zip
+          unzip -q artifacts/apk/artifact.zip -d artifacts/apk
+          APK="$(find artifacts/apk -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          echo "APK=$APK" >> "$GITHUB_ENV"
+          sha256sum "$APK" | tee artifacts/apk/sha256.txt
+
+      - name: Install current Android command-line SDK packages only
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -path '*/bin/sdkmanager' -print -quit)"
+          fi
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "emulator" "platforms;android-35" "system-images;android-35;google_apis;x86_64"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
+
+      - name: Verify APK architecture and manifest before emulator launch
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
+          test -x "$BUILD_TOOLS/aapt"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee artifacts/apk/badging.txt
+          PACKAGE="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" artifacts/apk/badging.txt | head -n1)"
+          ACTIVITY="$(sed -n "s/^launchable-activity: name='\([^']*\)'.*/\1/p" artifacts/apk/badging.txt | head -n1)"
+          test -n "$PACKAGE"
+          test -n "$ACTIVITY"
+          unzip -l "$APK" | awk '{print $4}' | grep '^lib/x86_64/' | tee artifacts/apk/native-libs.txt
+          grep -q 'lib/x86_64/libcraftdroidbridge.so$' artifacts/apk/native-libs.txt
+          printf '%s\n' "$PACKAGE" > artifacts/apk/package.txt
+          printf '%s\n' "$ACTIVITY" > artifacts/apk/activity.txt
+
+      - name: Verify Android emulator is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          emulator -version
+          adb version
+          sdkmanager --list_installed | grep -E 'platform-tools|emulator|system-images;android-35;google_apis;x86_64' || true
+
+      - name: Start x86_64 Android 35 emulator and run real boot harness
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disk-size: 4G
+          heap-size: 512M
+          ram-size: 1536M
+          cores: 2
+          avd-name: craftdroid-real-boot-step261
+          force-avd-creation: true
+          emulator-boot-timeout: 900
+          emulator-port: 5554
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          enable-hw-keyboard: false
+          channel: stable
+          script: |
+            set -euo pipefail
+            mkdir -p artifacts/runtime
+            adb shell getprop ro.product.cpu.abi | tee artifacts/runtime/emulator-abi.txt
+            adb shell getprop ro.build.version.sdk | tee artifacts/runtime/emulator-api.txt
+            adb wait-for-device
+            bash tools/ci/real_minecraft_boot_step182.sh "$APK" artifacts/runtime artifacts/fixture
+
+      - name: Upload real boot diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CraftDroid-step261-real-boot
+          path: |
+            artifacts/runtime/**
+            artifacts/apk/**
+            artifacts/fixture/fixture-result.txt
+          if-no-files-found: ignore
