@@ -19,7 +19,6 @@ def count_decl(source: str, signature: str) -> int:
 
 
 def patch_base_navigation(ui: str) -> str:
-    """Only normalize the pre-bootstrap UI; never rerun Step 286 over Step 287."""
     if '"Features" -> featuresPage()' not in ui:
         anchor = '            "Controls" -> controlsPage()'
         if anchor in ui:
@@ -41,8 +40,14 @@ def patch_base_navigation(ui: str) -> str:
         if marker in ui:
             header = '''    private fun accountPage() {\n        val accountHeader = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }\n        accountHeader.addView(label("Profiles", 18f, true), LinearLayout.LayoutParams(0, dp(58), 1f))\n        val accountHome = button("⌂  Home")\n        accountHome.contentDescription = "Account mockup home"\n        accountHome.setOnClickListener { showPage("Game") }\n        accountHeader.addView(accountHome, LinearLayout.LayoutParams(dp(150), dp(58)))\n        pageArea.addView(accountHeader)\n'''
             ui = ui.replace(marker, header, 1)
-
     return ui
+
+
+def repair_bootstrap_source(root: Path, ui_path: Path) -> None:
+    script = root.parent / "tools/ci/repair_step292_first_run_compile.py"
+    if not script.is_file():
+        raise SystemExit(f"[step292] missing compile repair: {script}")
+    subprocess.run([sys.executable, str(script), str(root)], check=True)
 
 
 def restore_server_contracts_if_needed(root: Path, ui_path: Path) -> str:
@@ -99,9 +104,10 @@ def main() -> int:
         ui_path.write_text(ui, encoding="utf-8")
         ui = ui_path.read_text(encoding="utf-8")
     else:
+        repair_bootstrap_source(root, ui_path)
+        ui = restore_server_contracts_if_needed(root, ui_path)
         if 'setTextColor(this@DroidLauncherUiActivity.text)' in ui or 'setTextColor(text)' in ui:
             raise SystemExit('[step292] invalid generated text color reference remains')
-        ui = restore_server_contracts_if_needed(root, ui_path)
 
     manager = find_one(src, "MinecraftLaunchManager.kt").read_text(encoding="utf-8")
 
