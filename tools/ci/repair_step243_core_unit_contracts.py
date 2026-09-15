@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 243/246: fix concrete core-unit defects and align Ely.by OAuth with documented scopes."""
+"""Step 243/247: harden core unit contracts and keep Ely.by URL construction testable."""
 from pathlib import Path
 import sys
 
@@ -7,7 +7,7 @@ import sys
 def find_one(root: Path, name: str) -> Path:
     hits = list(root.rglob(name))
     if len(hits) != 1:
-        raise SystemExit(f"[step246] expected exactly one {name}, found {len(hits)}")
+        raise SystemExit(f"[step247] expected exactly one {name}, found {len(hits)}")
     return hits[0]
 
 
@@ -19,7 +19,7 @@ def patch_sources(root: Path) -> None:
     if old in s:
         s = s.replace(old, new, 1)
     if new not in s:
-        raise SystemExit("[step246] AccountProviderType unknown-id fallback is not Microsoft")
+        raise SystemExit("[step247] AccountProviderType unknown-id fallback is not Microsoft")
     provider.write_text(s, encoding="utf-8")
 
     local = find_one(root / "app/src/main/java", "LocalTestProfileProvider.kt")
@@ -36,7 +36,7 @@ def patch_sources(root: Path) -> None:
     if old in s:
         s = s.replace(old, new, 1)
     if 'val isFixtureId = assignedUuid.startsWith("test-"' not in s:
-        raise SystemExit("[step246] local test profile opaque fixture-id guard missing")
+        raise SystemExit("[step247] local test profile opaque fixture-id guard missing")
     local.write_text(s, encoding="utf-8")
 
     crash = find_one(root / "app/src/main/java", "CrashAnalyzer.kt")
@@ -66,23 +66,47 @@ def patch_sources(root: Path) -> None:
     if not changed:
         required = ("Out of Memory:", "Native library linkage:", "Java version incompatibility:")
         if not all(item in s for item in required):
-            raise SystemExit("[step246] LaunchFailureClassifier summary anchors missing")
+            raise SystemExit("[step247] LaunchFailureClassifier summary anchors missing")
     classifier.write_text(s, encoding="utf-8")
 
     ely = find_one(root / "app/src/main/java", "ElyByAccountProvider.kt")
     s = ely.read_text(encoding="utf-8")
-    old = 'const val DEFAULT_SCOPES = "account_info minecraft_server_session offline_access"'
-    new = 'const val DEFAULT_SCOPES = "account_info account_email offline_access minecraft_server_session"'
-    if old in s:
-        s = s.replace(old, new, 1)
-    if new not in s:
-        raise SystemExit("[step246] documented Ely.by OAuth scopes are missing")
+    old_scopes = 'const val DEFAULT_SCOPES = "account_info minecraft_server_session offline_access"'
+    new_scopes = 'const val DEFAULT_SCOPES = "account_info account_email offline_access minecraft_server_session"'
+    if old_scopes in s:
+        s = s.replace(old_scopes, new_scopes, 1)
+    if new_scopes not in s:
+        raise SystemExit("[step247] documented Ely.by OAuth scopes are missing")
+
+    # The legacy core test intentionally calls ElyByAccountProvider.buildAuthorizationUrl
+    # as a static Kotlin member. Keep the production instance API intact and expose a
+    # dependency-free companion builder for URL formatting tests and integrations.
+    companion_anchor = '    companion object {\n'
+    static_fun = '''        /**
+         * Pure URL formatter usable without constructing an authenticated provider.
+         * The instance method below remains the runtime entry point for account flows.
+         */
+        @JvmStatic
+        fun buildAuthorizationUrl(clientId: String, redirectUri: String): String {
+            return "$AUTH_URL?client_id=${URLEncoder.encode(clientId, "UTF-8")}" +
+                "&response_type=code" +
+                "&redirect_uri=${URLEncoder.encode(redirectUri, "UTF-8")}" +
+                "&scope=${URLEncoder.encode(DEFAULT_SCOPES, "UTF-8")}" +
+                "&prompt=consent"
+        }
+
+'''
+    if 'fun buildAuthorizationUrl(clientId: String, redirectUri: String): String {' not in s:
+        if companion_anchor not in s:
+            raise SystemExit("[step247] Ely.by companion object anchor missing")
+        s = s.replace(companion_anchor, companion_anchor + static_fun, 1)
     ely.write_text(s, encoding="utf-8")
 
-    print("[step246] unknown account provider now fails closed to Microsoft")
-    print("[step246] local test fixture ids remain isolated from online authentication")
-    print("[step246] crash-classifier summaries preserve analyzer-visible failure names")
-    print("[step246] Ely.by authorization now requests documented account_info + account_email scopes")
+    print("[step247] unknown account provider now fails closed to Microsoft")
+    print("[step247] local test fixture ids remain isolated from online authentication")
+    print("[step247] crash-classifier summaries preserve analyzer-visible failure names")
+    print("[step247] Ely.by OAuth scopes include account_email")
+    print("[step247] Ely.by exposes a pure static URL formatter for deterministic tests")
 
 
 def patch_launch_test(root: Path) -> None:
@@ -104,9 +128,9 @@ def patch_launch_test(root: Path) -> None:
     if anchor in s and 'val dummyClient = fileSystem.getVersionJarFile(detail.id)' not in s:
         s = s.replace(anchor, inserted, 1)
     if 'val dummyClient = fileSystem.getVersionJarFile(detail.id)' not in s:
-        raise SystemExit("[step246] launch-command test client artifact fixture missing")
+        raise SystemExit("[step247] launch-command test client artifact fixture missing")
     test.write_text(s, encoding="utf-8")
-    print("[step246] LaunchCommandBuilder unit fixture supplies a valid-size client artifact")
+    print("[step247] LaunchCommandBuilder unit fixture supplies a valid-size client artifact")
 
 
 def main() -> int:
