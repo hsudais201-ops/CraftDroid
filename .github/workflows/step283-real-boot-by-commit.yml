@@ -40,15 +40,15 @@ jobs:
           set -euo pipefail
           for attempt in $(seq 1 120); do
             SUCCESS_RUN="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=$TARGET_SHA&per_page=100" \
-              --jq '.workflow_runs[] | select(.name == "Step 200 - Droid Launcher authoritative build" and .head_sha == "'"$TARGET_SHA"'" and .conclusion == "success") | .id' \
+              --jq '.workflow_runs[] | select((.name == "Step 200 - Droid Launcher authoritative build" or .name == "Step 257 - Droid Launcher resilient authoritative build") and .head_sha == "'"$TARGET_SHA"'" and .conclusion == "success") | .id' \
               | head -n1)"
             if [ -n "$SUCCESS_RUN" ]; then
               echo "SOURCE_RUN_ID=$SUCCESS_RUN" >> "$GITHUB_ENV"
               printf '%s\n' "$SUCCESS_RUN" > source-run-id.txt
-              echo "Found successful Step 200 APK build run $SUCCESS_RUN for $TARGET_SHA."
+              echo "Found successful authoritative APK build run $SUCCESS_RUN for $TARGET_SHA."
               break
             fi
-            echo "Waiting for successful Step 200 APK build for $TARGET_SHA (poll $attempt/120)."
+            echo "Waiting for successful authoritative APK build for $TARGET_SHA (poll $attempt/120)."
             sleep 15
           done
           test -n "${SOURCE_RUN_ID:-}"
