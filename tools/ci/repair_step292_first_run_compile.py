@@ -37,27 +37,27 @@ def scrub_generated_branding(root: Path) -> int:
 
 
 def copy_modern_managers(root: Path) -> int:
-    """Copy authoritative new managers from the repository source into droid-src."""
+    """Copy the complete authoritative modern launcher manager set."""
     project = Path.cwd().resolve()
     names = (
         "MinecraftRuntimeProfile.kt",
         "MinecraftLatestVersionManager.kt",
         "MinecraftContentManager.kt",
+        "MinecraftModpackManager.kt",
+        "MinecraftLoaderProfile.kt",
         "LauncherBackgroundInstallController.kt",
         "DroidLauncherUpdateManager.kt",
-        "MinecraftLoaderProfile.kt",
     )
     destination = root / "app/src/main/java/com/example/launcher"
     destination.mkdir(parents=True, exist_ok=True)
     copied = 0
     for name in names:
         source = project / "app/src/main/java/com/example/launcher" / name
-        if source.is_file():
-            shutil.copy2(source, destination / name)
-            copied += 1
-    if copied != len(names):
-        raise SystemExit(f"[step322] expected {len(names)} modern managers, copied {copied}")
-    print(f"[step322] copied {copied} modern runtime/content/update managers")
+        if not source.is_file():
+            raise SystemExit(f"[step322] authoritative manager missing from repository: {source}")
+        shutil.copy2(source, destination / name)
+        copied += 1
+    print(f"[step327] copied {copied} modern runtime/content/update/loader managers")
     return copied
 
 
@@ -65,14 +65,18 @@ def verify_modern_managers(root: Path) -> None:
     src = root / "app/src/main/java/com/example/launcher"
     required = {
         "MinecraftRuntimeProfile.kt": ("first >= 26 -> Profile(25", "requiresJava25"),
-        "MinecraftLatestVersionManager.kt": ("version_manifest_v2.json", 'optJSONObject("latest")'),
-        "MinecraftContentManager.kt": ("MODPACK", "SHADER", "RESOURCE_PACK", "WORLD", "ZipInputStream"),
-        "LauncherBackgroundInstallController.kt": ("CountDownLatch", "State.SUCCESS", "State.FAILED"),
-        "DroidLauncherUpdateManager.kt": ("releases/latest", ".apk", "SHA-256 verification failed"),
+        "MinecraftLatestVersionManager.kt": ("version_manifest_v2.json", 'optJSONObject("latest")', "getCached"),
+        "MinecraftContentManager.kt": ("MODPACK", "SHADER", "RESOURCE_PACK", "WORLD", "ZipInputStream", "MAX_ENTRY_BYTES"),
+        "MinecraftModpackManager.kt": ("modrinth.index.json", "formatVersion", "SHA-1", "overrides", "client-overrides"),
         "MinecraftLoaderProfile.kt": ("FABRIC", "FORGE", "NEOFORGE", "QUILT"),
+        "LauncherBackgroundInstallController.kt": ("CountDownLatch", "State.SUCCESS", "State.FAILED"),
+        "DroidLauncherUpdateManager.kt": ("releases/latest", ".apk", "SHA-256 verification failed", "MAX_REDIRECTS"),
     }
     for name, needles in required.items():
-        text = (src / name).read_text(encoding="utf-8")
+        path = src / name
+        if not path.is_file():
+            raise SystemExit(f"[step322] missing modern manager file: {name}")
+        text = path.read_text(encoding="utf-8")
         for needle in needles:
             if needle not in text:
                 raise SystemExit(f"[step322] missing {needle!r} in {name}")
