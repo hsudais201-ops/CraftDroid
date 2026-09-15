@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Step 239: fail early on generated Kotlin helper duplication and Java type regressions."""
+"""Step 239/286: verify generated Kotlin and apply the final supplied UI shell."""
 from pathlib import Path
 import re
+import runpy
 import sys
 
 
@@ -18,6 +19,15 @@ def count_decl(source: str, signature: str) -> int:
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
+
+    # Apply the two user-supplied mockups only after every historical UI repair
+    # has finished. This prevents later generators from overwriting the design.
+    final_ui_script = root.parent / "tools/ci/apply_step286_home_account_gui.py"
+    if final_ui_script.is_file():
+        runpy.run_path(str(final_ui_script), run_name="__step286__")
+    else:
+        raise SystemExit(f"[step286] final UI script not found: {final_ui_script}")
+
     src = root / "app/src/main/java"
     ui = find_one(src, "DroidLauncherUiActivity.kt").read_text(encoding="utf-8")
     manager = find_one(src, "MinecraftLaunchManager.kt").read_text(encoding="utf-8")
@@ -45,10 +55,19 @@ def main() -> int:
 
     if 'private fun installMinecraftVersion(version: String) {' not in ui:
         raise SystemExit('[step239] installer declaration missing')
+    for needle in (
+        'private fun homePage()',
+        'private fun accountPage()',
+        '"Accounts" -> accountPage()',
+        '"Game" -> homePage()',
+    ):
+        if needle not in ui:
+            raise SystemExit(f'[step286] final GUI contract missing: {needle}')
 
     print('[step239] generated UI helper declarations are unique')
     print('[step239] MinecraftLaunchManager Java resolver is Int -> Int')
     print('[step239] no stale String-based Java launch resolver remains')
+    print('[step286] supplied Home + Account/Profile GUI applied and verified')
     return 0
 
 
