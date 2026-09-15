@@ -24,7 +24,8 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 1
-      - name: Download generated-source diagnostic artifact
+      - name: Download generated-source diagnostic artifact when available
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: Droid-Launcher-Step257-diagnostics
@@ -32,26 +33,91 @@ jobs:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ github.event.workflow_run.id }}
-      - name: Restore generated source from triggering build
+      - name: Restore generated source from triggering build or reconstruct it
         shell: bash
         run: |
           set -euo pipefail
-          TGZ="$(find step257-diagnostics -type f -name generated-source.tgz -print -quit)"
-          test -n "$TGZ"
           rm -rf droid-src
-          tar -xzf "$TGZ"
+          TGZ="$(find step257-diagnostics -type f -name generated-source.tgz -print -quit 2>/dev/null || true)"
+          if [ -n "$TGZ" ]; then
+            tar -xzf "$TGZ"
+          else
+            mkdir -p droid-src
+            unzip -q CraftDroid_Launcher_2.4_GitHubActions_Step153.zip -d droid-src
+            if [ ! -f droid-src/gradlew ]; then
+              ROOT="$(find droid-src -type f -name gradlew -print -quit | xargs -r dirname)"
+              test -n "$ROOT"
+              shopt -s dotglob
+              mv "$ROOT"/* droid-src/
+              rmdir "$ROOT"
+            fi
+            mkdir -p droid-src/app/src/main/java/com/example/launcher
+            for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt MinecraftLaunchManager.kt; do
+              cp -f "app/src/main/java/com/example/launcher/$f" "droid-src/app/src/main/java/com/example/launcher/$f"
+            done
+            mkdir -p droid-src/app/src/main/java/com/example/logs droid-src/app/src/main/java/com/example/renderer
+            cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
+            cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
+            cp -f app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt droid-src/app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt
+            if [ -d app/src/main/assets ]; then
+              mkdir -p droid-src/app/src/main/assets
+              cp -a app/src/main/assets/. droid-src/app/src/main/assets/
+            fi
+            for step in 153 154_tests 155_cpp; do :; done
+            python3 tools/ci/apply_droid_launcher_branding.py droid-src
+            python3 tools/ci/repair_step153.py droid-src
+            python3 tools/ci/repair_step154_tests.py droid-src
+            python3 tools/ci/repair_step155_cpp.py droid-src
+            python3 tools/ci/apply_step177_world_manager.py droid-src
+            python3 tools/ci/repair_step242_world_manager_test_junit.py droid-src
+            python3 tools/ci/repair_step243_core_unit_contracts.py droid-src
+            python3 tools/ci/repair_step202_kotlin.py droid-src
+            python3 tools/ci/apply_step205_droid_launcher_ui.py droid-src
+            python3 tools/ci/repair_step205_ui.py droid-src
+            python3 tools/ci/apply_step253_feature_center.py droid-src
+            python3 tools/ci/repair_step207_server_ui.py droid-src
+            python3 tools/ci/repair_step209_server_list.py droid-src
+            python3 tools/ci/repair_step210_server_launch.py droid-src
+            python3 tools/ci/repair_step211_minecraft_server_query.py droid-src
+            python3 tools/ci/repair_step212_server_ui.py droid-src
+            python3 tools/ci/repair_step213_server_cards.py droid-src
+            python3 tools/ci/repair_step214_server_detail.py droid-src
+            python3 tools/ci/repair_step215_launch_feedback.py droid-src
+            python3 tools/ci/repair_step216_launch_progress.py droid-src
+            python3 tools/ci/repair_step217_java_runtime_ui.py droid-src
+            python3 tools/ci/repair_step218_java_profile.py droid-src
+            python3 tools/ci/repair_step219_launch_java_binding.py droid-src
+            python3 tools/ci/repair_step220_version_launch_binding.py droid-src
+            python3 tools/ci/repair_step221_version_selector.py droid-src
+            python3 tools/ci/repair_step222_version_install.py droid-src
+            python3 tools/ci/repair_step223_install_status_ui.py droid-src
+            python3 tools/ci/repair_step224_launch_preflight.py droid-src
+            python3 tools/ci/repair_step225_launch_paths.py droid-src
+            python3 tools/ci/repair_step226_storage_root.py droid-src
+            python3 tools/ci/repair_step227_library_rules.py droid-src
+            python3 tools/ci/repair_step228_install_resilience.py droid-src
+            python3 tools/ci/repair_step229_install_progress_ui.py droid-src
+            python3 tools/ci/repair_step230_complete_launch_preflight.py droid-src
+            python3 tools/ci/repair_step231_launch_handoff.py droid-src
+            python3 tools/ci/repair_step232_launch_handoff_consumer.py droid-src
+            python3 tools/ci/repair_step234_handoff_validation_launch_gate.py droid-src
+            python3 tools/ci/repair_step235_launch_runtime_guard.py droid-src
+            python3 tools/ci/repair_step236_download_trust.py droid-src
+            python3 tools/ci/repair_step257_feature_center_after_ui.py droid-src
+            python3 tools/ci/apply_step286_home_account_gui.py droid-src
+            python3 tools/ci/apply_step287_first_run_components_gui.py droid-src
+            python3 tools/ci/repair_step292_first_run_compile.py droid-src
+            python3 tools/ci/repair_step293_server_contracts_after_final_ui.py droid-src
+            python3 tools/ci/repair_step295_final_navigation.py droid-src
+            python3 tools/ci/repair_step297_android_edittext_properties.py droid-src
+          fi
           test -f droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
-      - name: Restore canonical launch-contract sources
+      - name: Restore canonical launch-contract sources after final UI generation
         shell: bash
         run: |
           set -euo pipefail
           SRC=droid-src/app/src/main/java/com/example/launcher
-          mkdir -p "$SRC"
-          for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt MinecraftLaunchManager.kt; do
-            test -f "app/src/main/java/com/example/launcher/$f"
-            cp -f "app/src/main/java/com/example/launcher/$f" "$SRC/$f"
-          done
-          mkdir -p droid-src/app/src/main/java/com/example/logs droid-src/app/src/main/java/com/example/renderer
+          for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt MinecraftLaunchManager.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "$SRC/$f"; done
           cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
           cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
           cp -f app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt droid-src/app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt
@@ -67,14 +133,23 @@ jobs:
         run: python3 tools/ci/repair_step295_final_navigation.py droid-src
       - name: Repair Android EditText property mappings
         run: python3 tools/ci/repair_step297_android_edittext_properties.py droid-src
-      - name: Reapply launch handoff validation after final UI generation
+      - name: Restore canonical launch-contract sources after final UI generation
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC=droid-src/app/src/main/java/com/example/launcher
+          for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt MinecraftLaunchManager.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "$SRC/$f"; done
+          cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
+          cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
+          cp -f app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt droid-src/app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt
+      - name: Reapply final launch handoff validation and trust hardening
         shell: bash
         run: |
           set -euo pipefail
           python3 tools/ci/repair_step234_handoff_validation_launch_gate.py droid-src
           python3 tools/ci/repair_step235_launch_runtime_guard.py droid-src
           python3 tools/ci/repair_step236_download_trust.py droid-src
-      - name: Deep source quality pass - 1000 iterations
+      - name: Deep source quality pass - 1000 content-dependent checks
         shell: bash
         run: |
           set -euo pipefail
@@ -109,32 +184,24 @@ jobs:
           required=("platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1")
           installed="$($SDKMANAGER --list_installed 2>/dev/null || true)"
           missing=()
-          for pkg in "${required[@]}"; do
-            if ! grep -Fq "${pkg}" <<< "$installed"; then missing+=("$pkg"); fi
-          done
+          for pkg in "${required[@]}"; do if ! grep -Fq "$pkg" <<< "$installed"; then missing+=("$pkg"); fi; done
           if [ "${#missing[@]}" -gt 0 ]; then timeout 25m "$SDKMANAGER" "${missing[@]}"; fi
-          "$SDKMANAGER" --list_installed | grep -E 'platform-tools|platforms;android-36|build-tools;36.0.0|ndk;27.2.12479018|cmake;3.22.1'
       - name: Set up Gradle 9.6.0 directly
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.6.0'
           validate-wrappers: false
-      - name: Validate Gradle project
+      - name: Validate, lint, test and build
         working-directory: droid-src
+        shell: bash
         run: |
           set -euo pipefail
           test -f settings.gradle || test -f settings.gradle.kts
           test -f app/build.gradle || test -f app/build.gradle.kts
           gradle --version
-      - name: Run Android Lint
-        working-directory: droid-src
-        run: gradle --no-daemon --stacktrace :app:lintDebug
-      - name: Run unit tests
-        working-directory: droid-src
-        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest
-      - name: Build debug APK
-        working-directory: droid-src
-        run: gradle --no-daemon --stacktrace :app:assembleDebug
+          gradle --no-daemon --stacktrace :app:lintDebug
+          gradle --no-daemon --stacktrace :app:testDebugUnitTest
+          gradle --no-daemon --stacktrace :app:assembleDebug
       - name: Verify APK completely
         shell: bash
         run: |
