@@ -3,12 +3,7 @@ package com.example.renderer
 import com.example.logs.LauncherLogger
 import java.io.File
 
-/** Applies launcher performance defaults to Minecraft's options.txt.
- *
- * Only well-known graphics/performance keys are touched. Existing unrelated
- * options are preserved, and the file is updated atomically with a verified
- * copy fallback for filesystems where renameTo() is unavailable.
- */
+/** Applies launcher performance defaults to Minecraft's options.txt. */
 object MinecraftPerformanceTuner {
 
     data class AppliedSettings(
@@ -77,7 +72,8 @@ object MinecraftPerformanceTuner {
 
             val tmp = File(optionsFile.parentFile, optionsFile.name + ".droidtmp")
             tmp.writeText(output.joinToString("\n") + "\n")
-            if (!tmp.isFile || tmp.length() <= 0L) {
+            val expectedLength = tmp.length()
+            if (!tmp.isFile || expectedLength <= 0L) {
                 tmp.delete()
                 throw IllegalStateException("Unable to prepare Minecraft options file")
             }
@@ -95,11 +91,9 @@ object MinecraftPerformanceTuner {
                 }
                 tmp.delete()
             }
-            if (!optionsFile.isFile || optionsFile.length() != tmp.length().takeIf { it > 0L } ?: optionsFile.length()) {
-                if (!optionsFile.isFile || optionsFile.length() <= 0L) {
-                    tmp.delete()
-                    throw IllegalStateException("Unable to verify Minecraft options file")
-                }
+            if (!optionsFile.isFile || optionsFile.length() != expectedLength) {
+                tmp.delete()
+                throw IllegalStateException("Unable to verify Minecraft options file")
             }
             tmp.delete()
 
