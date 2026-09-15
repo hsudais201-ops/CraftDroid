@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 243/244: fix concrete core-unit defects and keep tests aligned with hardened launch behavior."""
+"""Step 243/246: fix concrete core-unit defects and align Ely.by OAuth with documented scopes."""
 from pathlib import Path
 import sys
 
@@ -7,7 +7,7 @@ import sys
 def find_one(root: Path, name: str) -> Path:
     hits = list(root.rglob(name))
     if len(hits) != 1:
-        raise SystemExit(f"[step243] expected exactly one {name}, found {len(hits)}")
+        raise SystemExit(f"[step246] expected exactly one {name}, found {len(hits)}")
     return hits[0]
 
 
@@ -19,7 +19,7 @@ def patch_sources(root: Path) -> None:
     if old in s:
         s = s.replace(old, new, 1)
     if new not in s:
-        raise SystemExit("[step243] AccountProviderType unknown-id fallback is not Microsoft")
+        raise SystemExit("[step246] AccountProviderType unknown-id fallback is not Microsoft")
     provider.write_text(s, encoding="utf-8")
 
     local = find_one(root / "app/src/main/java", "LocalTestProfileProvider.kt")
@@ -36,13 +36,11 @@ def patch_sources(root: Path) -> None:
     if old in s:
         s = s.replace(old, new, 1)
     if 'val isFixtureId = assignedUuid.startsWith("test-"' not in s:
-        raise SystemExit("[step243] local test profile opaque fixture-id guard missing")
+        raise SystemExit("[step246] local test profile opaque fixture-id guard missing")
     local.write_text(s, encoding="utf-8")
 
     crash = find_one(root / "app/src/main/java", "CrashAnalyzer.kt")
     s = crash.read_text(encoding="utf-8")
-    # CrashAnalyzer delegates the final human-readable summary to LaunchFailureClassifier.
-    # Keep the classifier summaries aligned with the public analyzer/test contract.
     replacements = [
         ('Result(Kind.MEMORY, "The JVM/device ran out of memory."', 'Result(Kind.MEMORY, "Out of Memory: the JVM/device ran out of memory."'),
         ('Result(Kind.NATIVE_LIBRARY, "An Android native library could not be linked."', 'Result(Kind.NATIVE_LIBRARY, "Native library linkage failure: an Android native library could not be linked."'),
@@ -66,20 +64,25 @@ def patch_sources(root: Path) -> None:
             s = s.replace(old, new, 1)
             changed = True
     if not changed:
-        # Do not fail a rerun merely because another compatible source variant already
-        # carries the hardened strings; verify the required public substrings instead.
-        required = (
-            "Out of Memory:",
-            "Native library linkage:",
-            "Java version incompatibility:",
-        )
+        required = ("Out of Memory:", "Native library linkage:", "Java version incompatibility:")
         if not all(item in s for item in required):
-            raise SystemExit("[step244] LaunchFailureClassifier summary anchors missing")
+            raise SystemExit("[step246] LaunchFailureClassifier summary anchors missing")
     classifier.write_text(s, encoding="utf-8")
 
-    print("[step244] LaunchFailureClassifier summaries now preserve analyzer-visible failure names")
-    print("[step243] unknown account provider now fails closed to Microsoft instead of offline mode")
-    print("[step243] local test fixture ids remain isolated from online authentication")
+    ely = find_one(root / "app/src/main/java", "ElyByAccountProvider.kt")
+    s = ely.read_text(encoding="utf-8")
+    old = 'const val DEFAULT_SCOPES = "account_info minecraft_server_session offline_access"'
+    new = 'const val DEFAULT_SCOPES = "account_info account_email offline_access minecraft_server_session"'
+    if old in s:
+        s = s.replace(old, new, 1)
+    if new not in s:
+        raise SystemExit("[step246] documented Ely.by OAuth scopes are missing")
+    ely.write_text(s, encoding="utf-8")
+
+    print("[step246] unknown account provider now fails closed to Microsoft")
+    print("[step246] local test fixture ids remain isolated from online authentication")
+    print("[step246] crash-classifier summaries preserve analyzer-visible failure names")
+    print("[step246] Ely.by authorization now requests documented account_info + account_email scopes")
 
 
 def patch_launch_test(root: Path) -> None:
@@ -101,9 +104,9 @@ def patch_launch_test(root: Path) -> None:
     if anchor in s and 'val dummyClient = fileSystem.getVersionJarFile(detail.id)' not in s:
         s = s.replace(anchor, inserted, 1)
     if 'val dummyClient = fileSystem.getVersionJarFile(detail.id)' not in s:
-        raise SystemExit("[step243] launch-command test client artifact fixture missing")
+        raise SystemExit("[step246] launch-command test client artifact fixture missing")
     test.write_text(s, encoding="utf-8")
-    print("[step243] LaunchCommandBuilder unit fixture now supplies a valid-size client artifact")
+    print("[step246] LaunchCommandBuilder unit fixture supplies a valid-size client artifact")
 
 
 def main() -> int:
