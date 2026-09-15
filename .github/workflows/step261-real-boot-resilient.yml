@@ -22,7 +22,6 @@ concurrency:
 
 jobs:
   boot:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 150
     steps:
@@ -41,6 +40,30 @@ jobs:
           printf '%s\n' "$SOURCE_RUN_ID" > source-run-id.txt
           echo "TARGET_SHA=$TARGET_SHA" >> "$GITHUB_ENV"
           echo "SOURCE_RUN_ID=$SOURCE_RUN_ID" >> "$GITHUB_ENV"
+
+      - name: Wait for authoritative build to finish successfully
+        if: ${{ github.event_name == 'workflow_run' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -n "$SOURCE_RUN_ID"
+          for attempt in $(seq 1 120); do
+            RUN_JSON="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/$SOURCE_RUN_ID")"
+            STATUS="$(printf '%s' "$RUN_JSON" | jq -r '.status // empty')"
+            CONCLUSION="$(printf '%s' "$RUN_JSON" | jq -r '.conclusion // empty')"
+            HEAD_SHA="$(printf '%s' "$RUN_JSON" | jq -r '.head_sha // empty')"
+            echo "authoritative build poll $attempt/120: status=$STATUS conclusion=$CONCLUSION sha=$HEAD_SHA"
+            if [ "$STATUS" = "completed" ]; then
+              test "$CONCLUSION" = success
+              test "$HEAD_SHA" = "$TARGET_SHA"
+              break
+            fi
+            sleep 15
+          done
+          FINAL="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/$SOURCE_RUN_ID" | jq -r '.conclusion // empty')"
+          test "$FINAL" = success
 
       - name: Checkout exact source commit
         uses: actions/checkout@v4
