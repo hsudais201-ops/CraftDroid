@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Step 297: repair Android TextView Kotlin property mappings in generated launcher UI.
+"""Step 297/298: repair every exact Kotlin `singleLine` property token in generated UI.
 
-The generated Java View based UI must use the Kotlin-mapped `isSingleLine`
-property for android.widget.EditText/TextView. Compose `singleLine = true`
-arguments elsewhere are intentionally untouched.
+Generated Android View code uses `isSingleLine`. Only the exact camel-case
+property token is rewritten; API names such as setSingleLine(...) remain valid.
 """
 from pathlib import Path
 import re
 import sys
+
+
+TOKEN = re.compile(r"(?<![A-Za-z0-9_])singleLine(?![A-Za-z0-9_])")
 
 
 def main() -> int:
@@ -16,15 +18,12 @@ def main() -> int:
     if not ui.is_file():
         raise SystemExit(f"[step297] missing generated UI: {ui}")
     source = ui.read_text(encoding="utf-8")
-    before = source
-    # Only change bare assignments in this Android View activity. Compose
-    # `singleLine = true` named arguments are in different files and remain valid.
-    source = re.sub(r'(?<![A-Za-z0-9_])singleLine\s*=\s*true', 'isSingleLine = true', source)
-    changed = source != before
-    ui.write_text(source, encoding="utf-8")
-    print(f"[step297] EditText isSingleLine mapping repaired: changed={int(changed)}")
-    if re.search(r'(?m)^\s*singleLine\s*=\s*true\s*$', source):
-        raise SystemExit("[step297] bare singleLine assignment still present")
+    replacements = len(TOKEN.findall(source))
+    repaired = TOKEN.sub("isSingleLine", source)
+    ui.write_text(repaired, encoding="utf-8")
+    if TOKEN.search(repaired):
+        raise SystemExit("[step297] unresolved exact singleLine tokens remain")
+    print(f"[step297] exact singleLine property repair complete; replacements={replacements}")
     return 0
 
 
