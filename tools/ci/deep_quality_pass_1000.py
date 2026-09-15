@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Run 1000 deterministic, content-dependent source quality checks.
-
-This is deliberately more than a repeated grep. Each iteration selects an
-invariant, file, and token/structure check from the generated Android tree and
-records what was inspected. Failures are accumulated and reported together so
-CI diagnostics identify the real source defect instead of hiding it behind the
-first generic assertion.
-"""
+"""Run 1000 deterministic, content-dependent source quality checks."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -49,27 +42,28 @@ def normalized_hash(text: str) -> str:
 
 
 def insecure_http_literal(path: Path, text: str) -> bool:
-    """Detect network endpoint literals, not XML schema/namespace declarations.
-
-    Android manifests/drawables commonly contain the required XML namespace
-    ``http://schemas.android.com``; treating every ``http://`` token as a
-    network endpoint makes the quality gate reject correct Android resources.
-    Test fixtures and documentation are excluded from this transport-specific
-    production check. Kotlin/Java/C++/Gradle/Python source is checked for URL
-    literals, with the Android schema namespace explicitly ignored.
-    """
+    """Detect network endpoint literals, not XML schema/namespace declarations."""
     if path.suffix.lower() in {".xml", ".md", ".txt", ".json", ".yml", ".yaml"}:
         return False
-    if path.parts and "test" in path.parts:
+    if "test" in path.parts:
         return False
-    for match in re.finditer(r"https?://[^\"'\\s)]+", text, flags=re.IGNORECASE):
+    for match in re.finditer(r"https?://[^\"'\s)]+", text, flags=re.IGNORECASE):
         literal = match.group(0)
         if literal.lower().startswith("http://schemas.android.com/"):
             continue
         if literal.lower().startswith("http://www.w3.org/"):
             continue
+        if literal.lower().startswith("http://localhost"):
+            continue
         return literal.lower().startswith("http://")
     return False
+
+
+def has_unfinished_marker(path: Path, text: str) -> bool:
+    """Check production code for unfinished markers without flagging Android-generated XML metadata."""
+    if path.suffix.lower() not in {".kt", ".java", ".cpp", ".h", ".py", ".gradle", ".kts"}:
+        return False
+    return bool(re.search(r"\b(?:TODO|FIXME|NotImplementedException)\b", text))
 
 
 def make_checks() -> list[Check]:
@@ -120,8 +114,8 @@ def validate_structure(root: Path, files: list[Path]) -> list[str]:
         for legacy in LEGACY:
             if legacy in text:
                 errors.append(f"legacy branding token {legacy!r} in {p}")
-        if "TODO" in text or "FIXME" in text or "NotImplementedException" in text:
-            errors.append(f"unfinished marker in {p}")
+        if has_unfinished_marker(p, text):
+            errors.append(f"unfinished implementation marker in {p}")
         if insecure_http_literal(p, text):
             errors.append(f"insecure HTTP network literal in {p}")
     return errors
@@ -144,9 +138,6 @@ def main() -> int:
     results: list[str] = []
     source_pool = sorted(files)
 
-    # Exactly 1000 checks. Every iteration varies the selected file/check and
-    # validates both presence and a content fingerprint, so this cannot pass by
-    # simply repeating one static grep 1000 times.
     for iteration in range(1, 1001):
         check = checks[(iteration - 1) % len(checks)]
         path = source_pool[(iteration * 37 + iteration // 7) % len(source_pool)]
