@@ -38,6 +38,23 @@ def apply_legacy_migration(text: str) -> str:
     new_http = '''    private fun httpText(url: String): String {\n        requireHttps(url, "HTTP request")\n        val connection = (URL(url).openConnection() as HttpURLConnection).apply {\n'''
     if old_http in text:
         text = text.replace(old_http, new_http, 1)
+
+    # Version IDs become filesystem path components. Validate them before any
+    # directory is created so a caller cannot escape the launcher data root.
+    if "private fun validateVersionId(version: String): String" not in text:
+        anchor = '''    private fun findVersionEntry(manifest: JSONObject, version: String): JSONObject? {\n'''
+        validation = '''    private fun validateVersionId(version: String): String {\n        require(version.matches(Regex("^[A-Za-z0-9._-]+$"))) {\n            "Unsafe Minecraft version identifier"\n        }\n        require(version != "." && version != "..") {\n            "Unsafe Minecraft version identifier"\n        }\n        return version\n    }\n\n'''
+        if anchor not in text:
+            raise SystemExit("[step236] could not locate version-entry helper for validation insertion")
+        text = text.replace(anchor, validation + anchor, 1)
+
+    install_anchor = "        val versionDir = versionRoot(context, version)"
+    safe_install = "        val safeVersion = validateVersionId(version)\n        val versionDir = versionRoot(context, safeVersion)"
+    if install_anchor in text:
+        text = text.replace(install_anchor, safe_install, 1)
+    elif "val safeVersion = validateVersionId(version)" not in text:
+        raise SystemExit("[step236] installer entrypoint has unexpected version-root shape")
+
     return text
 
 
@@ -56,13 +73,14 @@ def main() -> int:
         "requireHttps(url, label)",
         'requireHttps(url, "HTTP request")',
         "private fun sha1Bytes(bytes: ByteArray): String",
+        "private fun validateVersionId(version: String): String",
+        "val safeVersion = validateVersionId(version)",
     )
     verify = path.read_text(encoding="utf-8")
     missing = [needle for needle in secure_contracts if needle not in verify]
     if missing:
         raise SystemExit("[step236] missing trust contracts: " + ", ".join(missing))
 
-    # Reject an old helper that would allow the installer to bypass manifest metadata.
     if "findVersionUrl(manifest, version)" in verify:
         raise SystemExit("[step236] obsolete findVersionUrl call remains")
 
@@ -74,6 +92,7 @@ def main() -> int:
     subprocess.run([sys.executable, str(step258), str(root)], check=True)
     print("[step236] trust repair verified/normalized idempotently")
     print("[step236] Mojang metadata SHA-1/size and HTTPS requirements are present")
+    print("[step236] version identifiers are validated before storage paths are created")
     print("[step237] generated-source compatibility repair chained successfully")
     print("[step257] Feature Center final repair chained successfully")
     print("[step258] predictive-back migration chained successfully")
