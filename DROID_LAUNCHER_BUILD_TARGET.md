@@ -2,7 +2,7 @@
 
 The acceptance target is a functional Android Minecraft: Java Edition launcher with a polished UI and practical feature parity with modern open-source Android launchers.
 
-It is not a promise of literal 100% equivalence to Zalith Launcher: runtime support depends on Android device, Minecraft version, Java runtime, renderer, native libraries, and licensing constraints. The goal is to close functional gaps systematically and verify each capability with tests or runtime checks.
+It is not a promise of literal 100% equivalence to any other launcher: runtime support depends on Android device, Minecraft version, Java runtime, renderer, native libraries, and licensing constraints. The goal is to close functional gaps systematically and verify each capability with tests or runtime checks.
 
 ## Core target
 
