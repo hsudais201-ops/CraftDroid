@@ -44,6 +44,10 @@ jobs:
         run: python3 tools/ci/repair_step292_first_run_compile.py droid-src
       - name: Install final self-contained server contracts
         run: python3 tools/ci/repair_step293_server_contracts_after_final_ui.py droid-src
+      - name: Restore Feature Center navigation
+        run: python3 tools/ci/repair_step295_final_navigation.py droid-src
+      - name: Repair Android EditText property mappings
+        run: python3 tools/ci/repair_step297_android_edittext_properties.py droid-src
       - name: Verify generated source contracts
         shell: bash
         run: |
@@ -57,6 +61,9 @@ jobs:
           grep -F 'private fun showBootstrapGate()' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
           grep -F 'private fun showServerDialog(index: Int)' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
           grep -F 'private fun getSavedServers(): List<Pair<String, Int>>' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
+          grep -F 'private fun featuresPage()' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
+          grep -F 'setOnClickListener { showPage("Features") }' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
+          grep -F 'isSingleLine = true' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
           if grep -RInE 'TODO|FIXME|NotImplementedException' droid-src/app/src/main/java; then exit 1; fi
       - name: Set up JDK 17
         uses: actions/setup-java@v5
