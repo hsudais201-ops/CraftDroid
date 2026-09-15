@@ -17,10 +17,8 @@ import java.util.concurrent.Executors
  * Mojang/Piston metadata endpoints. Downloads are resumable via .part files and
  * installation state is persisted in SharedPreferences.
  *
- * Finalization is deliberately Android-safe: File.renameTo() is attempted first,
- * but a verified stream-copy fallback is used when Android/filesystem semantics
- * reject the rename. This is important for the assets/objects tree on some
- * Android storage/filesystem combinations.
+ * Finalization is Android-safe: renameTo() is attempted first, then a verified
+ * stream-copy fallback is used when a filesystem rejects the rename.
  */
 object MinecraftVersionInstallManager {
     private const val PREFS = "droid_launcher"
@@ -99,15 +97,26 @@ object MinecraftVersionInstallManager {
 
         report(listener, version, 0, 0, "Reading Mojang version manifest")
         val manifest = JSONObject(httpText(MANIFEST_URL))
-        val versionUrl = findVersionUrl(manifest, version)
+        val versionEntry = findVersionEntry(manifest, version)
             ?: throw IOException("Minecraft version $version was not found in the official manifest")
+        val versionUrl = versionEntry.optString("url")
+        requireHttps(versionUrl, "version metadata")
 
         report(listener, version, 0, 0, "Downloading version metadata")
-        val metadata = JSONObject(httpText(versionUrl))
-        writeVerifiedText(File(versionDir, "$version.json"), metadata.toString(), null)
+        val metadataRaw = httpText(versionUrl)
+        val expectedMetadataSha1 = versionEntry.optString("sha1")
+        val expectedMetadataSize = versionEntry.optLong("size", -1L)
+        val metadataBytes = metadataRaw.toByteArray(Charsets.UTF_8)
+        if (expectedMetadataSha1.isNotBlank() && !sha1Bytes(metadataBytes).equals(expectedMetadataSha1, true)) {
+            throw IOException("Version metadata SHA-1 verification failed for $version")
+        }
+        if (expectedMetadataSize > 0L && metadataBytes.size.toLong() != expectedMetadataSize) {
+            throw IOException("Version metadata size verification failed for $version")
+        }
+        val metadata = JSONObject(metadataRaw)
+        writeVerifiedText(File(versionDir, "$version.json"), metadataRaw, expectedMetadataSha1.takeIf { it.isNotBlank() })
 
         val tasks = ArrayList<DownloadTask>()
-
         val downloads = metadata.optJSONObject("downloads")
         val client = downloads?.optJSONObject("client")
         if (client != null) {
@@ -161,6 +170,7 @@ object MinecraftVersionInstallManager {
             val url = assetIndex.optString("url")
             val sha1 = assetIndex.optString("sha1")
             if (id.isBlank() || url.isBlank()) throw IOException("Invalid asset index metadata")
+            requireHttps(url, "asset index")
             val indexFile = File(root, "assets/indexes/$id.json")
             downloadResumable(DownloadTask(indexFile, url, sha1, assetIndex.optLong("size", -1L), "Asset index $id"), version) { done, total ->
                 report(listener, version, done, total, "Downloading asset index $id")
@@ -173,7 +183,7 @@ object MinecraftVersionInstallManager {
                     val name = keys.next()
                     val obj = objects.optJSONObject(name) ?: continue
                     val hash = obj.optString("hash")
-                    if (hash.length < 3) continue
+                    if (!hash.matches(Regex("^[a-fA-F0-9]{40}$"))) continue
                     val target = File(root, "assets/objects/${hash.substring(0, 2)}/$hash")
                     val urlObj = RESOURCES_BASE + hash.substring(0, 2) + "/" + hash
                     downloadResumable(DownloadTask(target, urlObj, hash, obj.optLong("size", -1L), "Asset $name"), version) { done, total ->
@@ -201,6 +211,7 @@ object MinecraftVersionInstallManager {
         val sha1 = obj.optString("sha1")
         val size = obj.optLong("size", -1L)
         if (url.isBlank()) throw IOException("Missing download URL for $label")
+        requireHttps(url, label)
         val canonical = target.canonicalFile
         require(canonical.path.startsWith(root.canonicalPath + File.separator) || canonical == root.canonicalFile) {
             "Unsafe artifact path: $target"
@@ -279,6 +290,7 @@ object MinecraftVersionInstallManager {
 
     private fun openDownloadConnection(url: String, resume: Long): HttpURLConnection =
         (URL(url).openConnection() as HttpURLConnection).apply {
+            requireHttps(url, "download")
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
             instanceFollowRedirects = true
@@ -286,13 +298,13 @@ object MinecraftVersionInstallManager {
             if (resume > 0L) setRequestProperty("Range", "bytes=$resume-")
         }
 
-    /**
-     * Finalizes a fully verified .part file without relying solely on File.renameTo().
-     * Android vendors/filesystems can return false from renameTo() even when both
-     * files live in the same app-private tree. The fallback copies the already
-     * verified bytes into the destination, fsyncs them, verifies the destination,
-     * and only then removes the .part file.
-     */
+    private fun requireHttps(rawUrl: String, label: String) {
+        val parsed = try { URL(rawUrl) } catch (_: Throwable) { throw IOException("Invalid URL for $label") }
+        if (!parsed.protocol.equals("https", ignoreCase = true)) {
+            throw IOException("Non-HTTPS URL rejected for $label")
+        }
+    }
+
     private fun finalizeVerifiedFile(
         part: File,
         target: File,
@@ -309,45 +321,27 @@ object MinecraftVersionInstallManager {
         var lastError: Throwable? = null
         repeat(FINALIZE_ATTEMPTS) { attempt ->
             if (isArtifactHealthy(target, expectedSha1, expectedSize)) {
-                if (!part.delete() && part.exists()) {
-                    throw IOException("Finalized $label but could not remove temporary file")
-                }
+                if (!part.delete() && part.exists()) throw IOException("Finalized $label but could not remove temporary file")
                 return
             }
-
             try {
                 if (target.exists() && !target.delete() && target.exists()) {
-                    // Do not overwrite the destination with the fallback while a
-                    // stale file cannot be removed; retrying may still recover.
                     throw IOException("Could not replace existing destination ${target.absolutePath}")
                 }
-
-                if (part.renameTo(target) && isArtifactHealthy(target, expectedSha1, expectedSize)) {
-                    return
-                }
-
-                // renameTo() failed or produced a destination that cannot be verified.
-                // Re-create the destination via a streamed copy from the verified part.
-                if (target.exists() && !target.delete() && target.exists()) {
-                    throw IOException("Could not clear failed destination ${target.absolutePath}")
-                }
+                if (part.renameTo(target) && isArtifactHealthy(target, expectedSha1, expectedSize)) return
+                if (target.exists() && !target.delete() && target.exists()) throw IOException("Could not clear failed destination ${target.absolutePath}")
                 copyFileAndSync(part, target)
                 if (!isArtifactHealthy(target, expectedSha1, expectedSize)) {
                     target.delete()
                     throw IOException("Destination verification failed while finalizing $label")
                 }
-                if (!part.delete() && part.exists()) {
-                    throw IOException("Finalized $label but could not remove temporary file")
-                }
+                if (!part.delete() && part.exists()) throw IOException("Finalized $label but could not remove temporary file")
                 return
             } catch (t: Throwable) {
                 lastError = t
-                if (attempt + 1 < FINALIZE_ATTEMPTS) {
-                    Thread.sleep((100L * (attempt + 1)))
-                }
+                if (attempt + 1 < FINALIZE_ATTEMPTS) Thread.sleep(100L * (attempt + 1))
             }
         }
-
         throw IOException("Could not finalize ${target.absolutePath} for $label after $FINALIZE_ATTEMPTS attempts", lastError)
     }
 
@@ -385,11 +379,14 @@ object MinecraftVersionInstallManager {
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
+    private fun sha1Bytes(bytes: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-1")
+        return digest.digest(bytes).joinToString("") { "%02x".format(it) }
+    }
+
     private fun writeVerifiedText(target: File, content: String, sha1: String?) {
         target.parentFile?.let { parent ->
-            if (!parent.exists() && !parent.mkdirs() && !parent.isDirectory) {
-                throw IOException("Could not create metadata directory ${parent.absolutePath}")
-            }
+            if (!parent.exists() && !parent.mkdirs() && !parent.isDirectory) throw IOException("Could not create metadata directory ${parent.absolutePath}")
         }
         val part = File(target.parentFile, target.name + ".part")
         part.writeText(content, Charsets.UTF_8)
@@ -401,6 +398,7 @@ object MinecraftVersionInstallManager {
     }
 
     private fun httpText(url: String): String {
+        requireHttps(url, "HTTP request")
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
@@ -416,33 +414,24 @@ object MinecraftVersionInstallManager {
         }
     }
 
-    private fun findVersionUrl(manifest: JSONObject, version: String): String? {
+    private fun findVersionEntry(manifest: JSONObject, version: String): JSONObject? {
         val versions = manifest.optJSONArray("versions") ?: return null
         for (i in 0 until versions.length()) {
             val item = versions.optJSONObject(i) ?: continue
-            if (item.optString("id") == version) return item.optString("url").takeIf { it.isNotBlank() }
+            if (item.optString("id") == version) return item
         }
         return null
     }
 
-    private fun minecraftRoot(context: Context): File =
-        File(context.filesDir, "minecraft").apply { mkdirs() }
-
-    private fun versionRoot(context: Context, version: String): File =
-        File(minecraftRoot(context), "versions/$version").apply { mkdirs() }
-
+    private fun minecraftRoot(context: Context): File = File(context.filesDir, "minecraft").apply { mkdirs() }
+    private fun versionRoot(context: Context, version: String): File = File(minecraftRoot(context), "versions/$version").apply { mkdirs() }
     private fun fileLength(file: File): Long = if (file.isFile) file.length() else 0L
-
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-
     private fun stateKey(version: String) = "mc_install_${version}_state"
     private fun errorKey(version: String) = "mc_install_${version}_error"
 
     private fun setState(context: Context, version: String, state: State, error: String?) {
-        prefs(context).edit()
-            .putString(stateKey(version), state.name)
-            .putString(errorKey(version), error)
-            .apply()
+        prefs(context).edit().putString(stateKey(version), state.name).putString(errorKey(version), error).apply()
     }
 
     private fun report(listener: Listener?, version: String, downloaded: Long, total: Long, stage: String) {
