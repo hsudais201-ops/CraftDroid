@@ -11,7 +11,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-
 FEATURE_METHOD = r'''
     private fun featuresPage() {
         pageArea.addView(section("Feature Center", "Everyday launcher tools, customization and quality-of-life controls"))
@@ -99,19 +98,36 @@ FEATURE_METHOD = r'''
 
 
 def patch(text: str) -> str:
+    changed = False
     if '"Features" -> featuresPage()' not in text:
-        old = '            "Game" -> gamePage()\n            "Renderer" -> rendererPage()'
-        new = '            "Game" -> gamePage()\n            "Features" -> featuresPage()\n            "Renderer" -> rendererPage()'
-        if old not in text:
+        show_page_anchors = [
+            ('            "Game" -> gamePage()\n            "Renderer" -> rendererPage()',
+             '            "Game" -> gamePage()\n            "Features" -> featuresPage()\n            "Renderer" -> rendererPage()'),
+        ]
+        for old, new in show_page_anchors:
+            if old in text:
+                text = text.replace(old, new, 1)
+                changed = True
+                break
+        if not changed and '"Game" -> gamePage()' in text:
+            marker = '            "Game" -> gamePage()'
+            text = text.replace(marker, marker + '\n            "Features" -> featuresPage()', 1)
+            changed = True
+        if not changed:
             raise SystemExit("[step253] showPage anchor not found")
-        text = text.replace(old, new, 1)
 
     if '"✦" to "Features"' not in text:
-        old_nav = '            "⌕" to "Search by ID",\n            "⚙" to "Renderer",'
-        new_nav = '            "⌕" to "Search by ID", "✦" to "Features",\n            "⚙" to "Renderer",'
-        if old_nav not in text:
-            raise SystemExit("[step253] navigation anchor not found")
-        text = text.replace(old_nav, new_nav, 1)
+        nav_anchor = '            "⌕" to "Search by ID",\n            "⚙" to "Renderer",'
+        if nav_anchor in text:
+            text = text.replace(nav_anchor,
+                                '            "⌕" to "Search by ID", "✦" to "Features",\n            "⚙" to "Renderer",', 1)
+        else:
+            nav_line = '            "⌕" to "Search by ID",'
+            if nav_line not in text:
+                raise SystemExit("[step253] navigation anchor not found")
+            text = text.replace(nav_line,
+                                '            "⌕" to "Search by ID",\n            "✦" to "Features",', 1)
+        changed = True
 
     if 'private fun featuresPage()' not in text:
         anchor = '    private fun rendererPage() {'
@@ -119,6 +135,7 @@ def patch(text: str) -> str:
         if pos < 0:
             raise SystemExit("[step253] rendererPage anchor not found")
         text = text[:pos] + FEATURE_METHOD + '\n' + text[pos:]
+        changed = True
 
     return text
 
