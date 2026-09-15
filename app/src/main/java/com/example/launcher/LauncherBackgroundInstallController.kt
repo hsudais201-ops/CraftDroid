@@ -3,12 +3,15 @@ package com.example.launcher
 import android.content.Context
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Persistent-in-process background controller for installs/imports.
- * It guarantees at most one task per logical key and reports state changes
- * without requiring the launcher UI to remain open.
+ * Background controller for installs/imports.
+ * At most one task runs for a logical key; Minecraft installs wait for the
+ * underlying asynchronous installer to report completion before succeeding.
  */
 object LauncherBackgroundInstallController {
     enum class Kind { MINECRAFT_VERSION, MODPACK, MOD, SHADER, RESOURCE_PACK, WORLD }
@@ -23,13 +26,20 @@ object LauncherBackgroundInstallController {
     fun installMinecraft(context: Context, version: String, listener: (TaskState) -> Unit = {}) {
         val key = "minecraft:$version"
         submit(key, Kind.MINECRAFT_VERSION, listener) {
+            val done = CountDownLatch(1)
+            val failure = AtomicReference<Throwable?>(null)
             MinecraftVersionInstallManager.install(context, version, object : MinecraftVersionInstallManager.Listener {
                 override fun onProgress(progress: MinecraftVersionInstallManager.Progress) {
                     publish(TaskState(key, Kind.MINECRAFT_VERSION, State.RUNNING, progress.stage), listener)
                 }
-                override fun onComplete(version: String) {}
-                override fun onError(version: String, error: Throwable) { throw error }
+                override fun onComplete(version: String) { done.countDown() }
+                override fun onError(version: String, error: Throwable) {
+                    failure.set(error)
+                    done.countDown()
+                }
             })
+            if (!done.await(6, TimeUnit.HOURS)) throw IllegalStateException("Minecraft installation timed out")
+            failure.get()?.let { throw it }
         }
     }
 
