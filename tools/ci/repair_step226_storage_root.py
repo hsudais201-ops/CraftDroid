@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Step 226: unify every generated Minecraft path on one canonical storage root.
+"""Step 226: unify generated Minecraft filesystem paths on one canonical root.
 
-The installer may already have been hardened before this historical repair runs.
-Accept both the original helper implementation and the hardened equivalent, then
-normalize either form to MinecraftStorageResolver so the generation pipeline is
-idempotent across all branches.
+Historical repair steps can rewrite the installer into several equivalent forms.
+This pass deliberately matches function signatures rather than one exact body,
+so later hardening does not break the generation pipeline.
 """
 from pathlib import Path
 import re
@@ -18,33 +17,62 @@ def find_one(root: Path, name: str) -> Path:
     return matches[0]
 
 
+def replace_function_body(text: str, signature_regex: str, replacement: str) -> tuple[str, bool]:
+    pattern = re.compile(signature_regex + r"[\\s\\S]*?(?=^    (?:private|public|internal|protected) fun |^}", re.MULTILINE)
+    match = pattern.search(text)
+    if not match:
+        return text, False
+    return text[:match.start()] + replacement.rstrip() + "\n\n" + text[match.end():], True
+
+
 def patch_installer(root: Path) -> None:
     path = find_one(root / "app/src/main/java", "MinecraftVersionInstallManager.kt")
     text = path.read_text(encoding="utf-8")
 
-    patterns = [
-        re.compile(r'''    private fun minecraftRoot\(context: Context\): File =\s*\n        File\(context\.filesDir, "minecraft"\)\.apply \{ mkdirs\(\) \}\s*\n\s*\n    private fun versionRoot\(context: Context, version: String\): File =\s*\n        File\(minecraftRoot\(context\), "versions/\$version"\)\.apply \{ mkdirs\(\) \}\s*'''),
-        re.compile(r'''    private fun minecraftRoot\(context: Context\): File =\s*\n        File\(context\.filesDir, "minecraft"\)\.apply \{ mkdirs\(\) \}\s*\n\s*\n    private fun versionRoot\(context: Context, version: String\): File =\s*\n        File\(minecraftRoot\(context\), "versions/\$version"\)\.apply \{ mkdirs\(\) \}\s*'''),
-    ]
-    replacement = '''    private fun minecraftRoot(context: Context): File =
+    # Idempotent normalization of both helper methods.  We locate the method
+    # signature and stop at the next Kotlin method, rather than matching a
+    # particular implementation that may have been hardened by another step.
+    text2, root_changed = replace_function_body(
+        text,
+        r"^    private fun minecraftRoot\(context: Context\): File =",
+        '''    private fun minecraftRoot(context: Context): File =
+        MinecraftStorageResolver.root(context)'''
+    )
+    text3, version_changed = replace_function_body(
+        text2,
+        r"^    private fun versionRoot\(context: Context, version: String\): File =",
+        '''    private fun versionRoot(context: Context, version: String): File =
+        MinecraftStorageResolver.version(context, version)'''
+    )
+
+    # A generated installer may use expression-bodied helpers on one line or
+    # block-bodied helpers. If a helper is absent, insert canonical definitions
+    # immediately before the prefs helper so the source remains valid.
+    if 'MinecraftStorageResolver.root(context)' not in text3:
+        anchor = '    private fun fileLength(file: File): Long ='
+        idx = text3.find(anchor)
+        if idx < 0:
+            raise SystemExit('[step226] installer root anchor not found')
+        text3 = text3[:idx] + '''    private fun minecraftRoot(context: Context): File =
         MinecraftStorageResolver.root(context)
 
-    private fun versionRoot(context: Context, version: String): File =
-        MinecraftStorageResolver.version(context, version)
-'''
+''' + text3[idx:]
+        root_changed = True
 
-    if 'MinecraftStorageResolver.root(context)' in text and 'MinecraftStorageResolver.version(context, version)' in text:
-        pass
-    else:
-        changed = False
-        for pattern in patterns:
-            text, count = pattern.subn(replacement, text, count=1)
-            if count:
-                changed = True
-                break
-        if not changed:
-            raise SystemExit('[step226] installer storage-root implementation was not found in any supported form')
-    path.write_text(text, encoding="utf-8")
+    if 'MinecraftStorageResolver.version(context, version)' not in text3:
+        anchor = '    private fun fileLength(file: File): Long ='
+        idx = text3.find(anchor)
+        if idx < 0:
+            raise SystemExit('[step226] installer version anchor not found')
+        text3 = text3[:idx] + '''    private fun versionRoot(context: Context, version: String): File =
+        MinecraftStorageResolver.version(context, version)
+
+''' + text3[idx:]
+        version_changed = True
+
+    path.write_text(text3, encoding="utf-8")
+    print(f"[step226] installer root normalized: changed={int(root_changed)}")
+    print(f"[step226] installer version root normalized: changed={int(version_changed)}")
 
 
 def has_version_resolver(text: str) -> bool:
@@ -63,9 +91,9 @@ def patch_launch_paths(root: Path) -> None:
         'MinecraftStorageResolver.libraries(context)',
         'MinecraftStorageResolver.assets(context)',
     ]
-    for needle in required:
-        if needle not in text:
-            raise SystemExit(f'[step226] launch path resolver missing canonical call: {needle}')
+    missing = [needle for needle in required if needle not in text]
+    if missing:
+        raise SystemExit('[step226] launch path resolver missing canonical calls: ' + ', '.join(missing))
     if not has_version_resolver(text):
         raise SystemExit('[step226] launch path resolver missing canonical version call')
     if not has_native_resolver(text):
@@ -76,6 +104,7 @@ def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
     if not (root / "app/src/main/java").is_dir():
         raise SystemExit(f"[step226] Android source directory not found: {root}")
+
     patch_installer(root)
     patch_launch_paths(root)
 
@@ -92,9 +121,8 @@ def main() -> int:
         raise SystemExit('[step226] installer missing canonical root resolver')
     if not has_version_resolver(installer):
         raise SystemExit('[step226] installer missing canonical version resolver')
-    for needle in ('MinecraftStorageResolver.root(context)', 'MinecraftStorageResolver.libraries(context)', 'MinecraftStorageResolver.assets(context)'):
-        if needle not in paths:
-            raise SystemExit(f'[step226] launch paths missing storage contract: {needle}')
+    if 'MinecraftStorageResolver.root(context)' not in paths:
+        raise SystemExit('[step226] launch paths missing canonical root resolver')
     if not has_version_resolver(paths):
         raise SystemExit('[step226] launch paths missing canonical version resolver')
     if not has_native_resolver(paths):
@@ -102,8 +130,8 @@ def main() -> int:
     if 'Step 226 storage contract:' not in manager_text:
         raise SystemExit('[step226] manager missing storage contract marker')
 
-    print('[step226] installer and launch-path code now share one canonical Minecraft root')
-    print('[step226] generated launch manager carries the Step 226 storage contract marker')
+    print('[step226] installer and launch paths now share one canonical Minecraft root')
+    print('[step226] generated launch manager carries the storage contract marker')
     return 0
 
 
