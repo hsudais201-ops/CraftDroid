@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Step 287: install the isolated first-run Droid Launcher component gate."""
+"""Step 287: install/validate the isolated first-run Droid Launcher component gate.
+
+This script is intentionally idempotent. Generated source may already contain the
+first-run gate when the upstream source-generation job produced it. In that case
+we validate the complete gate rather than failing on a harmless duplicate apply.
+"""
 from pathlib import Path
 import sys
 
@@ -15,6 +20,15 @@ REQUIRED = [
     ("Launcher Components", "Core launcher runtime components."),
     ("LWJGL 3.3.3", "Lightweight Java Game Library support."),
 ]
+
+REQUIRED_METHODS = (
+    "private fun showBootstrapGate()",
+    "private fun extractBootstrapComponents(",
+    "private fun bootstrapComplete(): Boolean",
+    'putBoolean("components_extracted", true)',
+    'requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE',
+    'showPage("Game")',
+)
 
 
 def method_span(source: str, start: int) -> tuple[int, int]:
@@ -43,6 +57,16 @@ def method_span(source: str, start: int) -> tuple[int, int]:
             if depth == 0:
                 return start, i + 1
     raise SystemExit("[step287] unterminated method")
+
+
+def validate_existing_gate(source: str) -> None:
+    missing = [needle for needle in REQUIRED_METHODS if needle not in source]
+    for name, _description in REQUIRED:
+        if name not in source:
+            missing.append(name)
+    if missing:
+        raise SystemExit("[step287] existing bootstrap gate is incomplete: " + ", ".join(missing))
+    print("[step287] existing Droid Launcher first-run component gate validated; no duplicate insertion")
 
 
 def replace_on_create(source: str) -> str:
@@ -227,7 +251,8 @@ def main() -> int:
     ui = find_ui(root)
     source = ui.read_text(encoding="utf-8")
     if "private fun showBootstrapGate()" in source:
-        raise SystemExit("[step287] bootstrap gate already exists; duplicate insertion blocked")
+        validate_existing_gate(source)
+        return 0
     source = replace_on_create(source)
     insert_at = source.rfind("\n}")
     if insert_at < 0:
