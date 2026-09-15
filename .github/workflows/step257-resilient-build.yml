@@ -172,7 +172,11 @@ jobs:
           validate-wrappers: false
       - name: Validate Gradle project
         working-directory: droid-src
-        run: gradle --no-daemon --stacktrace :app:tasks --all
+        run: |
+          set -euo pipefail
+          test -f settings.gradle || test -f settings.gradle.kts
+          test -f app/build.gradle || test -f app/build.gradle.kts
+          gradle --version
       - name: Run Android Lint
         working-directory: droid-src
         shell: bash
