@@ -120,6 +120,19 @@ jobs:
           python3 tools/ci/repair_step236_download_trust.py droid-src
       - name: Step 257 final Feature Center repair
         run: python3 tools/ci/repair_step257_feature_center_after_ui.py droid-src
+      - name: Restore Steps 207-216 after final Feature Center repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step207_server_ui.py droid-src
+          python3 tools/ci/repair_step209_server_list.py droid-src
+          python3 tools/ci/repair_step210_server_launch.py droid-src
+          python3 tools/ci/repair_step211_minecraft_server_query.py droid-src
+          python3 tools/ci/repair_step212_server_ui.py droid-src
+          python3 tools/ci/repair_step213_server_cards.py droid-src
+          python3 tools/ci/repair_step214_server_detail.py droid-src
+          python3 tools/ci/repair_step215_launch_feedback.py droid-src
+          python3 tools/ci/repair_step216_launch_progress.py droid-src
       - name: Step 286 final Home and Account GUI
         run: python3 tools/ci/apply_step286_home_account_gui.py droid-src
       - name: Step 287 first-run launcher components GUI
