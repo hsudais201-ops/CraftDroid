@@ -1,0 +1,149 @@
+name: Step 285 - Real Minecraft Android Boot Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: 'Commit to test; defaults to main HEAD'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Select target commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET_SHA='${{ inputs.source_sha }}'
+          [ -n "$TARGET_SHA" ] || TARGET_SHA="$GITHUB_SHA"
+          echo "TARGET_SHA=$TARGET_SHA" >> "$GITHUB_ENV"
+
+      - name: Wait for successful APK build for exact commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SOURCE_RUN_ID=''
+          for attempt in $(seq 1 120); do
+            SUCCESS_RUN="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=$TARGET_SHA&per_page=100" \
+              --jq '.workflow_runs[] | select(.head_sha == "'"$TARGET_SHA"'" and (.name == "Step 200 - Droid Launcher authoritative build" or .name == "Step 257 - Droid Launcher resilient authoritative build") and .conclusion == "success") | .id' | head -n1)"
+            if [ -n "$SUCCESS_RUN" ]; then
+              SOURCE_RUN_ID="$SUCCESS_RUN"
+              break
+            fi
+            echo "Waiting for successful APK build: $attempt/120"
+            sleep 15
+          done
+          test -n "$SOURCE_RUN_ID"
+          echo "SOURCE_RUN_ID=$SOURCE_RUN_ID" >> "$GITHUB_ENV"
+          printf '%s\n' "$SOURCE_RUN_ID" > source-run-id.txt
+
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 1
+
+      - name: Materialize real Minecraft 1.21.1 fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/fixture
+          CRAFTDROID_FIXTURE_DIR="$GITHUB_WORKSPACE/artifacts/fixture" python3 tools/ci/verify_minecraft_install_fixture.py | tee artifacts/fixture/fixture-result.txt
+          test -s artifacts/fixture/versions/1.21.1/1.21.1.jar
+          test -s artifacts/fixture/versions/1.21.1/1.21.1.json
+          test -s artifacts/fixture/assets/indexes/*.json
+          find artifacts/fixture/libraries -type f -print -quit | grep -q .
+
+      - name: Download exact successful APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/apk
+          ARTIFACT_ID="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" --jq '.artifacts[] | select(.expired==false and (.name|startswith("Droid-Launcher-Step")) and (.name|endswith("-debug"))) | .id' | head -n1)"
+          test -n "$ARTIFACT_ID"
+          echo "$ARTIFACT_ID" > artifacts/apk/artifact-id.txt
+          gh api -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/actions/artifacts/$ARTIFACT_ID/zip" > artifacts/apk/build-artifact.zip
+          unzip -q artifacts/apk/build-artifact.zip -d artifacts/apk
+          APK="$(find artifacts/apk -type f -name '*.apk' -print -quit)"
+          test -s "$APK"
+          echo "APK=$APK" >> "$GITHUB_ENV"
+          sha256sum "$APK" | tee artifacts/apk/sha256.txt
+
+      - name: Install Android SDK and emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKMANAGER" ] || SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -path '*/bin/sdkmanager' -print -quit)"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "emulator" "build-tools;36.0.0" "platforms;android-35" "system-images;android-35;google_apis;x86_64"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
+
+      - name: Install emulator host audio dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpulse0
+          ldconfig -p | grep -q 'libpulse.so.0'
+
+      - name: Preflight APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          "$AAPT" dump badging "$APK" | tee artifacts/apk/badging.txt
+          grep -F "package: name='com.craftdroid.launcher'" artifacts/apk/badging.txt
+          unzip -l "$APK" | tee artifacts/apk/contents.txt
+          grep -q 'lib/x86_64/libcraftdroidbridge.so' artifacts/apk/contents.txt
+
+      - name: Real Minecraft boot on Android 35 x86_64
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disk-size: 4G
+          heap-size: 512M
+          ram-size: 1536M
+          cores: 2
+          avd-name: craftdroid-step285
+          force-avd-creation: true
+          emulator-boot-timeout: 900
+          emulator-port: 5554
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          enable-hw-keyboard: false
+          channel: stable
+          script: |
+            set -euo pipefail
+            mkdir -p artifacts/runtime
+            adb wait-for-device
+            adb shell getprop ro.product.cpu.abi | tee artifacts/runtime/emulator-abi.txt
+            adb shell getprop ro.build.version.sdk | tee artifacts/runtime/emulator-api.txt
+            bash tools/ci/real_minecraft_boot_step182.sh "$APK" artifacts/runtime artifacts/fixture
+
+      - name: Upload boot diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CraftDroid-step285-real-boot
+          path: |
+            artifacts/runtime/**
+            artifacts/apk/**
+            artifacts/fixture/fixture-result.txt
+          if-no-files-found: ignore
