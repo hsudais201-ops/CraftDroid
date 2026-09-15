@@ -41,6 +41,20 @@ jobs:
           rm -rf droid-src
           tar -xzf "$TGZ"
           test -f droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
+      - name: Restore canonical launch-contract sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC=droid-src/app/src/main/java/com/example/launcher
+          mkdir -p "$SRC"
+          for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt MinecraftLaunchManager.kt; do
+            test -f "app/src/main/java/com/example/launcher/$f"
+            cp -f "app/src/main/java/com/example/launcher/$f" "$SRC/$f"
+          done
+          mkdir -p droid-src/app/src/main/java/com/example/logs droid-src/app/src/main/java/com/example/renderer
+          cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
+          cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
+          cp -f app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt droid-src/app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt
       - name: Final Home and Account GUI
         run: python3 tools/ci/apply_step286_home_account_gui.py droid-src
       - name: Final first-run components GUI
@@ -53,27 +67,18 @@ jobs:
         run: python3 tools/ci/repair_step295_final_navigation.py droid-src
       - name: Repair Android EditText property mappings
         run: python3 tools/ci/repair_step297_android_edittext_properties.py droid-src
+      - name: Reapply launch handoff validation after final UI generation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step234_handoff_validation_launch_gate.py droid-src
+          python3 tools/ci/repair_step235_launch_runtime_guard.py droid-src
+          python3 tools/ci/repair_step236_download_trust.py droid-src
       - name: Deep source quality pass - 1000 iterations
         shell: bash
         run: |
           set -euo pipefail
-          UI=droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
-          MANAGER=droid-src/app/src/main/java/com/example/launcher/MinecraftLaunchManager.kt
-          for i in $(seq 1 1000); do
-            grep -Fq 'private fun showBootstrapGate()' "$UI"
-            grep -Fq 'private fun featuresPage()' "$UI"
-            grep -Fq '"Features" -> featuresPage()' "$UI"
-            grep -Fq 'setOnClickListener { showPage("Features") }' "$UI"
-            grep -Fq 'private fun showServerDialog(index: Int)' "$UI"
-            grep -Fq 'private fun getSavedServers(): List<Pair<String, Int>>' "$UI"
-            grep -Fq 'private fun refreshServerStatus(host: String, port: Int)' "$UI"
-            grep -Fq 'private fun deleteServer(index: Int)' "$UI"
-            grep -Fq 'private fun selectServer(host: String, port: Int)' "$UI"
-            grep -Fq 'isSingleLine = true' "$UI"
-            if grep -q 'resolveLaunchJavaRuntime(requestedJava: String): String' "$MANAGER"; then exit 1; fi
-          done
-          echo 'STEP296 deep source loop: 1000/1000 passes'
-          if grep -RInE 'TODO|FIXME|NotImplementedException' droid-src/app/src/main/java; then exit 1; fi
+          python3 tools/ci/deep_quality_pass_1000.py droid-src
       - name: Verify generated source contracts
         shell: bash
         run: |
