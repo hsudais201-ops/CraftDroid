@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
 
-concurrency:
+aConcurrency:
   group: step257-resilient-build-${{ github.ref }}
   cancel-in-progress: true
 
@@ -37,6 +37,7 @@ jobs:
           fi
           mkdir -p droid-src/app/src/main/java/com/example/launcher
           for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "droid-src/app/src/main/java/com/example/launcher/$f"; done
+          for f in MinecraftRuntimeProfile.kt MinecraftLatestVersionManager.kt MinecraftContentManager.kt MinecraftModpackManager.kt MinecraftLoaderProfile.kt LauncherBackgroundInstallController.kt DroidLauncherUpdateManager.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "droid-src/app/src/main/java/com/example/launcher/$f"; done
           mkdir -p droid-src/app/src/main/java/com/example/logs droid-src/app/src/main/java/com/example/renderer
           cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
           cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
@@ -139,13 +140,16 @@ jobs:
           set -euo pipefail
           SRC=droid-src/app/src/main/java/com/example/launcher
           for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "$SRC/$f"; done
+          for f in MinecraftRuntimeProfile.kt MinecraftLatestVersionManager.kt MinecraftContentManager.kt MinecraftModpackManager.kt MinecraftLoaderProfile.kt LauncherBackgroundInstallController.kt DroidLauncherUpdateManager.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "$SRC/$f"; done
           cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
           cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
           cp -f app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt droid-src/app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt
-      - name: Reapply final launch handoff validation and trust hardening
+      - name: Reapply final launch producer and validation hardening
         shell: bash
         run: |
           set -euo pipefail
+          python3 tools/ci/repair_step231_launch_handoff.py droid-src
+          python3 tools/ci/repair_step232_launch_handoff_consumer.py droid-src
           python3 tools/ci/repair_step234_handoff_validation_launch_gate.py droid-src
           python3 tools/ci/repair_step235_launch_runtime_guard.py droid-src
           python3 tools/ci/repair_step236_download_trust.py droid-src
@@ -190,7 +194,7 @@ jobs:
           required=("platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1")
           installed="$($SDKMANAGER --list_installed 2>/dev/null || true)"
           missing=()
-          for pkg in "${required[@]}"; do if ! grep -Fq "${pkg}" <<< "$installed"; then missing+=("$pkg"); fi; done
+          for pkg in "${required[@]}"; do if ! grep -Fq "${pkg}" <<< "$installed"; then missing+=("${pkg}"); fi; done
           if [ "${#missing[@]}" -gt 0 ]; then timeout 25m "$SDKMANAGER" "${missing[@]}"; else echo 'All required Android SDK packages are already installed.'; fi
           "$SDKMANAGER" --list_installed | grep -E 'platform-tools|platforms;android-36|build-tools;36.0.0|ndk;27.2.12479018|cmake;3.22.1'
       - name: Set up Gradle 9.6.0 directly
