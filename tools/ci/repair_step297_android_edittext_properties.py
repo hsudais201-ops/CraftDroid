@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Step 297/298: normalize generated Android EditText single-line APIs."""
+"""Step 297/298/337: normalize generated Android APIs and apply final sign-in UI."""
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 TOKEN = re.compile(r"(?<![A-Za-z0-9_])singleLine(?![A-Za-z0-9_])")
@@ -20,7 +21,18 @@ def main() -> int:
     ui.write_text(repaired, encoding="utf-8")
     if TOKEN.search(repaired) or "setSingleLine(true)" in repaired:
         raise SystemExit("[step297] unresolved EditText single-line API remains")
+
+    # Step 337 is deliberately applied here because this is after the final Home/
+    # Account GUI generation in the authoritative build sequence.
+    patch = Path(__file__).with_name("apply_step337_microsoft_signin_reference_gui.py")
+    verifier = Path(__file__).with_name("verify_step337_microsoft_signin_gui.py")
+    if not patch.is_file() or not verifier.is_file():
+        raise SystemExit("[step337] Microsoft sign-in GUI patch/verifier missing")
+    subprocess.run([sys.executable, str(patch), str(root)], check=True)
+    subprocess.run([sys.executable, str(verifier), str(root)], check=True)
+
     print(f"[step297] EditText single-line normalization complete; property replacements={token_replacements}; setter replacements={setter_replacements}")
+    print("[step337] Microsoft custom sign-in GUI and top-right Home action finalized after UI generation")
     return 0
 
 if __name__ == "__main__":
