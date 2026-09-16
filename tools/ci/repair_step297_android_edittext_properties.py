@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 297/298/337/338/339/340/341/342/344/345/346/347: normalize generated Android APIs and apply final UIs."""
+"""Step 297/298/337/338/339/340/341/342/344/345/346/347/348: normalize generated Android APIs and apply final UIs."""
 from pathlib import Path
 import re
 import subprocess
@@ -32,6 +32,7 @@ def main() -> int:
         ("345", "apply_step345_required_mods_after_download.py", "verify_step345_required_mods_after_download.py", "required-mod post-download patch/verifier missing"),
         ("346", "apply_step346_version_instance_reference_screen.py", "verify_step346_version_instance_reference_screen.py", "Version / Instances reference screen patch/verifier missing"),
         ("347", "apply_step347_version_instance_pixel_layout.py", "verify_step347_version_instance_pixel_layout.py", "screenshot-matched Version / Instances layout patch/verifier missing"),
+        ("348", "apply_step348_version_instance_actions.py", "verify_step348_version_instance_actions.py", "Version / Instances action hardening patch/verifier missing"),
     ]
     for step, patch_name, verifier_name, error_text in patches:
         patch = Path(__file__).with_name(patch_name)
@@ -52,6 +53,7 @@ def main() -> int:
     print("[step345] Required-mod dialog now appears after modpack download")
     print("[step346] Version / Instances reference screen finalized; + opens Game download/version manager")
     print("[step347] Screenshot-matched Version / Instances pixel layout finalized")
+    print("[step348] Version / Instances toolbar and row actions hardened")
     return 0
 
 if __name__ == "__main__":
