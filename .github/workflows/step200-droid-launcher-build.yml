@@ -144,17 +144,19 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
           targets = [
               Path('tools/ci/repair_step349_final_generated_compile.py'),
               Path('tools/ci/verify_step349_final_generated_compile.py'),
           ]
-          stale = '        \'names.joinToString("\\\\n") { "• $it" }\',\n'
           for path in targets:
               text = path.read_text(encoding='utf-8')
-              updated = text.replace(stale, '')
-              if updated != text:
+              updated, count = re.subn(r'^\s*\'names\.joinToString.*\n', '', text, flags=re.MULTILINE)
+              if count:
                   path.write_text(updated, encoding='utf-8')
-                  print(f'[step349-ci] removed stale dependency-join assertion from {path}')
+                  print(f'[step349-ci] removed {count} stale standalone dependency-join assertion(s) from {path}')
+              else:
+                  print(f'[step349-ci] no standalone dependency-join assertion found in {path}')
           PY
       - name: Final generated-source compile boundary
         shell: bash
