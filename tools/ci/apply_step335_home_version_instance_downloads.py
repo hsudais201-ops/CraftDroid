@@ -6,7 +6,6 @@ also persists live byte progress so the Home card can show the active version, i
 percentage, and downloaded/total MB without pretending that a download is complete.
 """
 from pathlib import Path
-import re
 import sys
 
 
@@ -153,7 +152,6 @@ def selector_dialogs(source: str) -> str:
     }
 
     private fun openInstanceSelector() {
-        val prefs = getSharedPreferences("droid_launcher", MODE_PRIVATE)
         val names = listOf("Default", "Survival", "PvP", "Modded")
         val checked = names.indexOf(selectedMinecraftProfile()).coerceAtLeast(0)
         android.app.AlertDialog.Builder(this)
@@ -209,11 +207,11 @@ def selector_dialogs(source: str) -> str:
 
 
 def replace_home(source: str) -> str:
+    if "// STEP335_HOME_VERSION_INSTANCE_DOWNLOADS" in source:
+        return source
     signature = '    private fun homePage() {'
     start, end = method_block(source, signature)
     old = source[start:end]
-    # Preserve the existing page's server/account content but replace only the launch area
-    # with a version/instance/download stack directly above the Launch button.
     needle = '''        val launch = button("Launch", true)
         launch.textSize = 18f
         launch.setOnClickListener {
@@ -227,12 +225,12 @@ def replace_home(source: str) -> str:
         versionCard.addView(label("Launch setup", 16f, true))
         val versionButton = button("Version  ·  ${selectedMinecraftVersion()}", true)
         versionButton.setOnClickListener { openVersionSelector() }
-        versionCard.addView(versionButton, LinearLayout.LayoutParams(-1, dp(46)))
+        versionCard.addView(versionButton, LinearLayout.LayoutParams(-1, LinearLayout.LayoutParams.WRAP_CONTENT))
         val instanceButton = button("Instance  ·  ${selectedMinecraftProfile()}")
         instanceButton.setOnClickListener { openInstanceSelector() }
-        versionCard.addView(instanceButton, LinearLayout.LayoutParams(-1, dp(46)))
-        right.addView(versionCard, LinearLayout.LayoutParams(-1, dp(0), 0f))
-        right.addView(downloadCard(), LinearLayout.LayoutParams(-1, dp(0), 0f).apply { topMargin = dp(8) })
+        versionCard.addView(instanceButton, LinearLayout.LayoutParams(-1, LinearLayout.LayoutParams.WRAP_CONTENT))
+        right.addView(versionCard, LinearLayout.LayoutParams(-1, LinearLayout.LayoutParams.WRAP_CONTENT))
+        right.addView(downloadCard(), LinearLayout.LayoutParams(-1, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
 
         val launch = button("Launch", true)
         launch.textSize = 18f
@@ -241,8 +239,6 @@ def replace_home(source: str) -> str:
         }
         right.addView(launch, LinearLayout.LayoutParams(-1, dp(68)).apply { topMargin = dp(10) })
 '''
-    # Use wrap-content for the two cards: dp(0) + weight 0 is invalid-looking, so build with WRAP_CONTENT explicitly.
-    replacement = replacement.replace('LinearLayout.LayoutParams(-1, dp(0), 0f)', 'LinearLayout.LayoutParams(-1, LinearLayout.LayoutParams.WRAP_CONTENT)')
     source = source[:start] + old.replace(needle, replacement, 1) + source[end:]
     return source
 
@@ -262,8 +258,8 @@ def main() -> int:
         raise SystemExit('[step335] version selector did not land in Home')
     if 'Instance  ·  ${selectedMinecraftProfile()}' not in source:
         raise SystemExit('[step335] instance selector did not land in Home')
-    if 'STEP335_HOME_VERSION_INSTANCE_DOWNLOADS' not in source:
-        source += '\n    // STEP335_HOME_VERSION_INSTANCE_DOWNLOADS\n'
+    source = source.replace('    // STEP335_HOME_VERSION_INSTANCE_DOWNLOADS\n', '')
+    source += '\n    // STEP335_HOME_VERSION_INSTANCE_DOWNLOADS\n'
     ui.write_text(source, encoding="utf-8")
     print('[step335] Home now exposes Version and Instance above Launch')
     print('[step335] live download card persists version, stage, percentage and MB progress')
