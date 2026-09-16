@@ -163,6 +163,15 @@ def main() -> int:
         raise SystemExit("[step333] stale generated Android token remains: " + ", ".join(stale))
 
     path.write_text(source, encoding="utf-8")
+
+    # Step 334 is deliberately the final Home-server presentation pass so that
+    # later contract generators cannot remove the Delete button beside Edit.
+    step334 = Path(__file__).with_name("apply_step334_server_toolbar_delete.py")
+    if step334.is_file():
+        subprocess.run([sys.executable, str(step334), str(root)], check=True)
+    else:
+        raise SystemExit("[step333] required Step 334 server toolbar patch is missing")
+
     print("[step333] final generated source authority applied")
     if present_server:
         print("[step333] server helper ownership normalized to exactly one implementation")
