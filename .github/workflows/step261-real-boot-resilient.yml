@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       apk_build_run_id:
-        description: 'Successful Step 200 build run ID (optional; auto-detects when empty)'
+        description: 'Successful authoritative APK build run ID (optional; Step296 finalizer run is supported)'
         required: false
         type: string
   workflow_run:
-    workflows: ["Step 200 - Droid Launcher authoritative build"]
+    workflows: ["Step 296 - Authoritative APK finalizer loop"]
     types: [completed]
     branches: [main, master]
 
@@ -98,12 +98,12 @@ jobs:
             test "$BUILD_STATUS" = success
             test "$BUILD_SHA" = "$TARGET_SHA"
             found="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
-              --jq '.artifacts[] | select((.name|startswith("Droid-Launcher-Step")) and (.name|endswith("-debug")) and .expired==false) | .id' \
+              --jq '.artifacts[] | select((.name|startswith("Droid-Launcher-Step")) and ((.name|endswith("-debug")) or (.name|endswith("-final"))) and .expired==false) | .id' \
               | head -n 1)"
           fi
           if [ -z "$found" ]; then
             found="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
-              --jq '.artifacts[] | select((.name|startswith("Droid-Launcher-Step")) and (.name|endswith("-debug")) and .expired==false) | [.id,.workflow_run.head_sha,.workflow_run.conclusion] | @tsv' \
+              --jq '.artifacts[] | select((.name|startswith("Droid-Launcher-Step")) and ((.name|endswith("-debug")) or (.name|endswith("-final"))) and .expired==false) | [.id,.workflow_run.head_sha,.workflow_run.conclusion] | @tsv' \
               | awk -v sha="$TARGET_SHA" '$2==sha && $3=="success" {print $1; exit}')"
           fi
           test -n "$found"
