@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Final compile-boundary repair for the generated launcher UI.
-
-Runs after all late UI generators. Restores Java resolver helpers, repairs known
-multiline joinToString corruption, and normalizes any ordinary quoted Kotlin
-string that a generator accidentally split across a physical newline.
-"""
+"""Final compile-boundary repair for the generated launcher UI."""
 from pathlib import Path
 import re
 import sys
@@ -144,13 +139,31 @@ def repair_dependency_join(source: str) -> str:
     return source
 
 
-def repair_regular_string_newlines(source: str) -> tuple[str, int]:
-    """Turn illegal ordinary quoted-string newlines into escaped \n sequences.
+def repair_orphan_fragments(source: str) -> str:
+    """Remove known late-generator fragments that can change class scope.
 
-    Triple-quoted strings, comments, and character literals are left untouched.
-    A second pass over the repaired result is used to prove no regular string
-    remains split over a physical newline.
+    Some pre-final UI patches append a legacy Java resolver body without its
+    function declaration. Removing that whole body before the canonical helper
+    restore prevents an unmatched brace from closing the activity class early.
     """
+    legacy_start = source.find(
+        '        val saved = getSharedPreferences("droid_launcher", MODE_PRIVATE).getInt("java_runtime_override", 0)'
+    )
+    feature_anchor = source.find('    private fun featuresPage() {', legacy_start if legacy_start >= 0 else 0)
+    if legacy_start >= 0 and feature_anchor > legacy_start:
+        source = source[:legacy_start] + source[feature_anchor:]
+
+    # A late expression-bodied Java resolver can leave only its expression after
+    # helper cleanup. It is invalid at class scope, so remove that orphan line.
+    source = re.sub(
+        r'(?m)^\s*storedJavaOverride\(\) \?: recommendedJavaForVersion\(version\)\s*$\n',
+        '',
+        source,
+    )
+    return source
+
+
+def repair_regular_string_newlines(source: str) -> tuple[str, int]:
     out: list[str] = []
     i = 0
     changed = 0
@@ -209,6 +222,7 @@ def main() -> int:
         raise SystemExit(f'[step349] missing UI source: {ui}')
     source = ui.read_text(encoding='utf-8')
     before = source
+    source = repair_orphan_fragments(source)
     source = restore_helpers(source)
     source = repair_dependency_join(source)
     source, changed_strings = repair_regular_string_newlines(source)
@@ -225,10 +239,10 @@ def main() -> int:
         if needle not in source:
             raise SystemExit(f'[step349] missing post-repair contract: {needle}')
     ui.write_text(source, encoding='utf-8')
-    print(f'[step357] generated regular Kotlin string repair count={changed_strings}; changed={int(source != before)}')
+    print(f'[step361] orphan fragment cleanup + multiline repair count={changed_strings}; changed={int(source != before)}')
     print('[step349] Java resolver helpers restored after all late UI rewrites')
-    print('[step349] dependency joinToString escaped safely')
     print('[step357] no remaining multiline regular Kotlin strings')
+    print('[step361] known legacy Java fragment cannot close the activity class early')
     return 0
 
 if __name__ == '__main__':
