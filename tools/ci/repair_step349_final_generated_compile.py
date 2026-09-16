@@ -132,6 +132,20 @@ def run_quality_gate(repo_root: Path, generated_root: Path) -> None:
         print('[step349] deep_quality_pass_1000 PASS')
 
 
+def assert_final_ui_invariants(source: str) -> None:
+    required_members = ('private fun featuresPage()','private fun featureToggle(','private fun rendererPage()','private fun javaPage()','private fun controlsPage()','private fun libraryPage(','private fun aboutPage(','private fun serverPrefs()','private fun getSavedServers()','private fun getServerName(','private fun getServerStatus(','private fun selectServer(','private fun deleteServer(','private fun showServerDialog(','private fun refreshServerStatus(','private fun resolveJavaForVersion(','private fun getResolvedJavaForLaunch(')
+    for sig in required_members:
+        if source.count(sig) != 1: raise SystemExit(f'[step349] {sig} count={source.count(sig)}, expected 1')
+    if 'private fun featuresPage() {' not in source: raise SystemExit('[step349] Feature Center method body missing')
+    if any(x in source for x in ('STEP293_SERVER_CONTRACTS','STEP329_SERVER_CONTRACTS')): raise SystemExit('[step349] orphan contract markers remain')
+    if 'singleLine =' in source: raise SystemExit('[step349] invalid singleLine property remains')
+    if '\nprivate fun ' in source: raise SystemExit('[step349] top-level private helper remains outside class')
+    start = source.find('override fun onCreate')
+    slice_ = source[start:start+700]
+    if 'showBootstrapGate()' in slice_ or 'buildUi()\n        showPage("Game")' not in slice_: raise SystemExit('[step349] direct launcher startup invariant failed')
+    if source.count('class DroidLauncherUiActivity') != 1 or not source.rstrip().endswith('}'): raise SystemExit('[step349] launcher class boundary invariant failed')
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else 'droid-src').resolve()
     repo_root = Path.cwd().resolve()
@@ -147,29 +161,28 @@ def main() -> int:
     source = repair_truncated_server_helpers(source)
     source = dedupe_methods(source, ('featuresPage','featureToggle','rendererPage','javaPage','controlsPage','libraryPage','aboutPage','serverPrefs','getSavedServers','getServerName','getServerStatus','selectServer','deleteServer','showServerDialog','refreshServerStatus','resolveJavaForVersion','getResolvedJavaForLaunch'))
     source = normalize_on_create(source)
-    # Re-normalize after structural deduplication so late method rewrites cannot
-    # reintroduce either the unsupported property or a top-level declaration.
     source = normalize_edit_text(source)
     ui.write_text(source, encoding='utf-8')
     inst_before = installer.read_text(encoding='utf-8')
     inst = repair_progress_context(inst_before)
     installer.write_text(inst, encoding='utf-8')
-    required_members = ('private fun featuresPage()','private fun featureToggle(','private fun rendererPage()','private fun javaPage()','private fun controlsPage()','private fun libraryPage(','private fun aboutPage(','private fun serverPrefs()','private fun getSavedServers()','private fun getServerName(','private fun getServerStatus(','private fun selectServer(','private fun deleteServer(','private fun showServerDialog(','private fun refreshServerStatus(','private fun resolveJavaForVersion(','private fun getResolvedJavaForLaunch(')
-    for sig in required_members:
-        if source.count(sig) != 1: raise SystemExit(f'[step349] {sig} count={source.count(sig)}, expected 1')
-    if 'private fun featuresPage() {' not in source: raise SystemExit('[step349] Feature Center method body missing')
-    if any(x in source for x in ('STEP293_SERVER_CONTRACTS','STEP329_SERVER_CONTRACTS')): raise SystemExit('[step349] orphan contract markers remain')
-    if 'singleLine =' in source: raise SystemExit('[step349] invalid singleLine property remains')
-    if '\nprivate fun ' in source: raise SystemExit('[step349] top-level private helper remains outside class')
-    start = source.find('override fun onCreate')
-    slice_ = source[start:start+700]
-    if 'showBootstrapGate()' in slice_ or 'buildUi()\n        showPage("Game")' not in slice_: raise SystemExit('[step349] direct launcher startup invariant failed')
-    if source.count('class DroidLauncherUiActivity') != 1 or not source.rstrip().endswith('}'): raise SystemExit('[step349] launcher class boundary invariant failed')
-    if 'private var progressContext: android.content.Context? = null' not in inst: raise SystemExit('[step349] installer progressContext declaration missing')
     navigation = repo_root / 'tools/ci/repair_step295_final_navigation.py'
     if not navigation.is_file(): raise SystemExit('[step349] final Feature Center navigation repair script is missing')
     subprocess.run([sys.executable, str(navigation), str(root)], cwd=repo_root, check=True)
+    # Step 295 is itself a late UI generator and can reintroduce code patterns
+    # normalized above. Re-read and normalize again immediately before the
+    # invariants and quality gate so the generated tree matches what Gradle sees.
     source = ui.read_text(encoding='utf-8')
+    source = strip_orphan_fragments(source)
+    source = normalize_page_boundary(source)
+    source = normalize_edit_text(source)
+    source = repair_truncated_server_helpers(source)
+    source = dedupe_methods(source, ('featuresPage','featureToggle','rendererPage','javaPage','controlsPage','libraryPage','aboutPage','serverPrefs','getSavedServers','getServerName','getServerStatus','selectServer','deleteServer','showServerDialog','refreshServerStatus','resolveJavaForVersion','getResolvedJavaForLaunch'))
+    source = normalize_edit_text(source)
+    ui.write_text(source, encoding='utf-8')
+    source = ui.read_text(encoding='utf-8')
+    assert_final_ui_invariants(source)
+    if 'private var progressContext: android.content.Context? = null' not in inst: raise SystemExit('[step349] installer progressContext declaration missing')
     if '"Features" -> featuresPage()' not in source or 'setOnClickListener { showPage("Features") }' not in source: raise SystemExit('[step349] Feature Center navigation not restored at final boundary')
     run_quality_gate(repo_root, root)
     print(f'[step349] final repair complete; ui_changed={int(source != before)} installer_changed={int(inst != inst_before)}')
