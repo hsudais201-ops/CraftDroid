@@ -18,6 +18,113 @@ def count_decl(source: str, signature: str) -> int:
     return len(re.findall(re.escape(signature), source))
 
 
+def remove_duplicate_functions(source: str, signature: str) -> tuple[str, int]:
+    """Keep the first matching top-level helper and remove later copies.
+
+    Late CI repair stages intentionally re-apply launch contracts after UI generation.
+    Some of those stages can legitimately encounter an already-present helper.  The
+    generated Kotlin must contain one declaration before Gradle sees it, so this
+    final verifier owns a small idempotent canonicalization pass as well.
+    """
+    starts = [m.start() for m in re.finditer(re.escape(signature), source)]
+    if len(starts) <= 1:
+        return source, 0
+
+    def find_body_end(text: str, start: int) -> int:
+        brace = text.find("{", start)
+        if brace < 0:
+            raise SystemExit(f"[step239] function body opening brace not found: {signature}")
+        depth = 0
+        in_string = False
+        in_char = False
+        in_line_comment = False
+        in_block_comment = False
+        escaped = False
+        i = brace
+        while i < len(text):
+            ch = text[i]
+            nxt = text[i + 1] if i + 1 < len(text) else ""
+            if in_line_comment:
+                if ch == "\n":
+                    in_line_comment = False
+                i += 1
+                continue
+            if in_block_comment:
+                if ch == "*" and nxt == "/":
+                    in_block_comment = False
+                    i += 2
+                    continue
+                i += 1
+                continue
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                i += 1
+                continue
+            if in_char:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == "'":
+                    in_char = False
+                i += 1
+                continue
+            if ch == "/" and nxt == "/":
+                in_line_comment = True
+                i += 2
+                continue
+            if ch == "/" and nxt == "*":
+                in_block_comment = True
+                i += 2
+                continue
+            if ch == '"':
+                in_string = True
+            elif ch == "'":
+                in_char = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    while end < len(text) and text[end] in "\r\n":
+                        end += 1
+                    return end
+            i += 1
+        raise SystemExit(f"[step239] unterminated function body: {signature}")
+
+    removed = 0
+    for start in reversed(starts[1:]):
+        end = find_body_end(source, start)
+        source = source[:start] + source[end:]
+        removed += 1
+    return source, removed
+
+
+def deduplicate_final_ui_helpers(ui_path: Path) -> str:
+    source = ui_path.read_text(encoding="utf-8")
+    signatures = (
+        "    private fun selectedMinecraftVersion(): String",
+        "    private fun saveMinecraftVersion(version: String)",
+        "    private fun selectedMinecraftProfile(): String",
+        "    private fun saveMinecraftProfile(profile: String)",
+        "    private fun launchSelectedMinecraft()",
+    )
+    removed_total = 0
+    for signature in signatures:
+        source, removed = remove_duplicate_functions(source, signature)
+        removed_total += removed
+    if removed_total:
+        ui_path.write_text(source, encoding="utf-8")
+        print(f"[step239] removed {removed_total} duplicate final UI helper declaration(s)")
+    return source
+
+
 def patch_base_navigation(ui: str) -> str:
     if '"Features" -> featuresPage()' not in ui:
         anchor = '            "Controls" -> controlsPage()'
@@ -80,6 +187,10 @@ def main() -> int:
         ui = restore_server_contracts(root)
         if 'setTextColor(this@DroidLauncherUiActivity.text)' in ui or 'setTextColor(text)' in ui:
             raise SystemExit('[step292] invalid generated text color reference remains')
+
+    # Canonicalize helper ownership after every late UI/launch repair and immediately
+    # persist the repaired source so later Gradle compilation sees the unique form.
+    ui = deduplicate_final_ui_helpers(ui_path)
 
     manager = find_one(src, "MinecraftLaunchManager.kt").read_text(encoding="utf-8")
     for signature in (
