@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 297/298/337/338/339/340: normalize generated Android APIs and apply final UIs."""
+"""Step 297/298/337/338/339/340/341: normalize generated Android APIs and apply final UIs."""
 from pathlib import Path
 import re
 import subprocess
@@ -27,6 +27,7 @@ def main() -> int:
         ("338", "apply_step338_offline_profile_gui.py", "verify_step338_offline_profile_gui.py", "offline profile GUI patch/verifier missing"),
         ("339", "apply_step339_settings_renderer_reference_gui.py", "verify_step339_settings_renderer_reference_gui.py", "Settings Renderer GUI patch/verifier missing"),
         ("340", "apply_step340_settings_reference_polish.py", "verify_step340_settings_reference_polish.py", "Settings reference polish patch/verifier missing"),
+        ("341", "apply_step341_download_manager_reference_gui.py", "verify_step341_download_manager_reference_gui.py", "3.jpeg download/install/version GUI patch/verifier missing"),
     ]
     for step, patch_name, verifier_name, error_text in patches:
         patch = Path(__file__).with_name(patch_name)
@@ -41,6 +42,7 @@ def main() -> int:
     print("[step338] Offline profile reference GUI and Home return action finalized after UI generation")
     print("[step339] Settings · Renderer reference GUI and working option controls finalized after UI generation")
     print("[step340] Settings reference shell polished to match 2.jpeg")
+    print("[step341] 3.jpeg Download/install/version manager GUI finalized after UI generation")
     return 0
 
 if __name__ == "__main__":
