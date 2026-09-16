@@ -89,14 +89,38 @@ def main() -> int:
     step258 = Path(__file__).with_name("repair_step258_predictive_back.py")
     subprocess.run([sys.executable, str(step258), str(root)], check=True)
 
-    # This is deliberately last. Step 236 is invoked again after every late UI
-    # generator in the authoritative workflow, making Step 333 the final source
-    # authority immediately before quality checks and Gradle.
+    # Step 333 is valid in both the early generated-source phase and the final
+    # post-UI phase, so it remains the shared normalization authority.
     step333 = Path(__file__).with_name("repair_step333_final_generated_source.py")
     if step333.is_file():
         subprocess.run([sys.executable, str(step333), str(root)], check=True)
     else:
         raise SystemExit("[step333] final generated-source authority script missing")
+
+    # The Home toolbar/UI does not exist during the first Step 236 invocation.
+    # Only run presentation patches when Step 286 has produced its actual Home
+    # server toolbar. This keeps the early contract pass green while making this
+    # same chain the final post-UI patch boundary in the authoritative build.
+    ui = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
+    ui_text = ui.read_text(encoding="utf-8") if ui.is_file() else ""
+    home_toolbar_present = (
+        "private fun homePage() {" in ui_text
+        and 'val edit = button("Edit")' in ui_text
+        and 'val refresh = button("refresh")' in ui_text
+    )
+    if home_toolbar_present:
+        for step_name, message in (
+            ("apply_step334_server_toolbar_delete.py", "[step334] final Home server toolbar delete patch chained successfully"),
+            ("apply_step336_version_manager_inventory.py", "[step336] installed Minecraft version inventory chained successfully"),
+            ("apply_step335_home_version_instance_downloads.py", "[step335] Home version/instance selector + live downloads chained successfully"),
+        ):
+            patch = Path(__file__).with_name(step_name)
+            if not patch.is_file():
+                raise SystemExit(f"[step236] required final Home patch missing: {patch}")
+            subprocess.run([sys.executable, str(patch), str(root)], check=True)
+            print(message)
+    else:
+        print("[step236] Home presentation patches deferred; final Home toolbar is not present in this phase")
 
     print("[step236] trust repair verified/normalized idempotently")
     print("[step236] Mojang metadata SHA-1/size and HTTPS requirements are present")
