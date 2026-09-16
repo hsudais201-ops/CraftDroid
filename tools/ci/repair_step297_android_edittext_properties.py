@@ -9,7 +9,7 @@ TOKEN = re.compile(r"(?<![A-Za-z0-9_])singleLine(?![A-Za-z0-9_])")
 PAIRS = [
     ('337', 'apply_step337_microsoft_signin_reference_gui.py', 'verify_step337_microsoft_signin_gui.py'),
     ('338', 'apply_step338_offline_profile_gui.py', 'verify_step338_offline_profile_gui.py'),
-    ('339', 'apply_step339_settings_renderer_reference_gui.py', 'verify_step339_settings_renderer_gui.py'),
+    ('339', 'apply_step339_settings_renderer_reference_gui.py', 'verify_step339_settings_renderer_reference_gui.py'),
     ('340', 'apply_step340_settings_reference_polish.py', 'verify_step340_settings_reference_polish.py'),
     ('341', 'apply_step341_download_manager_reference_gui.py', 'verify_step341_download_manager_reference_gui.py'),
     ('342', 'apply_step342_content_install_picker.py', 'verify_step342_content_install_picker.py'),
@@ -25,7 +25,7 @@ def run_pair(root: Path, n: str, patch: str, verify: str) -> None:
     pp = Path(__file__).with_name(patch)
     vv = Path(__file__).with_name(verify)
     if not pp.is_file() or not vv.is_file():
-        raise SystemExit(f'step{n} patch/verifier missing')
+        raise SystemExit(f'step{n} patch/verifier missing: patch={pp.name} verifier={vv.name}')
     subprocess.run([sys.executable, str(pp), str(root)], check=True)
     subprocess.run([sys.executable, str(vv), str(root)], check=True)
 
