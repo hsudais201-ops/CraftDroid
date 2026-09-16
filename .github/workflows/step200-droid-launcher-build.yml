@@ -138,21 +138,6 @@ jobs:
               rm -f "$f"
             fi
           done < <(find droid-src -type f -name 'STEP_*.md' -print0)
-      - name: Repair Step 349 helper safely for CI
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          p = Path('tools/ci/repair_step349_final_generated_compile.py')
-          s = p.read_text(encoding='utf-8')
-          start = s.index('def repair_dependency_join(source: str) -> str:\n')
-          end = s.index('\ndef repair_orphan_fragments(source: str) -> str:\n', start)
-          fn = '''def repair_dependency_join(source: str) -> str:\n    bad = 'names.joinToString("' + '\\n' + '") { "• $it" }'\n    good = 'names.joinToString("\\\\n") { "• $it" }'\n    return source.replace(bad, good)\n\n\n'''
-          p.write_text(s[:start] + fn + s[end+1:], encoding='utf-8')
-          print('[step349-ci] dependency-join helper replaced with valid deterministic implementation')
-          PY
       - name: Final generated-source compile boundary
         shell: bash
         run: |
