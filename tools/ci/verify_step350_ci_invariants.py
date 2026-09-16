@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Step 350: validate the authoritative build workflow cannot silently skip APK gates."""
+"""Step 350: validate the authoritative build workflow and requested feature coverage."""
 from pathlib import Path
 import re
+import subprocess
 import sys
 
 
@@ -33,8 +34,19 @@ def main() -> int:
         raise SystemExit('[step350] failure diagnostics contract missing')
     if 'concurrency:' not in text or 'cancel-in-progress: true' not in text:
         raise SystemExit('[step350] CI concurrency contract missing')
+
+    coverage = root / 'tools/ci/verify_important_feature_coverage.py'
+    generated = root / 'droid-src'
+    if not coverage.is_file():
+        raise SystemExit('[step350] important feature coverage verifier missing')
+    if generated.is_dir():
+        subprocess.run([sys.executable, str(coverage), str(generated)], cwd=root, check=True)
+    else:
+        print('[step350] generated source tree is unavailable; feature coverage will run in the workflow after generation')
+
     print('[step350] authoritative workflow contracts verified')
     print('[step350] direct Gradle 9.6.0, lint, unit tests, APK build and APK integrity gates are present')
+    print('[step350] requested launcher subsystem coverage verifier is installed')
     return 0
 
 if __name__ == '__main__':
