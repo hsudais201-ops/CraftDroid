@@ -38,6 +38,12 @@ jobs:
             rmdir "$PROJECT_DIR"
           fi
 
+      - name: Apply authoritative runtime byte-format repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step217_java_runtime_ui.py craftdroid-src
+
       - name: Verify automatic Java 17/21/25 and renderer installation contract
         shell: bash
         run: |
