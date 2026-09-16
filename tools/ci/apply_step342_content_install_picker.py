@@ -25,7 +25,6 @@ METHODS = r'''
                     }
                 }
             } ?: throw java.io.IOException("Could not open selected file")
-
             val kind = when (pageName) {
                 "Modpack" -> MinecraftContentManager.Kind.MODPACK
                 "Mod" -> MinecraftContentManager.Kind.MOD
@@ -69,8 +68,16 @@ def main() -> int:
     if not ui.is_file():
         raise SystemExit(f"[step342] missing UI source: {ui}")
     s = ui.read_text(encoding="utf-8")
-    if MARKER in s:
-        print("[step342] content install picker already present")
+
+    implementation_missing = (
+        'private fun startContentImport(' not in s
+        or 'override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?)' not in s
+        or 'MinecraftContentManager.importFile' not in s
+    )
+    # Marker alone is insufficient: later generated-source rewrites can leave the
+    # marker while deleting the implementation and the Install action.
+    if not implementation_missing and MARKER in s and 'startContentImport(page)' in s:
+        print("[step342] complete content install picker already present")
         return 0
 
     old = '''                } else {
@@ -81,24 +88,28 @@ def main() -> int:
                     startContentImport(page)
                 }''', 1)
     elif 'startContentImport(page)' not in s:
-        raise SystemExit("[step342] no content Install action anchor found")
+        generic = re.compile(r'(?ms)(setOnClickListener\s*\{\s*)([^{}]{0,300}?Installing[^{}]{0,300}?)(\})')
+        gm = generic.search(s)
+        if gm:
+            s = s[:gm.start()] + gm.group(1) + 'startContentImport(page)' + gm.group(3) + s[gm.end():]
+        else:
+            raise SystemExit("[step342] no content Install action anchor found")
 
-    # Locate the class companion object robustly even when whitespace/newline layout
-    # was changed by a later generated-source repair.
+    if implementation_missing:
+        # Remove only our known partial implementation, if any, before reinserting it.
+        s = re.sub(r'(?ms)^    private var pendingContentPage: String\? = null\n.*?^    private fun startContentImport\(pageName: String\) \{.*?^    \}\n', '', s, count=1)
+        companion_match = re.search(r"(?m)^[ \t]*companion object[ \t]*\{", s)
+        if not companion_match:
+            raise SystemExit("[step342] companion object not found")
+        start, _ = companion_match.span()
+        s = s[:start] + METHODS + '\n' + s[start:]
+
     companion_match = re.search(r"(?m)^[ \t]*companion object[ \t]*\{", s)
     if not companion_match:
         raise SystemExit("[step342] companion object not found")
-    companion = companion_match.group(0)
     if 'CONTENT_PICKER_REQUEST' not in s:
-        start, end = companion_match.span()
+        _, end = companion_match.span()
         s = s[:end] + '\n        private const val CONTENT_PICKER_REQUEST = 341' + s[end:]
-
-    if 'private fun startContentImport(' not in s:
-        companion_match = re.search(r"(?m)^[ \t]*companion object[ \t]*\{", s)
-        if not companion_match:
-            raise SystemExit("[step342] companion object insertion anchor not found")
-        start, _ = companion_match.span()
-        s = s[:start] + METHODS + '\n' + s[start:]
 
     if MARKER not in s:
         companion_match = re.search(r"(?m)^[ \t]*companion object[ \t]*\{", s)
@@ -108,7 +119,7 @@ def main() -> int:
         s = s[:start] + '    ' + MARKER + '\n' + s[start:]
 
     ui.write_text(s, encoding="utf-8")
-    print("[step342] real local import picker wired to Modpack/Mod/Shader/Resource Pack Install buttons")
+    print(f"[step342] real local import picker wired; repaired_partial={implementation_missing}")
     return 0
 
 
