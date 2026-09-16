@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Step 297/298/337/338/339/340/341/342/343: normalize generated Android APIs and apply final UIs."""
+"""Step 297/298/337/338/339/340/341/342/344: normalize generated Android APIs and apply final UIs."""
 from pathlib import Path
 import re
 import subprocess
 import sys
 
 TOKEN = re.compile(r"(?<![A-Za-z0-9_])singleLine(?![A-Za-z0-9_])")
-
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
@@ -29,7 +28,7 @@ def main() -> int:
         ("340", "apply_step340_settings_reference_polish.py", "verify_step340_settings_reference_polish.py", "Settings reference polish patch/verifier missing"),
         ("341", "apply_step341_download_manager_reference_gui.py", "verify_step341_download_manager_reference_gui.py", "3.jpeg download/install/version GUI patch/verifier missing"),
         ("342", "apply_step342_content_install_picker.py", "verify_step342_content_install_picker.py", "real content install picker patch/verifier missing"),
-        ("343", "apply_step343_one_click_download_required_world.py", "verify_step343_one_click_download_required_world.py", "one-click download/required/world patch/verifier missing"),
+        ("344", "apply_step344_download_world_and_dependencies.py", "verify_step344_download_world_and_dependencies.py", "one-click download/required/world patch/verifier missing"),
     ]
     for step, patch_name, verifier_name, error_text in patches:
         patch = Path(__file__).with_name(patch_name)
@@ -40,13 +39,13 @@ def main() -> int:
         subprocess.run([sys.executable, str(verifier), str(root)], check=True)
 
     print(f"[step297] EditText single-line normalization complete; property replacements={token_replacements}; setter replacements={setter_replacements}")
-    print("[step337] Microsoft custom sign-in GUI and top-right Home action finalized after UI generation")
-    print("[step338] Offline profile reference GUI and Home return action finalized after UI generation")
-    print("[step339] Settings · Renderer reference GUI and working option controls finalized after UI generation")
-    print("[step340] Settings reference shell polished to match 2.jpeg")
-    print("[step341] 3.jpeg Download/install/version manager GUI finalized after UI generation")
-    print("[step342] Modpack/Mod/Shader/Resource Pack Install buttons now import real local files")
-    print("[step343] One-click Modrinth downloads, required dependency display, and Worlds manager finalized")
+    print("[step337] Microsoft custom sign-in GUI finalized")
+    print("[step338] Offline profile reference GUI finalized")
+    print("[step339] Settings Renderer reference GUI finalized")
+    print("[step340] Settings reference shell polished")
+    print("[step341] 3.jpeg Download/install/version manager GUI finalized")
+    print("[step342] Modpack/Mod/Shader/Resource Pack local import support finalized")
+    print("[step344] One-click Modrinth downloads, required dependency display, and Worlds manager finalized")
     return 0
 
 if __name__ == "__main__":
