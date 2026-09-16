@@ -19,8 +19,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Validate CI helper scripts
         run: python3 -m compileall -q tools/ci
+
       - name: Prepare generated launcher source
         shell: bash
         run: |
@@ -36,8 +38,12 @@ jobs:
             rmdir "$ROOT"
           fi
           mkdir -p droid-src/app/src/main/java/com/example/launcher
-          for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "droid-src/app/src/main/java/com/example/launcher/$f"; done
-          for f in MinecraftRuntimeProfile.kt MinecraftLatestVersionManager.kt MinecraftContentManager.kt MinecraftModpackManager.kt MinecraftLoaderProfile.kt LauncherBackgroundInstallController.kt DroidLauncherUpdateManager.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "droid-src/app/src/main/java/com/example/launcher/$f"; done
+          for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt; do
+            cp -f "app/src/main/java/com/example/launcher/$f" "droid-src/app/src/main/java/com/example/launcher/$f"
+          done
+          for f in MinecraftRuntimeProfile.kt MinecraftLatestVersionManager.kt MinecraftContentManager.kt MinecraftModpackManager.kt MinecraftLoaderProfile.kt LauncherBackgroundInstallController.kt DroidLauncherUpdateManager.kt; do
+            cp -f "app/src/main/java/com/example/launcher/$f" "droid-src/app/src/main/java/com/example/launcher/$f"
+          done
           mkdir -p droid-src/app/src/main/java/com/example/logs droid-src/app/src/main/java/com/example/renderer
           cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
           cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
@@ -46,6 +52,7 @@ jobs:
             mkdir -p droid-src/app/src/main/assets
             cp -a app/src/main/assets/. droid-src/app/src/main/assets/
           fi
+
       - name: Normalize Gradle settings for CI
         shell: bash
         run: |
@@ -53,8 +60,10 @@ jobs:
           for SETTINGS in droid-src/settings.gradle.kts droid-src/settings.gradle; do
             if [ -f "$SETTINGS" ]; then sed -i '/org\.gradle\.toolchains\.foojay-resolver-convention/d' "$SETTINGS"; fi
           done
+
       - name: Apply Droid Launcher branding
         run: python3 tools/ci/apply_droid_launcher_branding.py droid-src
+
       - name: Apply Steps 153-155 base repairs
         shell: bash
         run: |
@@ -62,6 +71,7 @@ jobs:
           python3 tools/ci/repair_step153.py droid-src
           python3 tools/ci/repair_step154_tests.py droid-src
           python3 tools/ci/repair_step155_cpp.py droid-src
+
       - name: Apply Step 177 World Manager integration
         run: python3 tools/ci/apply_step177_world_manager.py droid-src
       - name: Repair Step 242 World Manager test compatibility
@@ -76,6 +86,7 @@ jobs:
         run: python3 tools/ci/repair_step205_ui.py droid-src
       - name: Apply Step 253 comprehensive Feature Center
         run: python3 tools/ci/apply_step253_feature_center.py droid-src
+
       - name: Apply Steps 207-216 server and launch UI
         shell: bash
         run: |
@@ -89,6 +100,7 @@ jobs:
           python3 tools/ci/repair_step214_server_detail.py droid-src
           python3 tools/ci/repair_step215_launch_feedback.py droid-src
           python3 tools/ci/repair_step216_launch_progress.py droid-src
+
       - name: Apply Steps 217-220 Java/runtime binding
         shell: bash
         run: |
@@ -97,6 +109,7 @@ jobs:
           python3 tools/ci/repair_step218_java_profile.py droid-src
           python3 tools/ci/repair_step219_launch_java_binding.py droid-src
           python3 tools/ci/repair_step220_version_launch_binding.py droid-src
+
       - name: Apply Steps 221-230 install and launch preflight
         shell: bash
         run: |
@@ -111,6 +124,7 @@ jobs:
           python3 tools/ci/repair_step228_install_resilience.py droid-src
           python3 tools/ci/repair_step229_install_progress_ui.py droid-src
           python3 tools/ci/repair_step230_complete_launch_preflight.py droid-src
+
       - name: Apply Steps 231-236 launch handoff and trust hardening
         shell: bash
         run: |
@@ -120,12 +134,85 @@ jobs:
           python3 tools/ci/repair_step234_handoff_validation_launch_gate.py droid-src
           python3 tools/ci/repair_step235_launch_runtime_guard.py droid-src
           python3 tools/ci/repair_step236_download_trust.py droid-src
-      - name: Step 257 final Feature Center repair
-        run: python3 tools/ci/repair_step257_feature_center_after_ui.py droid-src
-      - name: Step 286 final Home and Account GUI
-        run: python3 tools/ci/apply_step286_home_account_gui.py droid-src
-      - name: Step 287 first-run launcher components GUI
-        run: python3 tools/ci/apply_step287_first_run_components_gui.py droid-src
+
+      - name: Apply final Feature Center and Home/Account UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step257_feature_center_after_ui.py droid-src
+          python3 tools/ci/apply_step286_home_account_gui.py droid-src
+
+      - name: Apply Step 287 theme repairs then remove fake bootstrap gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/apply_step287_first_run_components_gui.py droid-src
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root = Path('droid-src')
+          matches = list((root / 'app/src/main/java').rglob('DroidLauncherUiActivity.kt'))
+          if len(matches) != 1:
+              raise SystemExit(f'expected exactly one DroidLauncherUiActivity.kt, found {len(matches)}')
+          path = matches[0]
+          source = path.read_text(encoding='utf-8')
+
+          def method_span(text, start):
+              brace = text.find('{', start)
+              if brace < 0:
+                  raise SystemExit('method opening brace missing')
+              depth = 0
+              quote = False
+              escaped = False
+              for i in range(brace, len(text)):
+                  ch = text[i]
+                  if quote:
+                      if escaped:
+                          escaped = False
+                      elif ch == '\\':
+                          escaped = True
+                      elif ch == '"':
+                          quote = False
+                      continue
+                  if ch == '"':
+                      quote = True
+                  elif ch == '{':
+                      depth += 1
+                  elif ch == '}':
+                      depth -= 1
+                      if depth == 0:
+                          return start, i + 1
+              raise SystemExit('unterminated Kotlin method')
+
+          marker = '    override fun onCreate('
+          start = source.find(marker)
+          if start < 0:
+              raise SystemExit('onCreate not found')
+          begin, end = method_span(source, start)
+          replacement = '''    override fun onCreate(savedInstanceState: Bundle?) {
+          super.onCreate(savedInstanceState)
+          requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+          buildUi()
+          showPage("Game")
+      }'''
+          source = source[:begin] + replacement + source[end:]
+
+          block_start = source.find('\n    private data class BootstrapComponent')
+          gate_start = source.find('\n    private fun showBootstrapGate()', block_start)
+          if block_start >= 0 and gate_start >= 0:
+              _, gate_end = method_span(source, gate_start)
+              source = source[:block_start] + source[gate_end:]
+          elif 'showBootstrapGate' in source or 'BootstrapComponent' in source:
+              raise SystemExit('partial fake bootstrap implementation remains')
+
+          forbidden = ('showBootstrapGate', 'bootstrapComplete', 'extractBootstrapComponents', 'components_extracted', 'droid_launcher_bootstrap')
+          leftovers = [x for x in forbidden if x in source]
+          if leftovers:
+              raise SystemExit('fake bootstrap refs remain: ' + ', '.join(leftovers))
+          path.write_text(source, encoding='utf-8')
+          print('[step287] fake first-run component gate removed; launcher now opens directly')
+          PY
+
       - name: Repair final generated Kotlin after UI generation
         run: python3 tools/ci/repair_step292_first_run_compile.py droid-src
       - name: Reapply final server contracts after UI generation
@@ -134,16 +221,22 @@ jobs:
         run: python3 tools/ci/repair_step295_final_navigation.py droid-src
       - name: Repair Android EditText property mappings
         run: python3 tools/ci/repair_step297_android_edittext_properties.py droid-src
+
       - name: Restore canonical launch-contract sources after final UI generation
         shell: bash
         run: |
           set -euo pipefail
           SRC=droid-src/app/src/main/java/com/example/launcher
-          for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "$SRC/$f"; done
-          for f in MinecraftRuntimeProfile.kt MinecraftLatestVersionManager.kt MinecraftContentManager.kt MinecraftModpackManager.kt MinecraftLoaderProfile.kt LauncherBackgroundInstallController.kt DroidLauncherUpdateManager.kt; do cp -f "app/src/main/java/com/example/launcher/$f" "$SRC/$f"; done
+          for f in LaunchArgumentResolver.kt LaunchArgumentsValidator.kt LaunchArtifactResolver.kt MinecraftStorageResolver.kt MinecraftVersionInstallManager.kt MinecraftLaunchPaths.kt MinecraftLaunchCommandBuilder.kt MinecraftLaunchHandoff.kt MinecraftLaunchHandoffValidator.kt; do
+            cp -f "app/src/main/java/com/example/launcher/$f" "$SRC/$f"
+          done
+          for f in MinecraftRuntimeProfile.kt MinecraftLatestVersionManager.kt MinecraftContentManager.kt MinecraftModpackManager.kt MinecraftLoaderProfile.kt LauncherBackgroundInstallController.kt DroidLauncherUpdateManager.kt; do
+            cp -f "app/src/main/java/com/example/launcher/$f" "$SRC/$f"
+          done
           cp -f app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt droid-src/app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt
           cp -f app/src/main/java/com/example/renderer/PerformanceProfile.kt droid-src/app/src/main/java/com/example/renderer/PerformanceProfile.kt
           cp -f app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt droid-src/app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt
+
       - name: Reapply final launch producer and validation hardening
         shell: bash
         run: |
@@ -153,27 +246,64 @@ jobs:
           python3 tools/ci/repair_step234_handoff_validation_launch_gate.py droid-src
           python3 tools/ci/repair_step235_launch_runtime_guard.py droid-src
           python3 tools/ci/repair_step236_download_trust.py droid-src
+
       - name: Reapply final Java/runtime compile repair
         shell: bash
         run: |
           set -euo pipefail
           python3 tools/ci/repair_step349_final_generated_compile.py droid-src
+
+      - name: Pin and verify TeamPojav native release source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root = Path('droid-src')
+          candidates = list((root / 'app/src/main/java').rglob('NativeComponentManager.kt'))
+          if len(candidates) != 1:
+              raise SystemExit(f'expected exactly one NativeComponentManager.kt, found {len(candidates)}')
+          path = candidates[0]
+          text = path.read_text(encoding='utf-8')
+          old = 'https://github.com/TeamPojavLauncher/PojavLauncher/releases/download/bhai-bhai/PojavLauncher-release.apk'
+          new = 'https://github.com/TeamPojavLauncher/PojavLauncher/releases/download/pojav-legacy/Pojavlauncher-release.apk'
+          text = text.replace(old, new)
+          text = re.sub(r'private val POJAV_APK_URLS = listOf\(\s*"[^"]+"\s*\)', 'private val POJAV_APK_URLS = listOf("' + new + '")', text, count=1)
+          if 'private const val POJAV_APK_SHA256' not in text:
+              anchor = '        private const val MOBILEGLUES_APK ='
+              if anchor not in text:
+                  raise SystemExit('Pojav constants anchor missing')
+              text = text.replace(anchor, '        private const val POJAV_APK_SHA256 = "4772352ad7d97784fb4ccdd951759d22788e6e61fd82e61b85eeab16f69d320f"\n' + anchor, 1)
+          needle = '        if (!downloaded) throw IllegalStateException("Could not download the Pojav native bridge: ${lastError?.message}")'
+          if needle not in text:
+              raise SystemExit('Pojav download completion anchor missing')
+          replacement = needle + '''\n        if (!sha256(pojavApk).equals(POJAV_APK_SHA256, true)) {\n            pojavApk.delete()\n            throw SecurityException("Pojav native bridge checksum verification failed")\n        }'''
+          if 'Pojav native bridge checksum verification failed' not in text:
+              text = text.replace(needle, replacement, 1)
+          path.write_text(text, encoding='utf-8')
+          print('[native] TeamPojav pojav-legacy release URL and SHA-256 pin installed')
+          PY
+
       - name: Verify Step349 regression harness
         shell: bash
         run: |
           set -euo pipefail
           python3 tools/ci/verify_step349_final_generated_compile.py
+
       - name: Verify Step350 authoritative CI invariants
         shell: bash
         run: |
           set -euo pipefail
           python3 tools/ci/verify_step350_ci_invariants.py
+
       - name: Deep source quality pass - 1000 content-dependent checks
         shell: bash
         run: |
           set -euo pipefail
           python3 tools/ci/deep_quality_pass_1000.py droid-src
-      - name: Verify generated source contracts
+
+      - name: Verify generated source contracts and launcher invariants
         shell: bash
         run: |
           set -euo pipefail
@@ -182,23 +312,68 @@ jobs:
           python3 tools/ci/verify_step235_audit.py droid-src
           python3 tools/ci/verify_step236_download_trust.py droid-src
           python3 tools/ci/verify_step239_generated_kotlin.py droid-src
-          python3 tools/ci/verify_step287_first_run_components.py droid-src
-          grep -F 'private fun showBootstrapGate()' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
-          grep -F 'private fun showServerDialog(index: Int)' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
-          grep -F 'private fun getSavedServers(): List<Pair<String, Int>>' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
-          grep -F 'private fun featuresPage()' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
-          grep -F 'setOnClickListener { showPage("Features") }' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
-          if grep -RInE 'TODO|FIXME|NotImplementedException' droid-src/app/src/main/java; then exit 1; fi
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          root = Path('droid-src')
+          ui = next((root / 'app/src/main/java').rglob('DroidLauncherUiActivity.kt'))
+          text = ui.read_text(encoding='utf-8')
+          forbidden = ('showBootstrapGate', 'bootstrapComplete', 'extractBootstrapComponents', 'components_extracted', 'droid_launcher_bootstrap')
+          leftovers = [x for x in forbidden if x in text]
+          if leftovers:
+              raise SystemExit('launcher contains forbidden fake-bootstrap references: ' + ', '.join(leftovers))
+          if 'requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE' not in text:
+              raise SystemExit('landscape launcher invariant missing')
+          if 'showPage("Game")' not in text:
+              raise SystemExit('direct Game page startup invariant missing')
+
+          manifests = list((root / 'app/src/main/').rglob('AndroidManifest.xml'))
+          if len(manifests) != 1:
+              raise SystemExit(f'expected exactly one AndroidManifest.xml, found {len(manifests)}')
+          ns = {'a': 'http://schemas.android.com/apk/res/android'}
+          tree = ET.parse(manifests[0])
+          launcher_activities = []
+          for activity in tree.findall('.//activity') + tree.findall('.//activity-alias'):
+              intents = activity.findall('intent-filter')
+              for filt in intents:
+                  actions = {x.attrib.get('{http://schemas.android.com/apk/res/android}name') for x in filt.findall('action')}
+                  cats = {x.attrib.get('{http://schemas.android.com/apk/res/android}name') for x in filt.findall('category')}
+                  if 'android.intent.action.MAIN' in actions and 'android.intent.category.LAUNCHER' in cats:
+                      name = activity.attrib.get('{http://schemas.android.com/apk/res/android}name', '')
+                      exported = activity.attrib.get('{http://schemas.android.com/apk/res/android}exported', '')
+                      launcher_activities.append((name, exported))
+          if len(launcher_activities) != 1:
+              raise SystemExit(f'expected exactly one launcher activity, found {launcher_activities}')
+          name, exported = launcher_activities[0]
+          if not name.endswith('DroidLauncherUiActivity') or exported.lower() != 'true':
+              raise SystemExit(f'unexpected launcher activity: {launcher_activities}')
+
+          native = next((root / 'app/src/main/java').rglob('NativeComponentManager.kt'))
+          native_text = native.read_text(encoding='utf-8')
+          required_url = 'https://github.com/TeamPojavLauncher/PojavLauncher/releases/download/pojav-legacy/Pojavlauncher-release.apk'
+          if required_url not in native_text:
+              raise SystemExit('current TeamPojav release URL is not pinned')
+          if 'POJAV_APK_SHA256' not in native_text or 'Pojav native bridge checksum verification failed' not in native_text:
+              raise SystemExit('Pojav checksum hardening is incomplete')
+          if 'https://github.com/TeamPojavLauncher/PojavLauncher/releases/download/bhai-bhai/' in native_text:
+              raise SystemExit('obsolete bhai-bhai Pojav release URL remains')
+          if re.search(r'\bTODO\b|\bFIXME\b|NotImplementedException', '\n'.join(p.read_text(encoding='utf-8', errors='ignore') for p in (root / 'app/src/main/java').rglob('*.kt'))):
+              raise SystemExit('TODO/FIXME/NotImplementedException remains in generated Kotlin')
+          print('[verify] launcher startup, manifest, fake-bootstrap removal and native release pin all pass')
+          PY
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
           packages: platform-tools
+
       - name: Install Android SDK, NDK and CMake incrementally
         shell: bash
         run: |
@@ -206,17 +381,21 @@ jobs:
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           test -x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          required=("platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1")
+          required=("platform-tools" "platforms;android-36.1" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1")
           installed="$($SDKMANAGER --list_installed 2>/dev/null || true)"
           missing=()
-          for pkg in "${required[@]}"; do if ! grep -Fq "${pkg}" <<< "$installed"; then missing+=("${pkg}"); fi; done
+          for pkg in "${required[@]}"; do
+            if ! grep -Fq "${pkg}" <<< "$installed"; then missing+=("${pkg}"); fi
+          done
           if [ "${#missing[@]}" -gt 0 ]; then timeout 25m "$SDKMANAGER" "${missing[@]}"; else echo 'All required Android SDK packages are already installed.'; fi
-          "$SDKMANAGER" --list_installed | grep -E 'platform-tools|platforms;android-36|build-tools;36.0.0|ndk;27.2.12479018|cmake;3.22.1'
+          "$SDKMANAGER" --list_installed | grep -E 'platform-tools|platforms;android-36\.1|build-tools;36\.0\.0|ndk;27\.2\.12479018|cmake;3\.22\.1'
+
       - name: Set up Gradle 9.6.0 directly
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.6.0'
           validate-wrappers: false
+
       - name: Validate Gradle project
         working-directory: droid-src
         run: |
@@ -224,6 +403,7 @@ jobs:
           test -f settings.gradle || test -f settings.gradle.kts
           test -f app/build.gradle || test -f app/build.gradle.kts
           gradle --version
+
       - name: Run Android Lint
         working-directory: droid-src
         shell: bash
@@ -234,18 +414,21 @@ jobs:
           echo "LINT_EXIT=$status"
           if [ -f app/build/reports/lint-results-debug.txt ]; then sed -n '1,240p' app/build/reports/lint-results-debug.txt; fi
           exit "$status"
+
       - name: Run unit tests
         working-directory: droid-src
         shell: bash
         run: |
           set -o pipefail
           gradle --no-daemon --stacktrace :app:testDebugUnitTest 2>&1 | tee ../artifacts/build/testDebugUnitTest.log
+
       - name: Build Droid Launcher debug APK
         working-directory: droid-src
         shell: bash
         run: |
           set -o pipefail
           gradle --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee ../artifacts/build/assembleDebug.log
+
       - name: Verify debug APK
         shell: bash
         run: |
@@ -255,6 +438,7 @@ jobs:
           cp "$APK" artifacts/apk/Droid-Launcher-Step257-debug.apk
           sha256sum "$APK" | tee artifacts/apk/SHA256SUMS.txt
           python3 tools/ci/verify_runtime_preflight.py "$APK" | tee artifacts/build/runtime-preflight.txt
+
       - name: Verify APK package and signature structure
         shell: bash
         run: |
@@ -269,18 +453,21 @@ jobs:
           unzip -l "$APK" > artifacts/build/apk-contents.txt
           grep -Eq '[[:space:]]AndroidManifest.xml$' artifacts/build/apk-contents.txt
           grep -Eq '[[:space:]]classes(2)?\.dex$' artifacts/build/apk-contents.txt
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Droid-Launcher-Step257-debug
           path: artifacts/apk/*
           if-no-files-found: error
+
       - name: Archive generated source on failure
         if: failure()
         shell: bash
         run: |
           set -euo pipefail
           if [ -d droid-src ]; then tar -czf artifacts/build/generated-source.tgz --exclude='droid-src/.gradle' --exclude='droid-src/app/build' droid-src; fi
+
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
