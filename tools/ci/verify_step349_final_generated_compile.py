@@ -63,6 +63,27 @@ newlines"""
         val commented = "// not a real multiline string"
         println(text + renderer + multiline + commented)
     }
+
+    // Legacy generator fragment without a function declaration.
+    private fun getSavedServer(): Pair<String, Int> = "localhost" to 25565
+
+        val saved = getSharedPreferences("droid_launcher", MODE_PRIVATE).getInt("java_runtime_override", 0)
+        if (saved in intArrayOf(8, 16, 17, 21, 25)) return saved
+        val parts = "1.21.11".split('.', '-', '_').mapNotNull { it.toIntOrNull() }
+        val major = parts.firstOrNull() ?: 21
+        val minor = parts.getOrNull(1) ?: 0
+        val patch = parts.getOrNull(2) ?: 0
+        return when {
+            major >= 26 -> 25
+            major == 1 && minor >= 21 -> 21
+            major == 1 && minor == 20 && patch >= 5 -> 21
+            major == 1 && minor >= 17 -> 17
+            else -> 8
+        }
+
+        storedJavaOverride() ?: recommendedJavaForVersion(version)
+
+    private fun featuresPage() {}
 }
 ''',
             encoding='utf-8',
@@ -83,11 +104,19 @@ newlines"""
             raise SystemExit('triple-quoted multiline string was damaged')
         if 'private fun rendererPage() {' not in source:
             raise SystemExit('rendererPage anchor was damaged by helper cleanup')
+        if 'java_runtime_override' in source:
+            raise SystemExit('legacy orphan Java runtime fragment survived repair')
+        if 'storedJavaOverride() ?: recommendedJavaForVersion(version)' not in source:
+            raise SystemExit('canonical resolver helper body was unexpectedly removed')
+        if source.count('\n}\n') < 1:
+            raise SystemExit('fixture activity class closure disappeared')
 
     print('[step349-test] PASS: block and expression-bodied helper cleanup is stable')
     print('[step349-test] PASS: malformed dependency join is escaped correctly')
     print('[step358-test] PASS: ordinary multiline Kotlin strings are escaped correctly')
     print('[step358-test] PASS: triple-quoted Kotlin multiline strings are preserved')
+    print('[step362-test] PASS: orphan legacy Java fragment is removed without closing the activity class')
+    print('[step362-test] PASS: canonical resolver helper body remains exactly once')
     return 0
 
 
