@@ -1,30 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import shutil
 import sys
-
-
-def copy_authoritative_runtime_manager(root: Path) -> None:
-    project = Path.cwd().resolve()
-    source = project / "app/src/main/java/com/example/launcher/JavaRuntimeManager.kt"
-    destination = root / "app/src/main/java/com/example/launcher/JavaRuntimeManager.kt"
-    if not source.is_file():
-        raise SystemExit(f"[step217] authoritative JavaRuntimeManager missing: {source}")
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
-    text = destination.read_text(encoding="utf-8")
-    required = (
-        "class JavaRuntimeManager",
-        "fun ensureRuntime(requiredJava: Int)",
-        "supportedMajors",
-        "registerSpec",
-        "SHA-256",
-        "https://",
-    )
-    missing = [needle for needle in required if needle not in text]
-    if missing:
-        raise SystemExit("[step217] JavaRuntimeManager contract missing: " + ", ".join(missing))
-    print("[step217] authoritative JavaRuntimeManager copied into generated source tree")
 
 
 def main() -> int:
@@ -108,7 +84,6 @@ def main() -> int:
     s = s[:start] + new_page + s[end:]
 
     ui.write_text(s, encoding="utf-8")
-    copy_authoritative_runtime_manager(root)
     print("[step217] Java Runtime Manager page installed")
     print("[step217] Java 8/16/17/21/25 runtime choices exposed")
     print("[step217] selected runtime persistence installed")
