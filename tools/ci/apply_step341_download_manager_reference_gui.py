@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 341: build the install/version manager from the supplied 3.jpeg reference."""
+"""Step 341: build/repair the install/version manager from the supplied 3.jpeg reference."""
 from pathlib import Path
 import re
 import sys
@@ -183,15 +183,36 @@ def main() -> int:
     if not ui.is_file():
         raise SystemExit(f"[step341] missing generated UI: {ui}")
     s = ui.read_text(encoding="utf-8")
-    if MARKER in s:
-        print("[step341] download manager reference GUI already present")
+
+    complete = (
+        MARKER in s
+        and 'private fun libraryPage(page: String)' in s
+        and 'action.contentDescription = if (page == "Game") "Select $name" else "Install $name"' in s
+        and 'startContentImport(page)' in s
+        and 'private fun showVersionSelectionDialog(pageName: String)' in s
+        and 'private fun showLoaderSelectionDialog(pageName: String)' in s
+    )
+    if complete:
+        print("[step341] download manager reference GUI already complete")
         return 0
+
     boundary = re.compile(r"    private fun libraryPage\(page: String\) \{[\s\S]*?\n    \}\n\n    private fun aboutPage\(\)", re.M)
-    if not boundary.search(s):
-        raise SystemExit("[step341] libraryPage/aboutPage boundary not found")
-    s = boundary.sub(METHODS + "    private fun aboutPage()", s, count=1)
+    if boundary.search(s):
+        s = boundary.sub(METHODS + "    private fun aboutPage()", s, count=1)
+    else:
+        about = re.search(r"(?m)^    private fun aboutPage\(\)", s)
+        if not about:
+            # Some generated variants lost both helpers. Insert before the first
+            # stable activity helper rather than leaving Step 342 without an anchor.
+            fallback = re.search(r"(?m)^    private fun (?:homePage|settingsPage|accountPage|show[A-Z])\b", s)
+            if not fallback:
+                raise SystemExit("[step341] no stable UI insertion anchor found")
+            s = s[:fallback.start()] + METHODS + s[fallback.start():]
+        else:
+            s = s[:about.start()] + METHODS + s[about.start():]
+
     ui.write_text(s, encoding="utf-8")
-    print("[step341] Download/install/version manager UI installed from 3.jpeg reference")
+    print("[step341] Download/install/version manager UI installed or repaired from 3.jpeg reference")
     return 0
 
 if __name__ == "__main__":
