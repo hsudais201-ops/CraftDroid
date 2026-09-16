@@ -40,11 +40,17 @@ def main() -> int:
     s = TOKEN.sub('isSingleLine', s).replace('setSingleLine(true)', 'isSingleLine = true')
     ui.write_text(s, encoding='utf-8')
 
+    # Step 337's UI patch is applied first, but its strict verifier is deferred
+    # until Step 352 has inserted the Activity Result persistence callback.
     for n, patch, verify in PAIRS:
-        run_pair(root, n, patch, verify)
+        if n == '337':
+            pp = Path(__file__).with_name(patch)
+            if not pp.is_file():
+                raise SystemExit(f'step337 patch missing: {pp.name}')
+            subprocess.run([sys.executable, str(pp), str(root)], check=True)
+        else:
+            run_pair(root, n, patch, verify)
 
-    # Step 352 consumes the existing Step 342 Activity Result callback and makes
-    # the Microsoft-page skin/cape selectors persist real document URIs.
     cosmetic_patch = Path(__file__).with_name('apply_step352_real_cosmetic_picker_callback.py')
     if not cosmetic_patch.is_file():
         raise SystemExit('step352 real cosmetic picker patch is missing')
@@ -53,6 +59,10 @@ def main() -> int:
     final_text = ui.read_text(encoding='utf-8')
     if cosmetic_marker not in final_text:
         raise SystemExit('step352 cosmetic callback marker missing after patch')
+
+    # Step337 verification intentionally runs after Step352 because it now checks
+    # the persisted skin/cape callback as part of the real-function contract.
+    run_pair(root, '337-final', 'apply_step337_microsoft_signin_reference_gui.py', 'verify_step337_microsoft_signin_gui.py')
 
     # The later Version / Instances steps replace a large method block in the same
     # generated Kotlin file. Re-assert the Settings/Renderer reference contract at
