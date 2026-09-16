@@ -40,11 +40,6 @@ def method_block(source: str, signature: str) -> tuple[int, int]:
     raise SystemExit(f"[step338] unterminated method: {signature}")
 
 
-def replace_method(source: str, signature: str, replacement: str) -> str:
-    start, end = method_block(source, signature)
-    return source[:start] + replacement + source[end:]
-
-
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
     ui = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
@@ -55,15 +50,24 @@ def main() -> int:
         print("[step338] offline profile GUI already present")
         return 0
 
-    old_add = '''    private fun showOfflineAccountDialog() {
+    old_add_variants = (
+        '''    private fun showOfflineAccountDialog() {
         val input = android.widget.EditText(this).apply { hint = "Minecraft username"; singleLine = true }
         android.app.AlertDialog.Builder(this).setTitle("Add Offline Account").setView(input)
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Add") { _, _ -> addAccount("Offline", input.text.toString()) }.show()
     }
-'''
+''',
+        '''    private fun showOfflineAccountDialog() {
+        val input = android.widget.EditText(this).apply { hint = "Minecraft username"; isSingleLine = true }
+        android.app.AlertDialog.Builder(this).setTitle("Add Offline Account").setView(input)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Add") { _, _ -> addAccount("Offline", input.text.toString()) }.show()
+    }
+''',
+    )
     new_add = '''    private fun showOfflineAccountDialog() {
-        val input = android.widget.EditText(this).apply { hint = "Minecraft username"; singleLine = true }
+        val input = android.widget.EditText(this).apply { hint = "Minecraft username"; isSingleLine = true }
         android.app.AlertDialog.Builder(this).setTitle("Add Offline Account").setView(input)
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Add") { _, _ ->
@@ -72,9 +76,12 @@ def main() -> int:
             }.show()
     }
 '''
-    if old_add not in source:
+    for old_add in old_add_variants:
+        if old_add in source:
+            source = source.replace(old_add, new_add, 1)
+            break
+    else:
         raise SystemExit("[step338] offline account dialog shape not found")
-    source = source.replace(old_add, new_add, 1)
 
     marker = '    private fun showCustomAccountDialog() {'
     if marker not in source:
@@ -168,21 +175,20 @@ def main() -> int:
             val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
             repeat(4) {
                 val slot = button("+")
+                val slotIndex = rowIndex * 4 + it + 1
                 slot.setOnClickListener {
-                    android.widget.Toast.makeText(this@DroidLauncherUiActivity, "Cosmetic slot ${rowIndex * 4 + it + 1}", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(this@DroidLauncherUiActivity, "Cosmetic slot $slotIndex", android.widget.Toast.LENGTH_SHORT).show()
                 }
-                row.addView(slot, LinearLayout.LayoutParams(150.dpCompat(), 118.dpCompat()).apply { marginEnd = dp(14) })
+                row.addView(slot, LinearLayout.LayoutParams(dp(150), dp(118)).apply { marginEnd = dp(14) })
             }
             cosmeticGrid.addView(row, LinearLayout.LayoutParams(-1, dp(126)))
         }
         editor.addView(ScrollView(this).apply { addView(cosmeticGrid) }, LinearLayout.LayoutParams(-1, 0, 1f))
-        body.addView(editor, LinearLayout.LayoutParams(0, 0, 1f).apply { height = dp(360) })
+        body.addView(editor, LinearLayout.LayoutParams(0, dp(360), 1f))
 
         root.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
         pageArea.addView(root, LinearLayout.LayoutParams(-1, -1))
     }
-
-    private fun Int.dpCompat(): Int = dp(this)
 
 '''
     source = source.replace(marker, helper + marker, 1)
