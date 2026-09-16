@@ -129,6 +129,15 @@ jobs:
           python3 tools/ci/repair_step234_handoff_validation_launch_gate.py droid-src
           python3 tools/ci/repair_step235_launch_runtime_guard.py droid-src
           python3 tools/ci/repair_step236_download_trust.py droid-src
+      - name: Remove obsolete generated historical docs
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' f; do
+            if grep -qiE 'Zalith|ZALITH' "$f"; then
+              rm -f "$f"
+            fi
+          done < <(find droid-src -type f -name 'STEP_*.md' -print0)
       - name: Final generated-source compile boundary
         shell: bash
         run: |
