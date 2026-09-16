@@ -5,6 +5,9 @@ import re
 import subprocess
 import sys
 
+# Keep this verifier intentionally side-effect free: it validates the build graph,
+# while the authoritative workflow performs the actual generated-source build.
+
 
 def main() -> int:
     root = Path(__file__).resolve().parents[2]
