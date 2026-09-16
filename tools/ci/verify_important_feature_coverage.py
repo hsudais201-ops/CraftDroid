@@ -2,13 +2,12 @@
 """Verify that the generated launcher still contains every major requested subsystem.
 
 This is deliberately a contract audit, not a fake implementation: it checks for the
-real source files/classes and the important integration markers that the launcher
-build is expected to preserve after its many code-generation/repair stages.
+real source files/classes and important integration markers that the launcher build
+is expected to preserve after its many code-generation/repair stages.
 """
 from pathlib import Path
 import re
 import sys
-
 
 REQUIRED_FILES = (
     "app/src/main/java/com/example/input/TouchInputManager.kt",
@@ -55,7 +54,7 @@ REQUIRED_TEXT = {
         "buildAuthorizationUrl", "refreshSession",
     ),
     "app/src/main/java/com/example/skin/SkinManager.kt": (
-        "loadSkin", "saveSkin",
+        "loadSkinBitmap", "SkinTextureGenerator",
     ),
     "app/src/main/java/com/example/launcher/MinecraftLaunchHandoff.kt": (
         "launch", "validate",
@@ -106,7 +105,6 @@ def main() -> int:
         if re.search(r"(?m)^\s*singleLine\s*=", ui):
             errors.append("DroidLauncherUiActivity.kt: Android EditText singleLine property remains")
 
-    # The requested customizable control editor must remain reachable from Settings.
     screen_files = list((root / "app/src/main/java").rglob("CustomizeControlsScreen.kt"))
     if len(screen_files) != 1:
         errors.append(f"expected exactly one CustomizeControlsScreen.kt, found {len(screen_files)}")
