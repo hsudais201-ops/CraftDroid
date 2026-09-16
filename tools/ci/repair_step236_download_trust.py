@@ -39,8 +39,6 @@ def apply_legacy_migration(text: str) -> str:
     if old_http in text:
         text = text.replace(old_http, new_http, 1)
 
-    # Version IDs become filesystem path components. Validate them before any
-    # directory is created so a caller cannot escape the launcher data root.
     if "private fun validateVersionId(version: String): String" not in text:
         anchor = '''    private fun findVersionEntry(manifest: JSONObject, version: String): JSONObject? {\n'''
         validation = '''    private fun validateVersionId(version: String): String {\n        require(version.matches(Regex("^[A-Za-z0-9._-]+$"))) {\n            "Unsafe Minecraft version identifier"\n        }\n        require(version != "." && version != "..") {\n            "Unsafe Minecraft version identifier"\n        }\n        return version\n    }\n\n'''
@@ -90,12 +88,23 @@ def main() -> int:
     subprocess.run([sys.executable, str(step257), str(root)], check=True)
     step258 = Path(__file__).with_name("repair_step258_predictive_back.py")
     subprocess.run([sys.executable, str(step258), str(root)], check=True)
+
+    # This is deliberately last. Step 236 is invoked again after every late UI
+    # generator in the authoritative workflow, making Step 333 the final source
+    # authority immediately before quality checks and Gradle.
+    step333 = Path(__file__).with_name("repair_step333_final_generated_source.py")
+    if step333.is_file():
+        subprocess.run([sys.executable, str(step333), str(root)], check=True)
+    else:
+        raise SystemExit("[step333] final generated-source authority script missing")
+
     print("[step236] trust repair verified/normalized idempotently")
     print("[step236] Mojang metadata SHA-1/size and HTTPS requirements are present")
     print("[step236] version identifiers are validated before storage paths are created")
     print("[step237] generated-source compatibility repair chained successfully")
     print("[step257] Feature Center final repair chained successfully")
     print("[step258] predictive-back migration chained successfully")
+    print("[step333] final generated-source authority chained successfully")
     return 0
 
 
