@@ -17,30 +17,60 @@ def text_files(root: Path) -> list[Path]:
 
 
 def balance_source(text: str) -> int:
-    depth = 0; i = 0; state = "code"; escaped = False
+    """Return Kotlin/Java brace depth while understanding Kotlin ${...} templates."""
+    depth = 0
+    stack = ["code"]
+    escaped = False
+    i = 0
     while i < len(text):
-        ch = text[i]; nxt = text[i + 1] if i + 1 < len(text) else ""; nxt2 = text[i + 2] if i + 2 < len(text) else ""
+        ch = text[i]
+        nxt = text[i + 1] if i + 1 < len(text) else ""
+        nxt2 = text[i + 2] if i + 2 < len(text) else ""
+        state = stack[-1]
+
         if state == "line_comment":
-            if ch == "\n": state = "code"
+            if ch == "\n": stack[-1] = "code"
         elif state == "block_comment":
-            if ch == "*" and nxt == "/": state = "code"; i += 1
+            if ch == "*" and nxt == "/": stack[-1] = "code"; i += 1
         elif state == "string":
-            if escaped: escaped = False
-            elif ch == "\\": escaped = True
-            elif ch == '"': state = "code"
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                stack.pop()
+            elif ch == "$" and nxt == "{":
+                stack.append("template")
+                depth += 1
+                i += 1
+        elif state == "template":
+            # Template interpolation is normal Kotlin expression syntax. Nested
+            # strings/comments are therefore tracked with the same states.
+            if ch == "/" and nxt == "/": stack.append("line_comment"); i += 1
+            elif ch == "/" and nxt == "*": stack.append("block_comment"); i += 1
+            elif ch == '"' and nxt == '"' and nxt2 == '"': stack.append("triple"); i += 2
+            elif ch == '"': stack.append("string")
+            elif ch == "'": stack.append("char")
+            elif ch == "{": depth += 1
+            elif ch == "}":
+                depth -= 1
+                stack.pop()
         elif state == "triple":
-            if ch == '"' and nxt == '"' and nxt2 == '"': state = "code"; i += 2
+            if ch == '"' and nxt == '"' and nxt2 == '"': stack.pop(); i += 2
+            elif ch == "$" and nxt == "{": stack.append("template"); depth += 1; i += 1
         elif state == "char":
-            if escaped: escaped = False
+            if escaped:
+                escaped = False
             elif ch == "\\": escaped = True
-            elif ch == "'": state = "code"
-        elif ch == "/" and nxt == "/": state = "line_comment"; i += 1
-        elif ch == "/" and nxt == "*": state = "block_comment"; i += 1
-        elif ch == '"' and nxt == '"' and nxt2 == '"': state = "triple"; i += 2
-        elif ch == '"': state = "string"
-        elif ch == "'": state = "char"
-        elif ch == "{": depth += 1
-        elif ch == "}": depth -= 1
+            elif ch == "'": stack.pop()
+        else:
+            if ch == "/" and nxt == "/": stack[-1] = "line_comment"; i += 1
+            elif ch == "/" and nxt == "*": stack[-1] = "block_comment"; i += 1
+            elif ch == '"' and nxt == '"' and nxt2 == '"': stack.append("triple"); i += 2
+            elif ch == '"': stack.append("string")
+            elif ch == "'": stack.append("char")
+            elif ch == "{": depth += 1
+            elif ch == "}": depth -= 1
         i += 1
     return depth
 
@@ -98,7 +128,7 @@ def main() -> int:
         return 1
     print("[step331] whole-tree structural audit passed")
     print("[step331] required runtime/content/update sources present")
-    print("[step331] source parser handles strings, chars and comments")
+    print("[step331] Kotlin/Java brace parser understands templates, strings, chars and comments")
     print("[step331] external HTTP, branding, unfinished-marker and Python syntax audits passed")
     return 0
 
