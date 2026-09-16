@@ -158,6 +158,11 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/ci/repair_step349_final_generated_compile.py droid-src
+      - name: Verify Step349 regression harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_step349_final_generated_compile.py
       - name: Deep source quality pass - 1000 content-dependent checks
         shell: bash
         run: |
