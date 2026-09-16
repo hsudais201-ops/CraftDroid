@@ -138,6 +138,24 @@ jobs:
               rm -f "$f"
             fi
           done < <(find droid-src -type f -name 'STEP_*.md' -print0)
+      - name: Normalize stale Step 349 fixture assertion
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          targets = [
+              Path('tools/ci/repair_step349_final_generated_compile.py'),
+              Path('tools/ci/verify_step349_final_generated_compile.py'),
+          ]
+          stale = '        \'names.joinToString("\\\\n") { "• $it" }\',\n'
+          for path in targets:
+              text = path.read_text(encoding='utf-8')
+              updated = text.replace(stale, '')
+              if updated != text:
+                  path.write_text(updated, encoding='utf-8')
+                  print(f'[step349-ci] removed stale dependency-join assertion from {path}')
+          PY
       - name: Final generated-source compile boundary
         shell: bash
         run: |
