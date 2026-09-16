@@ -5,11 +5,12 @@ Repairs semantic duplicate helpers and known Android generated-source regression
 introduced by late UI generators. Idempotent by construction.
 
 The launcher pipeline has two valid phases: an early generated-UI phase (before
-Step 293 installs the server contract) and the final phase (after Step 293). This
-checker therefore treats a completely absent server contract as a valid deferred
-state, while still failing closed on a partially-applied or duplicated contract.
+Step 293 installs the server contract) and the final phase (after Step 293). In
+the final phase, if a late generator has accidentally removed the server contract,
+Step 333 restores it before continuing normalization and verification.
 """
 from pathlib import Path
+import subprocess
 import sys
 
 
@@ -81,39 +82,63 @@ def dedupe_signature(source: str, signature: str) -> tuple[str, int]:
     return source, removed
 
 
+SIGNATURES = (
+    "private fun serverPrefs(): android.content.SharedPreferences",
+    "private fun getSavedServers(): List<Pair<String, Int>>",
+    "private fun getServerName(index: Int): String",
+    "private fun getServerStatus(host: String, port: Int): String",
+    "private fun selectServer(host: String, port: Int)",
+    "private fun deleteServer(index: Int)",
+    "private fun showServerDialog(index: Int)",
+    "private fun refreshServerStatus(host: String, port: Int)",
+    "private fun selectedMinecraftVersion(): String",
+    "private fun selectedMinecraftProfile(): String",
+    "private fun saveMinecraftVersion(version: String)",
+    "private fun saveMinecraftProfile(profile: String)",
+    "private fun launchSelectedMinecraft()",
+)
+
+
+def normalize(source: str) -> str:
+    source = source.replace("this@DroidLauncherUiActivity.text", "primaryText")
+    source = source.replace("setTextColor(text)", "setTextColor(primaryText)")
+    source = source.replace("singleLine = true", "isSingleLine = true")
+    source = source.replace("setSingleLine(true)", "isSingleLine = true")
+    for sig in SIGNATURES:
+        source, _ = dedupe_signature(source, sig)
+    return source
+
+
+def restore_final_server_contract(root: Path, path: Path, source: str) -> str:
+    required_server = SIGNATURES[:8]
+    present_server = [sig for sig in required_server if sig in source]
+    if present_server or "private fun showBootstrapGate()" not in source:
+        return source
+
+    script = Path(__file__).with_name("repair_step293_server_contracts_after_final_ui.py")
+    if not script.is_file():
+        raise SystemExit("[step333] final-phase server contract is missing and Step 293 script is unavailable")
+    print("[step333] final-phase server contract missing; restoring through Step 293")
+    subprocess.run([sys.executable, str(script), str(root)], check=True)
+    restored = path.read_text(encoding="utf-8")
+    return normalize(restored)
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
     path = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
     if not path.is_file():
         raise SystemExit(f"[step333] missing UI source: {path}")
+
     source = path.read_text(encoding="utf-8")
+    source = normalize(source)
+    source = restore_final_server_contract(root, path, source)
 
-    source = source.replace("this@DroidLauncherUiActivity.text", "primaryText")
-    source = source.replace("setTextColor(text)", "setTextColor(primaryText)")
-    source = source.replace("singleLine = true", "isSingleLine = true")
-    source = source.replace("setSingleLine(true)", "isSingleLine = true")
+    # A late generator can reintroduce duplicates while Step 293 is restoring the
+    # contract, so normalize/dedupe one more time after the restoration boundary.
+    source = normalize(source)
 
-    signatures = (
-        "private fun serverPrefs(): android.content.SharedPreferences",
-        "private fun getSavedServers(): List<Pair<String, Int>>",
-        "private fun getServerName(index: Int): String",
-        "private fun getServerStatus(host: String, port: Int): String",
-        "private fun selectServer(host: String, port: Int)",
-        "private fun deleteServer(index: Int)",
-        "private fun showServerDialog(index: Int)",
-        "private fun refreshServerStatus(host: String, port: Int)",
-        "private fun selectedMinecraftVersion(): String",
-        "private fun selectedMinecraftProfile(): String",
-        "private fun saveMinecraftVersion(version: String)",
-        "private fun saveMinecraftProfile(profile: String)",
-        "private fun launchSelectedMinecraft()",
-    )
-    removed = 0
-    for sig in signatures:
-        source, count = dedupe_signature(source, sig)
-        removed += count
-
-    required_server = signatures[:8]
+    required_server = SIGNATURES[:8]
     present_server = [sig for sig in required_server if sig in source]
     if present_server and len(present_server) != len(required_server):
         missing = [sig for sig in required_server if sig not in source]
@@ -122,16 +147,23 @@ def main() -> int:
         )
     if not present_server:
         print("[step333] server contract not present yet; deferring to Step 293 final UI repair")
-    duplicates = [sig for sig in signatures if source.count(sig) != 1]
+
+    duplicates = [sig for sig in SIGNATURES if source.count(sig) != 1 and (present_server or sig not in required_server)]
     if present_server and duplicates:
         raise SystemExit("[step333] duplicate/missing critical helper: " + ", ".join(duplicates))
-    forbidden = ("this@DroidLauncherUiActivity.text", "setTextColor(text)", "singleLine = true", "setSingleLine(true)")
+
+    forbidden = (
+        "this@DroidLauncherUiActivity.text",
+        "setTextColor(text)",
+        "singleLine = true",
+        "setSingleLine(true)",
+    )
     stale = [token for token in forbidden if token in source]
     if stale:
         raise SystemExit("[step333] stale generated Android token remains: " + ", ".join(stale))
 
     path.write_text(source, encoding="utf-8")
-    print(f"[step333] final generated source authority applied; removed_duplicates={removed}")
+    print("[step333] final generated source authority applied")
     if present_server:
         print("[step333] server helper ownership normalized to exactly one implementation")
     else:
