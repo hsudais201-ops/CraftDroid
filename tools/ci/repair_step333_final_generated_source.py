@@ -172,12 +172,28 @@ def main() -> int:
     else:
         raise SystemExit("[step333] required Step 334 server toolbar patch is missing")
 
+    # Step 336 supplies the installed-version inventory consumed by Step 335.
+    step336 = Path(__file__).with_name("apply_step336_version_manager_inventory.py")
+    if step336.is_file():
+        subprocess.run([sys.executable, str(step336), str(root)], check=True)
+    else:
+        raise SystemExit("[step333] required Step 336 version-inventory patch is missing")
+
+    # Step 335 is the final Home presentation pass: installed version/instance
+    # selection sits immediately above Launch and active downloads stay visible.
+    step335 = Path(__file__).with_name("apply_step335_home_version_instance_downloads.py")
+    if step335.is_file():
+        subprocess.run([sys.executable, str(step335), str(root)], check=True)
+    else:
+        raise SystemExit("[step333] required Step 335 Home download/selector patch is missing")
+
     print("[step333] final generated source authority applied")
     if present_server:
         print("[step333] server helper ownership normalized to exactly one implementation")
     else:
         print("[step333] early generated-source phase passed without requiring deferred server helpers")
     print("[step333] Android text-color and EditText APIs canonicalized")
+    print("[step335] Home version/instance selector + live download progress applied")
     return 0
 
 
