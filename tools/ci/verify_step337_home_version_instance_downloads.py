@@ -28,7 +28,9 @@ def main() -> int:
         'active_stage',
         'active_state',
         '%.1f%%',
-        'MB /',
+        'formatMiB(downloaded)',
+        'formatMiB(total)',
+        ' / ${if (total > 0L) formatMiB(total) else "? MB"}',
     )
     required_manager = (
         "fun installedVersions(context: Context): List<String>",
@@ -41,7 +43,6 @@ def main() -> int:
     if missing_manager:
         raise SystemExit("[step337] missing version inventory contracts: " + ", ".join(missing_manager))
 
-    # Ensure the controls are physically generated before the Launch handler.
     setup = u.find('val versionCard = cardView(16)')
     launch = u.find('val launch = button("Launch", true)')
     if setup < 0 or launch < 0 or setup > launch:
