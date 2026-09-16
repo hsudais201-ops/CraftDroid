@@ -82,6 +82,33 @@ def verify_modern_managers(root: Path) -> None:
                 raise SystemExit(f"[step322] missing {needle!r} in {name}")
 
 
+def repair_component_preparation_order(root: Path) -> bool:
+    """Ensure generated bootstrap completion is persisted before verification.
+
+    The previous implementation called bootstrapComplete() while the
+    components_extracted flag was still false, guaranteeing a false result and
+    forcing the UI down its failure path after every preparation attempt.
+    """
+    ui = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
+    source = ui.read_text(encoding="utf-8")
+    gate = source.find("private fun extractBootstrapComponents")
+    if gate < 0:
+        raise SystemExit("[step351] extractBootstrapComponents() not found")
+    verify = '                if (!bootstrapComplete()) throw java.io.IOException("Component preparation verification failed")'
+    persist = '                bootstrapPrefs().edit().putBoolean("components_extracted", true).apply()'
+    verify_pos = source.find(verify, gate)
+    persist_pos = source.find(persist, gate)
+    if verify_pos < 0 or persist_pos < 0:
+        raise SystemExit("[step351] component preparation state-machine markers not found")
+    if persist_pos > verify_pos:
+        source = source[:verify_pos] + persist + "\n" + source[verify_pos:persist_pos] + source[persist_pos + len(persist):]
+        ui.write_text(source, encoding="utf-8")
+        print("[step351] fixed component preparation ordering")
+        return True
+    print("[step351] component preparation ordering already correct")
+    return False
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
     ui = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
@@ -111,6 +138,7 @@ def main() -> int:
     s = s.replace("setTextColor(this@DroidLauncherUiActivity.text)", "setTextColor(primaryText)")
     s = s.replace("setTextColor(text)", "setTextColor(primaryText)")
     ui.write_text(s, encoding="utf-8")
+    repair_component_preparation_order(root)
     copy_modern_managers(root)
     verify_modern_managers(root)
     changed = scrub_generated_branding(root)
