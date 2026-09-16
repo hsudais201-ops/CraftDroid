@@ -253,6 +253,13 @@ jobs:
           set -euo pipefail
           python3 tools/ci/repair_step349_final_generated_compile.py droid-src
 
+      - name: Verify final generated feature contracts after all late repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_step337_microsoft_signin_gui.py droid-src
+          python3 tools/ci/verify_important_feature_coverage.py droid-src
+
       - name: Pin and verify TeamPojav native release source
         shell: bash
         run: |
