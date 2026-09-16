@@ -40,6 +40,11 @@ def main() -> int:
     if 'concurrency:' not in text or 'cancel-in-progress: true' not in text:
         raise SystemExit('[step350] CI concurrency contract missing')
 
+    critical = root / 'tools/ci/verify_critical_repository_files.py'
+    if not critical.is_file():
+        raise SystemExit('[step350] critical-file preservation verifier missing')
+    subprocess.run([sys.executable, str(critical), str(root)], cwd=root, check=True)
+
     coverage = root / 'tools/ci/verify_important_feature_coverage.py'
     generated = root / 'droid-src'
     if not coverage.is_file():
@@ -65,6 +70,7 @@ def main() -> int:
     print('[step350] authoritative workflow contracts verified')
     print('[step350] direct Gradle 9.6.0, lint, unit tests, APK build and APK integrity gates are present')
     print('[step350] Microsoft/skin-cape picker and requested launcher subsystem coverage verifiers are chained into CI')
+    print('[step350] critical-file preservation audit is chained into CI')
     return 0
 
 if __name__ == '__main__':
