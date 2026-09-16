@@ -13,6 +13,9 @@ TEXT_EXTENSIONS = {
     ".json", ".yml", ".yaml", ".py", ".md", ".txt",
 }
 LEGACY = ("Za" + "lith Launcher", "Za" + "lith-style", "ZALITH")
+PROTOCOL_IDENTIFIERS = {
+    "http://auth.xboxlive.com",
+}
 
 
 @dataclass(frozen=True)
@@ -42,25 +45,26 @@ def normalized_hash(text: str) -> str:
 
 
 def insecure_http_literal(path: Path, text: str) -> bool:
-    """Detect network endpoint literals, not XML schema/namespace declarations."""
+    """Detect insecure network endpoints, not schemas or protocol identifiers."""
     if path.suffix.lower() in {".xml", ".md", ".txt", ".json", ".yml", ".yaml"}:
         return False
     if "test" in path.parts:
         return False
     for match in re.finditer(r"https?://[^\"'\s)]+", text, flags=re.IGNORECASE):
-        literal = match.group(0)
-        if literal.lower().startswith("http://schemas.android.com/"):
+        literal = match.group(0).rstrip(".,;:)")
+        lower = literal.lower()
+        if lower.startswith("http://schemas.android.com/"):
             continue
-        if literal.lower().startswith("http://www.w3.org/"):
+        if lower.startswith("http://www.w3.org/"):
             continue
-        if literal.lower().startswith("http://localhost"):
+        if lower in PROTOCOL_IDENTIFIERS:
             continue
-        return literal.lower().startswith("http://")
+        return lower.startswith("http://")
     return False
 
 
 def has_unfinished_marker(path: Path, text: str) -> bool:
-    """Check production code for unfinished markers without flagging Android-generated XML metadata."""
+    """Check production code for unfinished markers."""
     if path.suffix.lower() not in {".kt", ".java", ".cpp", ".h", ".py", ".gradle", ".kts"}:
         return False
     return bool(re.search(r"\b(?:TODO|FIXME|NotImplementedException)\b", text))
