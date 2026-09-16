@@ -199,11 +199,18 @@ def main() -> int:
     else:
         raise SystemExit("[step330] installer race/path hardening script missing")
 
+    audit_script = project / "tools/ci/verify_step331_tree_audit.py"
+    if audit_script.is_file():
+        subprocess.run([sys.executable, str(audit_script), str(root)], check=True)
+    else:
+        raise SystemExit("[step331] whole-tree audit script missing")
+
     print("[step293] self-contained server Add/Edit/Delete/Select/Refresh contracts installed")
     print("[step293] server reachability checks run off the Android UI thread")
     print("[step328] latest-version wiring applied after final UI replacement")
     print("[step329] post-generation compile hardening applied")
     print("[step330] installer race and version-path hardening applied")
+    print("[step331] whole-tree structural audit applied")
     return 0
 
 
