@@ -37,7 +37,9 @@ METHODS = r'''
             android.widget.Toast.makeText(this, "Installed ${installed.name}", android.widget.Toast.LENGTH_LONG).show()
         } catch (t: Throwable) {
             android.widget.Toast.makeText(this, "Install failed: ${t.message ?: "unknown error"}", android.widget.Toast.LENGTH_LONG).show()
-        } finally { pendingContentPage = null }
+        } finally {
+            pendingContentPage = null
+        }
     }
 
     private fun startContentImport(pageName: String) {
@@ -46,8 +48,9 @@ METHODS = r'''
             addCategory(android.content.Intent.CATEGORY_OPENABLE)
             type = "*/*"
         }
-        try { startActivityForResult(intent, CONTENT_PICKER_REQUEST) }
-        catch (t: Throwable) {
+        try {
+            startActivityForResult(intent, CONTENT_PICKER_REQUEST)
+        } catch (t: Throwable) {
             pendingContentPage = null
             android.widget.Toast.makeText(this, "No file picker available", android.widget.Toast.LENGTH_SHORT).show()
         }
@@ -59,19 +62,17 @@ def main() -> int:
     ui = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
     if not ui.is_file(): raise SystemExit(f"[step342] missing UI source: {ui}")
     s = ui.read_text(encoding="utf-8")
-    # Repair any generated Install action before installing the callback implementation.
     if 'startContentImport(page)' not in s:
-        if 'val action = button(if (page == "Game") "↪" else "Install")' in s:
-            s = s.replace('            action.contentDescription = if (page == "Game") "Select $name" else "Install $name"\n', '            action.contentDescription = if (page == "Game") "Select $name" else "Install $name"\n            action.setOnClickListener { if (page == "Game") { selectedMinecraftVersion = name } else { startContentImport(page) } }\n', 1)
+        action = '            action.contentDescription = if (page == "Game") "Select $name" else "Install $name"\n'
+        if action in s:
+            s = s.replace(action, action + '            action.setOnClickListener { if (page == "Game") { selectedMinecraftVersion = name } else { startContentImport(page) } }\n', 1)
         else:
             old = '                } else {\n                    android.widget.Toast.makeText(this, "Installing $name for $selectedMinecraftVersion with $selectedLoader", android.widget.Toast.LENGTH_SHORT).show()\n                }'
             if old in s: s = s.replace(old, '                } else {\n                    startContentImport(page)\n                }', 1)
-    # Replace only our known prior implementation to keep this step idempotent.
     if 'private fun startContentImport(' not in s:
         companion = re.search(r'(?m)^\s*companion object\s*\{', s)
         if not companion: raise SystemExit('[step342] companion object not found')
         s = s[:companion.start()] + METHODS + '\n' + s[companion.start():]
-    # The previous check accidentally looked for a use-site reference. Require the declaration.
     companion = re.search(r'(?m)^\s*companion object\s*\{', s)
     if not companion: raise SystemExit('[step342] companion object not found')
     if 'private const val CONTENT_PICKER_REQUEST' not in s:
