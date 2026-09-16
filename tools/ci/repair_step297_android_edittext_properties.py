@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 297/298/337/338/339/340/341: normalize generated Android APIs and apply final UIs."""
+"""Step 297/298/337/338/339/340/341/342: normalize generated Android APIs and apply final UIs."""
 from pathlib import Path
 import re
 import subprocess
@@ -28,6 +28,7 @@ def main() -> int:
         ("339", "apply_step339_settings_renderer_reference_gui.py", "verify_step339_settings_renderer_reference_gui.py", "Settings Renderer GUI patch/verifier missing"),
         ("340", "apply_step340_settings_reference_polish.py", "verify_step340_settings_reference_polish.py", "Settings reference polish patch/verifier missing"),
         ("341", "apply_step341_download_manager_reference_gui.py", "verify_step341_download_manager_reference_gui.py", "3.jpeg download/install/version GUI patch/verifier missing"),
+        ("342", "apply_step342_content_install_picker.py", "verify_step342_content_install_picker.py", "real content install picker patch/verifier missing"),
     ]
     for step, patch_name, verifier_name, error_text in patches:
         patch = Path(__file__).with_name(patch_name)
@@ -43,6 +44,7 @@ def main() -> int:
     print("[step339] Settings · Renderer reference GUI and working option controls finalized after UI generation")
     print("[step340] Settings reference shell polished to match 2.jpeg")
     print("[step341] 3.jpeg Download/install/version manager GUI finalized after UI generation")
+    print("[step342] Modpack/Mod/Shader/Resource Pack Install buttons now import real local files")
     return 0
 
 if __name__ == "__main__":
