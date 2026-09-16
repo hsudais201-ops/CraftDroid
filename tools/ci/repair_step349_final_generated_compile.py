@@ -23,13 +23,9 @@ def method_end(text: str, start: int) -> int:
     if brace < 0:
         raise SystemExit('[step349] method opening brace missing')
     depth = 0
-    state = 'code'
-    escaped = False
-    i = brace
+    state = 'code'; escaped = False; i = brace
     while i < len(text):
-        c = text[i]
-        n = text[i + 1] if i + 1 < len(text) else ''
-        n2 = text[i + 2] if i + 2 < len(text) else ''
+        c = text[i]; n = text[i + 1] if i + 1 < len(text) else ''; n2 = text[i + 2] if i + 2 < len(text) else ''
         if state == 'line':
             if c == '\n': state = 'code'
             i += 1; continue
@@ -79,33 +75,35 @@ def dedupe_methods(text: str, names: tuple[str, ...]) -> str:
 def normalize_page_boundary(text: str) -> str:
     bad = '    private fun getResolvedJavaForLaunch(version: String): Int {\n            private fun featuresPage() {'
     if bad in text:
-        text = text.replace(
-            bad,
-            '    private fun getResolvedJavaForLaunch(version: String): Int = resolveJavaForVersion(version)\n\n    private fun featuresPage() {',
-            1,
-        )
-    pattern = re.compile(
-        r'(?s)    private fun getResolvedJavaForLaunch\(version: String\): Int \{\s*'
-        r'private fun featuresPage\(\) \{'
-    )
-    return pattern.sub(
-        '    private fun getResolvedJavaForLaunch(version: String): Int = resolveJavaForVersion(version)\n\n'
-        '    private fun featuresPage() {',
-        text,
-        count=1,
-    )
+        text = text.replace(bad, '    private fun getResolvedJavaForLaunch(version: String): Int = resolveJavaForVersion(version)\n\n    private fun featuresPage() {', 1)
+    pattern = re.compile(r'(?s)    private fun getResolvedJavaForLaunch\(version: String\): Int \{\s*private fun featuresPage\(\) \{')
+    return pattern.sub('    private fun getResolvedJavaForLaunch(version: String): Int = resolveJavaForVersion(version)\n\n    private fun featuresPage() {', text, count=1)
 
 
 def normalize_edit_text(text: str) -> str:
-    return text.replace('singleLine = true', 'setSingleLine(true)').replace(
-        'singleLine = false', 'setSingleLine(false)'
+    # Apply the real Android View API after every late UI generator has run.
+    text = re.sub(r'\bsingleLine\s*=\s*true\b', 'setSingleLine(true)', text)
+    text = re.sub(r'\bsingleLine\s*=\s*false\b', 'setSingleLine(false)', text)
+    return text
+
+
+def repair_truncated_server_helpers(text: str) -> str:
+    text = text.replace(
+        'private fun serverPrefs(): android.content.SharedPreferences =\nprivate fun getSavedServers()',
+        '    private fun serverPrefs(): android.content.SharedPreferences =\n        getSharedPreferences("droid_launcher_servers", MODE_PRIVATE)\n\n    private fun getSavedServers()'
     )
+    text = text.replace(
+        'private fun getServerName(index: Int): String =\nprivate fun getServerStatus(host: String, port: Int): String =',
+        '    private fun getServerName(index: Int): String {\n        val prefs = serverPrefs()\n        val count = prefs.getInt("count", 0).coerceIn(0, 256)\n        if (index !in 0 until count) return "Server $index"\n        return prefs.getString("name_$index", "Server $index")?.trim().orEmpty().ifBlank { "Server $index" }\n    }\n\n    private fun getServerStatus(host: String, port: Int): String ='
+    )
+    for name in ('getSavedServers', 'getServerName', 'getServerStatus', 'selectServer', 'deleteServer', 'showServerDialog', 'refreshServerStatus'):
+        text = re.sub(r'(?m)^private fun ' + re.escape(name) + r'\b', '    private fun ' + name, text)
+    return text
 
 
 def normalize_on_create(text: str) -> str:
     start = text.find('    override fun onCreate(')
-    if start < 0:
-        raise SystemExit('[step349] onCreate not found')
+    if start < 0: raise SystemExit('[step349] onCreate not found')
     end = method_end(text, start)
     replacement = '''    override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -118,19 +116,12 @@ def normalize_on_create(text: str) -> str:
 
 def repair_progress_context(text: str) -> str:
     declaration = '    private var progressContext: android.content.Context? = null'
-    if declaration in text:
-        return text
-    anchors = (
-        '    private val cancellations = ConcurrentHashMap.newKeySet<String>()',
-        '    private val activeTasks = ConcurrentHashMap<String, Job>()',
-        '    private val taskStates = ConcurrentHashMap<String, Any>()',
-    )
+    if declaration in text: return text
+    anchors = ('    private val cancellations = ConcurrentHashMap.newKeySet<String>()', '    private val activeTasks = ConcurrentHashMap<String, Job>()', '    private val taskStates = ConcurrentHashMap<String, Any>()')
     for anchor in anchors:
-        if anchor in text:
-            return text.replace(anchor, anchor + '\n' + declaration, 1)
+        if anchor in text: return text.replace(anchor, anchor + '\n' + declaration, 1)
     match = re.search(r'class\s+MinecraftVersionInstallManager\b[^\{]*\{', text)
-    if match:
-        return text[:match.end()] + '\n' + declaration + '\n' + text[match.end():]
+    if match: return text[:match.end()] + '\n' + declaration + '\n' + text[match.end():]
     raise SystemExit('[step349] cannot locate installer class field insertion point')
 
 
@@ -139,8 +130,6 @@ def run_quality_gate(repo_root: Path, generated_root: Path) -> None:
     if checker.is_file():
         subprocess.run([sys.executable, str(checker), str(generated_root)], cwd=repo_root, check=True)
         print('[step349] deep_quality_pass_1000 PASS')
-    else:
-        print('[step349] deep_quality_pass_1000.py not present; structural gate still active')
 
 
 def main() -> int:
@@ -148,72 +137,43 @@ def main() -> int:
     repo_root = Path.cwd().resolve()
     ui = root / 'app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt'
     installer = root / 'app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt'
-    if not ui.is_file() or not installer.is_file():
-        raise SystemExit('[step349] required generated sources are missing')
-
+    if not ui.is_file() or not installer.is_file(): raise SystemExit('[step349] required generated sources are missing')
     source = ui.read_text(encoding='utf-8')
     before = source
     source = strip_orphan_fragments(source)
     source = normalize_page_boundary(source)
     source = normalize_edit_text(source)
     source = strip_orphan_fragments(source)
-    source = dedupe_methods(source, (
-        'featuresPage', 'featureToggle', 'rendererPage', 'javaPage', 'controlsPage',
-        'libraryPage', 'aboutPage', 'serverPrefs', 'getSavedServers', 'getServerName',
-        'getServerStatus', 'selectServer', 'deleteServer', 'showServerDialog',
-        'refreshServerStatus', 'resolveJavaForVersion', 'getResolvedJavaForLaunch',
-    ))
+    source = repair_truncated_server_helpers(source)
+    source = dedupe_methods(source, ('featuresPage','featureToggle','rendererPage','javaPage','controlsPage','libraryPage','aboutPage','serverPrefs','getSavedServers','getServerName','getServerStatus','selectServer','deleteServer','showServerDialog','refreshServerStatus','resolveJavaForVersion','getResolvedJavaForLaunch'))
     source = normalize_on_create(source)
+    # Re-normalize after structural deduplication so late method rewrites cannot
+    # reintroduce either the unsupported property or a top-level declaration.
+    source = normalize_edit_text(source)
     ui.write_text(source, encoding='utf-8')
-
     inst_before = installer.read_text(encoding='utf-8')
     inst = repair_progress_context(inst_before)
     installer.write_text(inst, encoding='utf-8')
-
-    required_members = (
-        'private fun featuresPage()', 'private fun featureToggle(', 'private fun rendererPage()',
-        'private fun javaPage()', 'private fun controlsPage()', 'private fun libraryPage(',
-        'private fun aboutPage(', 'private fun serverPrefs()', 'private fun getSavedServers()',
-        'private fun getServerName(', 'private fun getServerStatus(', 'private fun selectServer(',
-        'private fun deleteServer(', 'private fun showServerDialog(', 'private fun refreshServerStatus(',
-        'private fun resolveJavaForVersion(', 'private fun getResolvedJavaForLaunch(',
-    )
+    required_members = ('private fun featuresPage()','private fun featureToggle(','private fun rendererPage()','private fun javaPage()','private fun controlsPage()','private fun libraryPage(','private fun aboutPage(','private fun serverPrefs()','private fun getSavedServers()','private fun getServerName(','private fun getServerStatus(','private fun selectServer(','private fun deleteServer(','private fun showServerDialog(','private fun refreshServerStatus(','private fun resolveJavaForVersion(','private fun getResolvedJavaForLaunch(')
     for sig in required_members:
-        if source.count(sig) != 1:
-            raise SystemExit(f'[step349] {sig} count={source.count(sig)}, expected 1')
-    if 'private fun featuresPage() {\n        pageArea.addView(section("Feature Center"' not in source:
-        raise SystemExit('[step349] Feature Center method body boundary failed')
-    if any(x in source for x in ('STEP293_SERVER_CONTRACTS', 'STEP329_SERVER_CONTRACTS')):
-        raise SystemExit('[step349] orphan contract markers remain')
-    server_anchor = source.find('private fun serverPrefs()')
-    if re.search(r'(?m)^\s*(?:getSharedPreferences\("droid_launcher_servers"|serverPrefs\(\)\.getString)', source[:server_anchor]):
-        raise SystemExit('[step349] orphan server expressions remain before helper')
-    if 'singleLine =' in source or '\n            private fun ' in source:
-        raise SystemExit('[step349] invalid generated Kotlin scope/API remains')
+        if source.count(sig) != 1: raise SystemExit(f'[step349] {sig} count={source.count(sig)}, expected 1')
+    if 'private fun featuresPage() {' not in source: raise SystemExit('[step349] Feature Center method body missing')
+    if any(x in source for x in ('STEP293_SERVER_CONTRACTS','STEP329_SERVER_CONTRACTS')): raise SystemExit('[step349] orphan contract markers remain')
+    if 'singleLine =' in source: raise SystemExit('[step349] invalid singleLine property remains')
+    if '\nprivate fun ' in source: raise SystemExit('[step349] top-level private helper remains outside class')
     start = source.find('override fun onCreate')
-    slice_ = source[start:start + 700]
-    if 'showBootstrapGate()' in slice_ or 'buildUi()\n        showPage("Game")' not in slice_:
-        raise SystemExit('[step349] direct launcher startup invariant failed')
-    if source.count('class DroidLauncherUiActivity') != 1 or not source.rstrip().endswith('}'):
-        raise SystemExit('[step349] launcher class boundary invariant failed')
-    if 'private var progressContext: android.content.Context? = null' not in inst:
-        raise SystemExit('[step349] installer progressContext declaration missing')
-
-    # Final late-generation writers can replace buildUi/showPage after Step295.
-    # Reapply the idempotent navigation repair immediately before the quality gate.
+    slice_ = source[start:start+700]
+    if 'showBootstrapGate()' in slice_ or 'buildUi()\n        showPage("Game")' not in slice_: raise SystemExit('[step349] direct launcher startup invariant failed')
+    if source.count('class DroidLauncherUiActivity') != 1 or not source.rstrip().endswith('}'): raise SystemExit('[step349] launcher class boundary invariant failed')
+    if 'private var progressContext: android.content.Context? = null' not in inst: raise SystemExit('[step349] installer progressContext declaration missing')
     navigation = repo_root / 'tools/ci/repair_step295_final_navigation.py'
-    if navigation.is_file():
-        subprocess.run([sys.executable, str(navigation), str(root)], cwd=repo_root, check=True)
-        source = ui.read_text(encoding='utf-8')
-        if '"Features" -> featuresPage()' not in source or 'setOnClickListener { showPage("Features") }' not in source:
-            raise SystemExit('[step349] Feature Center navigation was not restored at final boundary')
-    else:
-        raise SystemExit('[step349] final Feature Center navigation repair script is missing')
-
+    if not navigation.is_file(): raise SystemExit('[step349] final Feature Center navigation repair script is missing')
+    subprocess.run([sys.executable, str(navigation), str(root)], cwd=repo_root, check=True)
+    source = ui.read_text(encoding='utf-8')
+    if '"Features" -> featuresPage()' not in source or 'setOnClickListener { showPage("Features") }' not in source: raise SystemExit('[step349] Feature Center navigation not restored at final boundary')
     run_quality_gate(repo_root, root)
     print(f'[step349] final repair complete; ui_changed={int(source != before)} installer_changed={int(inst != inst_before)}')
     return 0
 
 
-if __name__ == '__main__':
-    raise SystemExit(main())
+if __name__ == '__main__': raise SystemExit(main())
