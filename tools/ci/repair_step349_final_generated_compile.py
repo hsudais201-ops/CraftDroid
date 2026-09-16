@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Final compile-boundary repair for the generated launcher UI.
 
-Runs after all late UI generators. Restores Java resolver helpers if a late page
-replacement removed them and repairs the known multiline joinToString corruption.
+Runs after all late UI generators. Restores Java resolver helpers, repairs known
+multiline joinToString corruption, and normalizes any ordinary quoted Kotlin
+string that a generator accidentally split across a physical newline.
 """
 from pathlib import Path
 import re
@@ -43,15 +44,15 @@ HELPERS = '''    private fun recommendedJavaForVersion(version: String): Int {
 
 '''
 
-BLOCK_HELPERS = {
+BLOCK_HELPERS = (
     '    private fun recommendedJavaForVersion(version: String): Int',
     '    private fun storedJavaOverride(): Int?',
     '    private fun saveJavaOverride(value: String)',
-}
-EXPRESSION_HELPERS = {
-    '    private fun resolveJavaForVersion(version: String): Int',
-    '    private fun getResolvedJavaForLaunch(version: String): Int',
-}
+)
+EXPRESSION_HELPERS = (
+    '    private fun resolveJavaForVersion(version: String)',
+    '    private fun getResolvedJavaForLaunch(version: String)',
+)
 
 
 def function_end(source: str, start: int) -> int:
@@ -131,7 +132,6 @@ def restore_helpers(source: str) -> str:
 
 
 def repair_dependency_join(source: str) -> str:
-    # Repair both literal newline variants produced by generated Python templates.
     source = re.sub(
         r'names\.joinToString\("\s*\n\s*"\) \{ "• \$it" \}',
         'names.joinToString("\\n") { "• $it" }',
@@ -144,6 +144,64 @@ def repair_dependency_join(source: str) -> str:
     return source
 
 
+def repair_regular_string_newlines(source: str) -> tuple[str, int]:
+    """Turn illegal ordinary quoted-string newlines into escaped \n sequences.
+
+    Triple-quoted strings, comments, and character literals are left untouched.
+    A second pass over the repaired result is used to prove no regular string
+    remains split over a physical newline.
+    """
+    out: list[str] = []
+    i = 0
+    changed = 0
+    in_line_comment = in_block_comment = False
+    in_string = in_triple = in_char = False
+    escaped = False
+    while i < len(source):
+        ch = source[i]
+        nxt = source[i + 1] if i + 1 < len(source) else ''
+        nxt2 = source[i + 2] if i + 2 < len(source) else ''
+        if in_line_comment:
+            out.append(ch)
+            if ch == '\n': in_line_comment = False
+            i += 1; continue
+        if in_block_comment:
+            out.append(ch)
+            if ch == '*' and nxt == '/': out.append('/'); i += 2; in_block_comment = False
+            else: i += 1
+            continue
+        if in_triple:
+            out.append(ch)
+            if ch == '"' and nxt == '"' and nxt2 == '"': out.extend(['"', '"']); i += 3; in_triple = False
+            else: i += 1
+            continue
+        if in_string:
+            if escaped:
+                out.append(ch); escaped = False; i += 1; continue
+            if ch == '\\': out.append(ch); escaped = True; i += 1; continue
+            if ch == '"': out.append(ch); i += 1; in_string = False; continue
+            if ch == '\n':
+                out.append('\\n'); changed += 1; i += 1
+                while i < len(source) and source[i] in ' \t\r': i += 1
+                continue
+            out.append(ch); i += 1; continue
+        if in_char:
+            out.append(ch)
+            if escaped: escaped = False
+            elif ch == '\\': escaped = True
+            elif ch == "'": in_char = False
+            i += 1; continue
+        if ch == '/' and nxt == '/': out.extend([ch, nxt]); i += 2; in_line_comment = True; continue
+        if ch == '/' and nxt == '*': out.extend([ch, nxt]); i += 2; in_block_comment = True; continue
+        if ch == '"' and nxt == '"' and nxt2 == '"': out.extend(['"', '"', '"']); i += 3; in_triple = True; continue
+        if ch == '"': out.append(ch); i += 1; in_string = True; escaped = False; continue
+        if ch == "'": out.append(ch); i += 1; in_char = True; escaped = False; continue
+        out.append(ch); i += 1
+    if in_string:
+        raise ValueError('unterminated regular Kotlin string literal')
+    return ''.join(out), changed
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else 'droid-src').resolve()
     ui = root / 'app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt'
@@ -153,6 +211,10 @@ def main() -> int:
     before = source
     source = restore_helpers(source)
     source = repair_dependency_join(source)
+    source, changed_strings = repair_regular_string_newlines(source)
+    _, residual = repair_regular_string_newlines(source)
+    if residual:
+        raise SystemExit(f'[step357] residual regular-string newline count: {residual}')
     required = (
         'private fun recommendedJavaForVersion(version: String): Int',
         'private fun resolveJavaForVersion(version: String): Int',
@@ -163,9 +225,10 @@ def main() -> int:
         if needle not in source:
             raise SystemExit(f'[step349] missing post-repair contract: {needle}')
     ui.write_text(source, encoding='utf-8')
-    print(f'[step349] final generated UI compile repair applied; changed={int(source != before)}')
+    print(f'[step357] generated regular Kotlin string repair count={changed_strings}; changed={int(source != before)}')
     print('[step349] Java resolver helpers restored after all late UI rewrites')
-    print('[step349] required dependency joinToString escaped safely')
+    print('[step349] dependency joinToString escaped safely')
+    print('[step357] no remaining multiline regular Kotlin strings')
     return 0
 
 if __name__ == '__main__':
