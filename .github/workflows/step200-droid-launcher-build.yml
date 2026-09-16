@@ -129,6 +129,14 @@ jobs:
           python3 tools/ci/repair_step234_handoff_validation_launch_gate.py droid-src
           python3 tools/ci/repair_step235_launch_runtime_guard.py droid-src
           python3 tools/ci/repair_step236_download_trust.py droid-src
+      - name: Final generated-source compile boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step218_java_profile.py droid-src
+          python3 tools/ci/repair_step293_server_contracts_after_final_ui.py droid-src
+          python3 tools/ci/repair_step329_post_generation_compile_hardening.py droid-src
+          python3 tools/ci/repair_step349_final_generated_compile.py droid-src
       - name: Verify all hardened contracts
         shell: bash
         run: |
