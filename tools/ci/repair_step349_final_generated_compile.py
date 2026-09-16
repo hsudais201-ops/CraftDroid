@@ -126,26 +126,8 @@ def restore_helpers(source: str) -> str:
     return source[:anchor] + HELPERS + source[anchor:]
 
 
-def repair_dependency_join(source: str) -> str:
-    source = re.sub(
-        r'names\.joinToString\("\s*\n\s*"\) \{ "• \$it" \}',
-        'names.joinToString("\\n") { "• $it" }',
-        source,
-    )
-    source = source.replace(
-        'names.joinToString("\n") { "• $it" }',
-        'names.joinToString("\\n") { "• $it" }',
-    )
-    return source
-
-
 def repair_orphan_fragments(source: str) -> str:
-    """Remove known late-generator fragments that can change class scope.
-
-    Some pre-final UI patches append a legacy Java resolver body without its
-    function declaration. Removing that whole body before the canonical helper
-    restore prevents an unmatched brace from closing the activity class early.
-    """
+    """Remove known late-generator fragments that can change class scope."""
     legacy_start = source.find(
         '        val saved = getSharedPreferences("droid_launcher", MODE_PRIVATE).getInt("java_runtime_override", 0)'
     )
@@ -153,8 +135,6 @@ def repair_orphan_fragments(source: str) -> str:
     if legacy_start >= 0 and feature_anchor > legacy_start:
         source = source[:legacy_start] + source[feature_anchor:]
 
-    # A late expression-bodied Java resolver can leave only its expression after
-    # helper cleanup. It is invalid at class scope, so remove that orphan line.
     source = re.sub(
         r'(?m)^\s*storedJavaOverride\(\) \?: recommendedJavaForVersion\(version\)\s*$\n',
         '',
@@ -224,7 +204,6 @@ def main() -> int:
     before = source
     source = repair_orphan_fragments(source)
     source = restore_helpers(source)
-    source = repair_dependency_join(source)
     source, changed_strings = repair_regular_string_newlines(source)
     _, residual = repair_regular_string_newlines(source)
     if residual:
@@ -233,7 +212,6 @@ def main() -> int:
         'private fun recommendedJavaForVersion(version: String): Int',
         'private fun resolveJavaForVersion(version: String): Int',
         'private fun saveJavaOverride(value: String)',
-        'names.joinToString("\\n") { "• $it" }',
     )
     for needle in required:
         if needle not in source:
