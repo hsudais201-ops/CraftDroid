@@ -3,6 +3,35 @@ from pathlib import Path
 import sys
 
 
+def patch_authoritative_java_runtime(root: Path) -> None:
+    runtime = root / "app/src/main/java/com/example/runtime/JavaRuntimeManager.kt"
+    if not runtime.is_file():
+        raise SystemExit(f"[step217] missing authoritative Android JRE manager: {runtime}")
+    text = runtime.read_text(encoding="utf-8")
+    bad = 'digest.digest().joinToString("") { "%02x".format(it) }'
+    good = 'digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }'
+    if bad in text:
+        text = text.replace(bad, good, 1)
+        runtime.write_text(text, encoding="utf-8")
+        print("[step217] fixed signed-byte SHA-256 formatting in Android JRE manager")
+    required = (
+        "class JavaRuntimeManager",
+        "suspend fun ensureRuntime(",
+        "private fun verifySha256",
+        "private fun extractTarXz",
+        "private fun testJavaExecutable",
+        "suspend fun installRuntime(",
+        "Build.SUPPORTED_ABIS",
+        "safeOutput",
+    )
+    missing = [needle for needle in required if needle not in text]
+    if missing:
+        raise SystemExit("[step217] authoritative runtime manager contract missing: " + ", ".join(missing))
+    if bad in text:
+        raise SystemExit("[step217] signed-byte SHA-256 formatting remains in authoritative runtime manager")
+    print("[step217] authoritative Android JRE manager contract + SHA-256 verification checked")
+
+
 def main() -> int:
     root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.cwd().resolve()
     ui = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
@@ -84,6 +113,7 @@ def main() -> int:
     s = s[:start] + new_page + s[end:]
 
     ui.write_text(s, encoding="utf-8")
+    patch_authoritative_java_runtime(root)
     print("[step217] Java Runtime Manager page installed")
     print("[step217] Java 8/16/17/21/25 runtime choices exposed")
     print("[step217] selected runtime persistence installed")
