@@ -13,6 +13,15 @@ object MinecraftPerformanceTuner {
         val graphics: String
     )
 
+    private data class TierSettings(
+        val renderDistance: Int,
+        val simulationDistance: Int,
+        val graphics: String,
+        val particles: String,
+        val clouds: String,
+        val entityShadows: String
+    )
+
     fun apply(optionsFile: File, profile: PerformanceProfile, fpsCap: Int): AppliedSettings? {
         return try {
             optionsFile.parentFile?.mkdirs()
@@ -32,20 +41,20 @@ object MinecraftPerformanceTuner {
             }
 
             val targetFps = fpsCap.coerceIn(30, profile.targetFps)
-            val (renderDistance, simulationDistance, graphics, particles, clouds, entityShadows) = when (profile.tier) {
-                PerformanceProfile.Tier.LOW -> listOf(6, 4, "fast", "minimal", "false", "false")
-                PerformanceProfile.Tier.BALANCED -> listOf(10, 6, "fast", "decreased", "false", "true")
-                PerformanceProfile.Tier.HIGH -> listOf(14, 8, "fancy", "all", "true", "true")
+            val settings = when (profile.tier) {
+                PerformanceProfile.Tier.LOW -> TierSettings(6, 4, "fast", "minimal", "false", "false")
+                PerformanceProfile.Tier.BALANCED -> TierSettings(10, 6, "fast", "decreased", "false", "true")
+                PerformanceProfile.Tier.HIGH -> TierSettings(14, 8, "fancy", "all", "true", "true")
             }
 
             val tuned = linkedMapOf(
                 "maxFps" to targetFps.toString(),
-                "renderDistance" to renderDistance.toString(),
-                "simulationDistance" to simulationDistance.toString(),
-                "graphics" to graphics,
-                "particles" to particles,
-                "renderClouds" to clouds,
-                "entityShadows" to entityShadows,
+                "renderDistance" to settings.renderDistance.toString(),
+                "simulationDistance" to settings.simulationDistance.toString(),
+                "graphics" to settings.graphics,
+                "particles" to settings.particles,
+                "renderClouds" to settings.clouds,
+                "entityShadows" to settings.entityShadows,
                 "biomeBlendRadius" to if (profile.tier == PerformanceProfile.Tier.LOW) "0" else "2",
                 "mipmapLevels" to if (profile.tier == PerformanceProfile.Tier.LOW) "0" else "2",
                 "entityDistanceScaling" to if (profile.tier == PerformanceProfile.Tier.LOW) "0.5" else "0.75"
@@ -97,7 +106,7 @@ object MinecraftPerformanceTuner {
             }
             tmp.delete()
 
-            AppliedSettings(targetFps, renderDistance, simulationDistance, graphics).also {
+            AppliedSettings(targetFps, settings.renderDistance, settings.simulationDistance, settings.graphics).also {
                 LauncherLogger.info(
                     "Performance profile applied: tier=${profile.tier}, fps=${it.maxFps}, " +
                         "renderDistance=${it.renderDistance}, simulationDistance=${it.simulationDistance}, graphics=${it.graphics}"
