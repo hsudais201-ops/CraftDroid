@@ -1,26 +1,23 @@
 #!/usr/bin/env python3
-"""Step 218: wire Minecraft version -> Java runtime selection into the UI build."""
+"""Step 218: wire Minecraft version -> Java runtime selection into the generated UI."""
 from pathlib import Path
 import sys
-
 
 def main() -> int:
     root = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.cwd().resolve()
     ui = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
-    if not ui.exists():
-        raise SystemExit(f"[step218] missing UI source: {ui}")
+    if not ui.is_file(): raise SystemExit(f"[step218] missing UI source: {ui}")
     s = ui.read_text(encoding="utf-8")
-
-    anchor = '    private fun javaPage() {'
-    if 'private fun recommendedJavaForVersion(version: String): Int' not in s:
-        helper = '''    private fun recommendedJavaForVersion(version: String): Int {
-        val nums = version.split('.').mapNotNull { it.toIntOrNull() }
-        val major = nums.getOrNull(0) ?: return 17
-        val minor = nums.getOrNull(1) ?: 0
+    helper = '''    private fun recommendedJavaForVersion(version: String): Int {
+        val parts = version.split('.').mapNotNull { it.toIntOrNull() }
+        val major = parts.getOrNull(0) ?: return 17
+        val minor = parts.getOrNull(1) ?: 0
+        val patch = parts.getOrNull(2) ?: 0
         return when {
-            major <= 1 && minor <= 16 -> 8
-            major == 1 && minor <= 20 -> 17
-            major == 1 && minor >= 20 -> 21
+            major == 1 && minor <= 16 -> 8
+            major == 1 && minor <= 19 -> 17
+            major == 1 && minor == 20 && patch < 5 -> 17
+            major == 1 && (minor > 20 || (minor == 20 && patch >= 5)) -> 21
             major >= 25 -> 25
             else -> 21
         }
@@ -35,21 +32,29 @@ def main() -> int:
 
     private fun saveJavaOverride(value: String) {
         getSharedPreferences("droid_launcher", MODE_PRIVATE).edit().putString("selected_java_runtime", value).apply()
+        System.setProperty("droid.launcher.java.runtime", value)
     }
 
-'''
-        if anchor not in s:
-            raise SystemExit('[step218] javaPage anchor not found')
-        s = s.replace(anchor, helper + anchor, 1)
+    private fun getResolvedJavaForLaunch(version: String): Int = resolveJavaForVersion(version)
 
-    # Upgrade the Java page so AUTO is visible and each runtime can be selected explicitly.
+'''
+    # Always restore the helper block if any later generator removed it.
+    for sig in ('    private fun recommendedJavaForVersion(version: String): Int {', '    private fun storedJavaOverride(): Int?', '    private fun resolveJavaForVersion(version: String): Int =', '    private fun saveJavaOverride(value: String) {', '    private fun getResolvedJavaForLaunch(version: String): Int ='):
+        if sig not in s:
+            anchor = s.find('    private fun rendererPage() {')
+            if anchor < 0: raise SystemExit('[step218] rendererPage anchor not found')
+            s = s[:anchor] + helper + s[anchor:]
+            break
+
+    # Replace only the javaPage body; helpers remain immediately before rendererPage.
     start = s.find('    private fun javaPage() {')
-    end = s.find('    private fun controlsPage()', start)
-    if start < 0 or end < 0:
-        raise SystemExit('[step218] javaPage block not found')
+    end = s.find('\n    private fun controlsPage()', start)
+    if start < 0 or end < 0: raise SystemExit('[step218] javaPage block not found')
     new_page = '''    private fun javaPage() {
         pageArea.addView(section("Java", "Automatic runtime selection with per-version override"))
-        val selected = getSharedPreferences("droid_launcher", MODE_PRIVATE).getString("selected_java_runtime", "auto") ?: "auto"
+        val prefs = getSharedPreferences("droid_launcher", MODE_PRIVATE)
+        val selected = prefs.getString("selected_java_runtime", "auto") ?: "auto"
+        System.setProperty("droid.launcher.java.runtime", selected)
         val autoCard = cardView(12)
         autoCard.addView(label("Automatic", 16f, true))
         autoCard.addView(label("Chooses Java from the Minecraft version unless you select an override.", 12f, false))
@@ -60,7 +65,6 @@ def main() -> int:
         autoLine.addView(autoButton)
         autoCard.addView(autoLine)
         pageArea.addView(autoCard)
-
         val examples = listOf("1.16.5", "1.18.2", "1.20.4", "1.20.6", "1.21.1", "1.21.11", "25.1")
         examples.forEach { version ->
             val recommended = resolveJavaForVersion(version)
@@ -74,29 +78,13 @@ def main() -> int:
                 b.setOnClickListener { saveJavaOverride(if (option == "Auto") "auto" else option); showPage("Java") }
                 line.addView(b, LinearLayout.LayoutParams(dp(82), dp(42)))
             }
-            c.addView(line)
-            pageArea.addView(c)
+            c.addView(line); pageArea.addView(c)
         }
     }
-
 '''
     s = s[:start] + new_page + s[end:]
-
-    # Add launch diagnostics helper so later launch steps can call a resolved Java major.
-    anchor2 = '    private fun rendererPage() {'
-    if 'private fun getResolvedJavaForLaunch(version: String): Int' not in s:
-        helper2 = '''    private fun getResolvedJavaForLaunch(version: String): Int = resolveJavaForVersion(version)
-
-'''
-        if anchor2 in s:
-            s = s.replace(anchor2, helper2 + anchor2, 1)
-
     ui.write_text(s, encoding="utf-8")
-    print('[step218] automatic Minecraft-version Java resolver installed')
-    print('[step218] explicit Java 8/17/21/25 override support installed')
-    print('[step218] persisted runtime override installed')
+    print('[step218] Java resolver/helper contract restored and persisted')
     return 0
 
-
-if __name__ == '__main__':
-    raise SystemExit(main())
+if __name__ == '__main__': raise SystemExit(main())
