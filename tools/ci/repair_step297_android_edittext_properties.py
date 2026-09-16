@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 297/298/337/338/339: normalize generated Android APIs and apply final UIs."""
+"""Step 297/298/337/338/339/340: normalize generated Android APIs and apply final UIs."""
 from pathlib import Path
 import re
 import subprocess
@@ -22,31 +22,25 @@ def main() -> int:
     if TOKEN.search(repaired) or "setSingleLine(true)" in repaired:
         raise SystemExit("[step297] unresolved EditText single-line API remains")
 
-    patch337 = Path(__file__).with_name("apply_step337_microsoft_signin_reference_gui.py")
-    verifier337 = Path(__file__).with_name("verify_step337_microsoft_signin_gui.py")
-    if not patch337.is_file() or not verifier337.is_file():
-        raise SystemExit("[step337] Microsoft sign-in GUI patch/verifier missing")
-    subprocess.run([sys.executable, str(patch337), str(root)], check=True)
-    subprocess.run([sys.executable, str(verifier337), str(root)], check=True)
-
-    patch338 = Path(__file__).with_name("apply_step338_offline_profile_gui.py")
-    verifier338 = Path(__file__).with_name("verify_step338_offline_profile_gui.py")
-    if not patch338.is_file() or not verifier338.is_file():
-        raise SystemExit("[step338] offline profile GUI patch/verifier missing")
-    subprocess.run([sys.executable, str(patch338), str(root)], check=True)
-    subprocess.run([sys.executable, str(verifier338), str(root)], check=True)
-
-    patch339 = Path(__file__).with_name("apply_step339_settings_renderer_reference_gui.py")
-    verifier339 = Path(__file__).with_name("verify_step339_settings_renderer_reference_gui.py")
-    if not patch339.is_file() or not verifier339.is_file():
-        raise SystemExit("[step339] Settings Renderer GUI patch/verifier missing")
-    subprocess.run([sys.executable, str(patch339), str(root)], check=True)
-    subprocess.run([sys.executable, str(verifier339), str(root)], check=True)
+    patches = [
+        ("337", "apply_step337_microsoft_signin_reference_gui.py", "verify_step337_microsoft_signin_gui.py", "Microsoft sign-in GUI patch/verifier missing"),
+        ("338", "apply_step338_offline_profile_gui.py", "verify_step338_offline_profile_gui.py", "offline profile GUI patch/verifier missing"),
+        ("339", "apply_step339_settings_renderer_reference_gui.py", "verify_step339_settings_renderer_reference_gui.py", "Settings Renderer GUI patch/verifier missing"),
+        ("340", "apply_step340_settings_reference_polish.py", "verify_step340_settings_reference_polish.py", "Settings reference polish patch/verifier missing"),
+    ]
+    for step, patch_name, verifier_name, error_text in patches:
+        patch = Path(__file__).with_name(patch_name)
+        verifier = Path(__file__).with_name(verifier_name)
+        if not patch.is_file() or not verifier.is_file():
+            raise SystemExit(f"[step{step}] {error_text}")
+        subprocess.run([sys.executable, str(patch), str(root)], check=True)
+        subprocess.run([sys.executable, str(verifier), str(root)], check=True)
 
     print(f"[step297] EditText single-line normalization complete; property replacements={token_replacements}; setter replacements={setter_replacements}")
     print("[step337] Microsoft custom sign-in GUI and top-right Home action finalized after UI generation")
     print("[step338] Offline profile reference GUI and Home return action finalized after UI generation")
     print("[step339] Settings · Renderer reference GUI and working option controls finalized after UI generation")
+    print("[step340] Settings reference shell polished to match 2.jpeg")
     return 0
 
 if __name__ == "__main__":
