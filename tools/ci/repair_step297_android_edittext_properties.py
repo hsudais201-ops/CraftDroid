@@ -47,6 +47,12 @@ def main() -> int:
     # generated Kotlin file. Re-assert the Settings/Renderer reference contract at
     # the end so downstream whole-method rewrites cannot erase Step340's styling.
     run_pair(root, '340-final', 'apply_step340_settings_reference_polish.py', 'verify_step340_settings_reference_polish.py')
+
+    # Final compile-boundary repair runs after every late UI rewrite in this chain.
+    final_repair = Path(__file__).with_name('repair_step349_final_generated_compile.py')
+    if not final_repair.is_file():
+        raise SystemExit('step349 final generated compile repair is missing')
+    subprocess.run([sys.executable, str(final_repair), str(root)], check=True)
     return 0
 
 
