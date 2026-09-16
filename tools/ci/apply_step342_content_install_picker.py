@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Step 342: turn the 3.jpeg Install buttons into real local-content import actions."""
 from pathlib import Path
+import re
 import sys
 
 MARKER = "// STEP342_CONTENT_INSTALL_PICKER"
@@ -72,9 +73,6 @@ def main() -> int:
         print("[step342] content install picker already present")
         return 0
 
-    # Step341 may already have converted Install to startContentImport(page). In that
-    # case only the implementation and marker remain to be installed. Older generated
-    # variants used a Toast-only else branch, which is normalized here too.
     old = '''                } else {
                     android.widget.Toast.makeText(this, "Installing $name for $selectedMinecraftVersion with $selectedLoader", android.widget.Toast.LENGTH_SHORT).show()
                 }'''
@@ -85,21 +83,29 @@ def main() -> int:
     elif 'startContentImport(page)' not in s:
         raise SystemExit("[step342] no content Install action anchor found")
 
-    companion = '    companion object {\n'
-    if companion not in s:
+    # Locate the class companion object robustly even when whitespace/newline layout
+    # was changed by a later generated-source repair.
+    companion_match = re.search(r"(?m)^[ \t]*companion object[ \t]*\{", s)
+    if not companion_match:
         raise SystemExit("[step342] companion object not found")
+    companion = companion_match.group(0)
     if 'CONTENT_PICKER_REQUEST' not in s:
-        s = s.replace(companion, '    companion object {\n        private const val CONTENT_PICKER_REQUEST = 341\n', 1)
+        start, end = companion_match.span()
+        s = s[:end] + '\n        private const val CONTENT_PICKER_REQUEST = 341' + s[end:]
 
-    # Avoid duplicate declarations on partially patched generated sources.
     if 'private fun startContentImport(' not in s:
-        s = s.replace(companion if '    companion object {\n' in s else '    companion object {', METHODS + '\n    companion object {', 1)
+        companion_match = re.search(r"(?m)^[ \t]*companion object[ \t]*\{", s)
+        if not companion_match:
+            raise SystemExit("[step342] companion object insertion anchor not found")
+        start, _ = companion_match.span()
+        s = s[:start] + METHODS + '\n' + s[start:]
+
     if MARKER not in s:
-        anchor = '    companion object {\n'
-        if anchor in s:
-            s = s.replace(anchor, '    ' + MARKER + '\n' + anchor, 1)
-        else:
-            raise SystemExit("[step342] companion insertion anchor not found")
+        companion_match = re.search(r"(?m)^[ \t]*companion object[ \t]*\{", s)
+        if not companion_match:
+            raise SystemExit("[step342] marker insertion anchor not found")
+        start, _ = companion_match.span()
+        s = s[:start] + '    ' + MARKER + '\n' + s[start:]
 
     ui.write_text(s, encoding="utf-8")
     print("[step342] real local import picker wired to Modpack/Mod/Shader/Resource Pack Install buttons")
