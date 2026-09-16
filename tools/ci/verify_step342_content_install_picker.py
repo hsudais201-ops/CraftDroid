@@ -5,7 +5,6 @@ import sys
 
 MARKER = "// STEP342_CONTENT_INSTALL_PICKER"
 REQUIRED = [
-    'override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?)',
     'Intent.ACTION_OPEN_DOCUMENT',
     'CONTENT_PICKER_REQUEST',
     'private var pendingContentPage: String?',
@@ -15,7 +14,7 @@ REQUIRED = [
     'MinecraftContentManager.Kind.RESOURCE_PACK',
     'MinecraftContentManager.importArchive',
     'MinecraftContentManager.importFile',
-    'startContentImport(page)',
+    'private fun startContentImport(pageName: String)',
 ]
 
 
@@ -25,12 +24,24 @@ def main() -> int:
     if not ui.is_file():
         raise SystemExit(f"[step342] missing UI source: {ui}")
     s = ui.read_text(encoding="utf-8")
-    missing = [x for x in REQUIRED if x not in s]
+
+    # Accept both valid Android/Kotlin spellings. Step 342 intentionally uses the
+    # fully-qualified type to remain independent of import ordering in generated UI.
+    result_callback_ok = (
+        'override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?)' in s
+        or 'override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?)' in s
+    )
+    required = list(REQUIRED)
+    if not result_callback_ok:
+        required.append('override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) or android.content.Intent?')
+
+    missing = [x for x in required if x not in s]
     if MARKER not in s:
         missing.append(MARKER)
     if missing:
         raise SystemExit("[step342] missing contracts: " + ", ".join(missing))
     print("[step342] content install picker verification passed")
+    print("[step342] callback accepts imported or fully-qualified android.content.Intent")
     return 0
 
 if __name__ == "__main__":
