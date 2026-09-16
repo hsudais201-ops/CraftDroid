@@ -193,10 +193,17 @@ def main() -> int:
     else:
         raise SystemExit("[step329] post-generation compile hardening script missing")
 
+    race_script = project / "tools/ci/repair_step330_installer_race_and_path_hardening.py"
+    if race_script.is_file():
+        subprocess.run([sys.executable, str(race_script), str(root)], check=True)
+    else:
+        raise SystemExit("[step330] installer race/path hardening script missing")
+
     print("[step293] self-contained server Add/Edit/Delete/Select/Refresh contracts installed")
     print("[step293] server reachability checks run off the Android UI thread")
     print("[step328] latest-version wiring applied after final UI replacement")
     print("[step329] post-generation compile hardening applied")
+    print("[step330] installer race and version-path hardening applied")
     return 0
 
 
