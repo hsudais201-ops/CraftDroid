@@ -65,17 +65,14 @@ def method_end(text: str, start: int) -> int:
 
 
 def dedupe_methods(text: str, names: tuple[str, ...]) -> str:
-    """Keep the last generated definition for each named private function."""
     for name in names:
         pat = re.compile(r'(?m)^\s*private\s+fun\s+' + re.escape(name) + r'\s*\(')
         while True:
             matches = list(pat.finditer(text))
             if len(matches) <= 1:
                 break
-            # Remove the earliest definition; later generators are the final authority.
             m = matches[0]
-            end = method_end(text, m.start())
-            text = text[:m.start()] + text[end:]
+            text = text[:m.start()] + text[method_end(text, m.start()):]
     return text
 
 
@@ -91,14 +88,12 @@ def normalize_page_boundary(text: str) -> str:
         r'(?s)    private fun getResolvedJavaForLaunch\(version: String\): Int \{\s*'
         r'private fun featuresPage\(\) \{'
     )
-    if pattern.search(text):
-        text = pattern.sub(
-            '    private fun getResolvedJavaForLaunch(version: String): Int = resolveJavaForVersion(version)\n\n'
-            '    private fun featuresPage() {',
-            text,
-            count=1,
-        )
-    return text
+    return pattern.sub(
+        '    private fun getResolvedJavaForLaunch(version: String): Int = resolveJavaForVersion(version)\n\n'
+        '    private fun featuresPage() {',
+        text,
+        count=1,
+    )
 
 
 def normalize_edit_text(text: str) -> str:
@@ -121,13 +116,31 @@ def normalize_on_create(text: str) -> str:
     return text[:start] + replacement + text[end:]
 
 
+def repair_progress_context(text: str) -> str:
+    declaration = '    private var progressContext: android.content.Context? = null'
+    if declaration in text:
+        return text
+    anchors = (
+        '    private val cancellations = ConcurrentHashMap.newKeySet<String>()',
+        '    private val activeTasks = ConcurrentHashMap<String, Job>()',
+        '    private val taskStates = ConcurrentHashMap<String, Any>()',
+    )
+    for anchor in anchors:
+        if anchor in text:
+            return text.replace(anchor, anchor + '\n' + declaration, 1)
+    match = re.search(r'class\s+MinecraftVersionInstallManager\b[^\{]*\{', text)
+    if match:
+        return text[:match.end()] + '\n' + declaration + '\n' + text[match.end():]
+    raise SystemExit('[step349] cannot locate installer class field insertion point')
+
+
 def run_quality_gate(repo_root: Path, generated_root: Path) -> None:
     checker = repo_root / 'tools/ci/deep_quality_pass_1000.py'
-    if not checker.is_file():
-        print('[step349] deep_quality_pass_1000.py not present; continuing with structural gate')
-        return
-    subprocess.run([sys.executable, str(checker), str(generated_root)], cwd=repo_root, check=True)
-    print('[step349] deep_quality_pass_1000 PASS')
+    if checker.is_file():
+        subprocess.run([sys.executable, str(checker), str(generated_root)], cwd=repo_root, check=True)
+        print('[step349] deep_quality_pass_1000 PASS')
+    else:
+        print('[step349] deep_quality_pass_1000.py not present; structural gate still active')
 
 
 def main() -> int:
@@ -135,10 +148,8 @@ def main() -> int:
     repo_root = Path.cwd().resolve()
     ui = root / 'app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt'
     installer = root / 'app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt'
-    if not ui.is_file():
-        raise SystemExit(f'[step349] missing UI source: {ui}')
-    if not installer.is_file():
-        raise SystemExit(f'[step349] missing installer source: {installer}')
+    if not ui.is_file() or not installer.is_file():
+        raise SystemExit('[step349] required generated sources are missing')
 
     source = ui.read_text(encoding='utf-8')
     before = source
@@ -153,71 +164,43 @@ def main() -> int:
         'refreshServerStatus', 'resolveJavaForVersion', 'getResolvedJavaForLaunch',
     ))
     source = normalize_on_create(source)
-    source = strip_orphan_fragments(source)
     ui.write_text(source, encoding='utf-8')
 
-    inst = installer.read_text(encoding='utf-8')
-    if 'progressContext' not in inst:
-        anchor = '    private val cancellations = ConcurrentHashMap.newKeySet<String>()'
-        if anchor not in inst:
-            raise SystemExit('[step349] installer cancellation anchor missing')
-        inst = inst.replace(
-            anchor,
-            anchor + '\n    private var progressContext: android.content.Context? = null',
-            1,
-        )
-        installer.write_text(inst, encoding='utf-8')
+    inst_before = installer.read_text(encoding='utf-8')
+    inst = repair_progress_context(inst_before)
+    installer.write_text(inst, encoding='utf-8')
 
-    required_members = [
-        'private fun featuresPage()',
-        'private fun featureToggle(',
-        'private fun rendererPage()',
-        'private fun javaPage()',
-        'private fun controlsPage()',
-        'private fun libraryPage(',
-        'private fun aboutPage(',
-        'private fun serverPrefs()',
-        'private fun getSavedServers()',
-        'private fun getServerName(',
-        'private fun getServerStatus(',
-        'private fun selectServer(',
-        'private fun deleteServer(',
-        'private fun showServerDialog(',
-        'private fun refreshServerStatus(',
-        'private fun resolveJavaForVersion(',
-        'private fun getResolvedJavaForLaunch(',
-    ]
+    required_members = (
+        'private fun featuresPage()', 'private fun featureToggle(', 'private fun rendererPage()',
+        'private fun javaPage()', 'private fun controlsPage()', 'private fun libraryPage(',
+        'private fun aboutPage(', 'private fun serverPrefs()', 'private fun getSavedServers()',
+        'private fun getServerName(', 'private fun getServerStatus(', 'private fun selectServer(',
+        'private fun deleteServer(', 'private fun showServerDialog(', 'private fun refreshServerStatus(',
+        'private fun resolveJavaForVersion(', 'private fun getResolvedJavaForLaunch(',
+    )
     for sig in required_members:
-        count = source.count(sig)
-        if count != 1:
-            raise SystemExit(f'[step349] {sig} count={count}, expected 1')
+        if source.count(sig) != 1:
+            raise SystemExit(f'[step349] {sig} count={source.count(sig)}, expected 1')
     if 'private fun featuresPage() {\n        pageArea.addView(section("Feature Center"' not in source:
         raise SystemExit('[step349] Feature Center method body boundary failed')
-    if 'STEP293_SERVER_CONTRACTS' in source or 'STEP329_SERVER_CONTRACTS' in source:
+    if any(x in source for x in ('STEP293_SERVER_CONTRACTS', 'STEP329_SERVER_CONTRACTS')):
         raise SystemExit('[step349] orphan contract markers remain')
     server_anchor = source.find('private fun serverPrefs()')
-    if server_anchor < 0:
-        raise SystemExit('[step349] serverPrefs anchor missing')
     if re.search(r'(?m)^\s*(?:getSharedPreferences\("droid_launcher_servers"|serverPrefs\(\)\.getString)', source[:server_anchor]):
         raise SystemExit('[step349] orphan server expressions remain before helper')
-    if 'singleLine =' in source:
-        raise SystemExit('[step349] raw EditText singleLine assignments remain')
-    if '\n            private fun ' in source:
-        raise SystemExit('[step349] nested private function remains')
-    create_start = source.find('override fun onCreate')
-    create_slice = source[create_start:create_start + 700]
-    if 'showBootstrapGate()' in create_slice:
-        raise SystemExit('[step349] fake bootstrap gate is still in onCreate')
-    if 'buildUi()\n        showPage("Game")' not in create_slice:
-        raise SystemExit('[step349] direct Game startup invariant missing')
+    if 'singleLine =' in source or '\n            private fun ' in source:
+        raise SystemExit('[step349] invalid generated Kotlin scope/API remains')
+    start = source.find('override fun onCreate')
+    slice_ = source[start:start + 700]
+    if 'showBootstrapGate()' in slice_ or 'buildUi()\n        showPage("Game")' not in slice_:
+        raise SystemExit('[step349] direct launcher startup invariant failed')
     if source.count('class DroidLauncherUiActivity') != 1 or not source.rstrip().endswith('}'):
         raise SystemExit('[step349] launcher class boundary invariant failed')
-    if 'private var progressContext' not in inst:
-        raise SystemExit('[step349] installer progressContext missing')
+    if 'private var progressContext: android.content.Context? = null' not in inst:
+        raise SystemExit('[step349] installer progressContext declaration missing')
 
     run_quality_gate(repo_root, root)
-    print(f'[step349] final generated-source repair complete; changed={int(source != before)}')
-    print('[step349] page boundary, startup, orphan contracts, deduplication, generated members, EditText mappings and class scope verified')
+    print(f'[step349] final repair complete; ui_changed={int(source != before)} installer_changed={int(inst != inst_before)}')
     return 0
 
 
