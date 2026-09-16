@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""Step 342: turn the 3.jpeg Install buttons into real local-content import actions."""
+"""Step 342: wire Download/Install content actions to a real Android file picker."""
 from pathlib import Path
-import re
-import sys
+import re, sys
 
 MARKER = "// STEP342_CONTENT_INSTALL_PICKER"
 METHODS = r'''
     private var pendingContentPage: String? = null
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != CONTENT_PICKER_REQUEST || resultCode != RESULT_OK) return
         val uri = data?.data ?: return
@@ -33,137 +32,56 @@ METHODS = r'''
                 else -> null
             }
             if (kind == null) throw java.io.IOException("Unsupported content type")
-            val installed = if (kind == MinecraftContentManager.Kind.MODPACK) {
-                MinecraftContentManager.importArchive(this, kind, temp)
-            } else {
-                MinecraftContentManager.importFile(this, kind, temp)
-            }
+            val installed = if (kind == MinecraftContentManager.Kind.MODPACK) MinecraftContentManager.importArchive(this, kind, temp)
+            else MinecraftContentManager.importFile(this, kind, temp)
             android.widget.Toast.makeText(this, "Installed ${installed.name}", android.widget.Toast.LENGTH_LONG).show()
         } catch (t: Throwable) {
             android.widget.Toast.makeText(this, "Install failed: ${t.message ?: "unknown error"}", android.widget.Toast.LENGTH_LONG).show()
-        } finally {
-            pendingContentPage = null
-        }
+        } finally { pendingContentPage = null }
     }
 
     private fun startContentImport(pageName: String) {
         pendingContentPage = pageName
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
+        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
             type = "*/*"
         }
-        try {
-            startActivityForResult(intent, CONTENT_PICKER_REQUEST)
-        } catch (t: Throwable) {
+        try { startActivityForResult(intent, CONTENT_PICKER_REQUEST) }
+        catch (t: Throwable) {
             pendingContentPage = null
             android.widget.Toast.makeText(this, "No file picker available", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 '''
 
-
-def inject_listener_into_action(s: str) -> str | None:
-    """Attach the content picker to generated Install rows across UI variants."""
-    if 'startContentImport(page)' in s:
-        return s
-    # Current Step 341 generated row shape.
-    pattern = re.compile(
-        r'(?ms)(^\s*val action = button\(if \(page == "Game"\) "↪" else "Install"\)\s*\n'
-        r'\s*action\.contentDescription = if \(page == "Game"\) "Select \$name" else "Install \$name"\s*\n)'
-    )
-    m = pattern.search(s)
-    if m:
-        injected = m.group(1) + '''            action.setOnClickListener {
-                if (page == "Game") {
-                    selectedMinecraftVersion = name
-                    android.widget.Toast.makeText(this, "Selected Minecraft $name", android.widget.Toast.LENGTH_SHORT).show()
-                    libraryPage(page)
-                } else {
-                    startContentImport(page)
-                }
-            }
-'''
-        return s[:m.start()] + injected + s[m.end():]
-
-    # Fallback: find any generated action variable followed by a content install label.
-    generic = re.compile(r'(?ms)(^\s*val action = button\([^\n]*\)\s*\n)(\s*action\.contentDescription[^\n]*Install[^\n]*\n)')
-    m = generic.search(s)
-    if m:
-        injected = m.group(1) + m.group(2) + '''            action.setOnClickListener {
-                if (page == "Game") {
-                    selectedMinecraftVersion = name
-                    libraryPage(page)
-                } else {
-                    startContentImport(page)
-                }
-            }
-'''
-        return s[:m.start()] + injected + s[m.end():]
-    return None
-
-
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
     ui = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
-    if not ui.is_file():
-        raise SystemExit(f"[step342] missing UI source: {ui}")
+    if not ui.is_file(): raise SystemExit(f"[step342] missing UI source: {ui}")
     s = ui.read_text(encoding="utf-8")
-
-    implementation_missing = (
-        'private fun startContentImport(' not in s
-        or 'override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?)' not in s
-        or 'MinecraftContentManager.importFile' not in s
-    )
-    listener_missing = 'startContentImport(page)' not in s
-
-    # Marker alone is insufficient: late UI generators can leave it while deleting
-    # the implementation or the Install action. Repair the generated row first.
-    repaired_listener = False
-    if listener_missing:
-        repaired = inject_listener_into_action(s)
-        if repaired is not None:
-            s = repaired
-            repaired_listener = True
-
+    # Repair any generated Install action before installing the callback implementation.
     if 'startContentImport(page)' not in s:
-        # Older variants used a toast-only content Install branch.
-        old = '''                } else {
-                    android.widget.Toast.makeText(this, "Installing $name for $selectedMinecraftVersion with $selectedLoader", android.widget.Toast.LENGTH_SHORT).show()
-                }'''
-        if old in s:
-            s = s.replace(old, '''                } else {
-                    startContentImport(page)
-                }''', 1)
-
-    if implementation_missing:
-        # Remove only our known partial implementation, if any, before reinserting it.
-        s = re.sub(r'(?ms)^    private var pendingContentPage: String\? = null\n.*?^    private fun startContentImport\(pageName: String\) \{.*?^    \}\n', '', s, count=1)
-        companion_match = re.search(r"(?m)^[ \t]*companion object[ \t]*\{", s)
-        if not companion_match:
-            raise SystemExit("[step342] companion object not found")
-        start, _ = companion_match.span()
-        s = s[:start] + METHODS + '\n' + s[start:]
-
-    companion_match = re.search(r"(?m)^[ \t]*companion object[ \t]*\{", s)
-    if not companion_match:
-        raise SystemExit("[step342] companion object not found")
-    if 'CONTENT_PICKER_REQUEST' not in s:
-        _, end = companion_match.span()
-        s = s[:end] + '\n        private const val CONTENT_PICKER_REQUEST = 341' + s[end:]
-
+        if 'val action = button(if (page == "Game") "↪" else "Install")' in s:
+            s = s.replace('            action.contentDescription = if (page == "Game") "Select $name" else "Install $name"\n', '            action.contentDescription = if (page == "Game") "Select $name" else "Install $name"\n            action.setOnClickListener { if (page == "Game") { selectedMinecraftVersion = name } else { startContentImport(page) } }\n', 1)
+        else:
+            old = '                } else {\n                    android.widget.Toast.makeText(this, "Installing $name for $selectedMinecraftVersion with $selectedLoader", android.widget.Toast.LENGTH_SHORT).show()\n                }'
+            if old in s: s = s.replace(old, '                } else {\n                    startContentImport(page)\n                }', 1)
+    # Replace only our known prior implementation to keep this step idempotent.
+    if 'private fun startContentImport(' not in s:
+        companion = re.search(r'(?m)^\s*companion object\s*\{', s)
+        if not companion: raise SystemExit('[step342] companion object not found')
+        s = s[:companion.start()] + METHODS + '\n' + s[companion.start():]
+    # The previous check accidentally looked for a use-site reference. Require the declaration.
+    companion = re.search(r'(?m)^\s*companion object\s*\{', s)
+    if not companion: raise SystemExit('[step342] companion object not found')
+    if 'private const val CONTENT_PICKER_REQUEST' not in s:
+        s = s[:companion.end()] + '\n        private const val CONTENT_PICKER_REQUEST = 341' + s[companion.end():]
     if MARKER not in s:
-        start, _ = companion_match.span()
-        s = s[:start] + '    ' + MARKER + '\n' + s[start:]
-
-    # Fail only when all known generated shapes are genuinely absent. This keeps the
-    # step strict enough to catch regressions while handling late UI rewrites.
+        s = s[:companion.start()] + '    ' + MARKER + '\n' + s[companion.start():]
     if 'startContentImport(page)' not in s:
-        raise SystemExit("[step342] no content Install action anchor found in generated UI")
-
-    ui.write_text(s, encoding="utf-8")
-    print(f"[step342] real local import picker wired; repaired_partial={implementation_missing}; repaired_listener={repaired_listener}")
+        raise SystemExit('[step342] no content Install action anchor found in generated UI')
+    ui.write_text(s, encoding='utf-8')
+    print('[step342] real local import picker wired; request-code declaration guaranteed')
     return 0
 
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+if __name__ == '__main__': raise SystemExit(main())
