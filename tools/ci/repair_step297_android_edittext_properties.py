@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 297/298/337/338: normalize generated Android APIs and apply final account UIs."""
+"""Step 297/298/337/338/339: normalize generated Android APIs and apply final UIs."""
 from pathlib import Path
 import re
 import subprocess
@@ -22,8 +22,6 @@ def main() -> int:
     if TOKEN.search(repaired) or "setSingleLine(true)" in repaired:
         raise SystemExit("[step297] unresolved EditText single-line API remains")
 
-    # Step 337 is deliberately applied here because this is after the final Home/
-    # Account GUI generation in the authoritative build sequence.
     patch337 = Path(__file__).with_name("apply_step337_microsoft_signin_reference_gui.py")
     verifier337 = Path(__file__).with_name("verify_step337_microsoft_signin_gui.py")
     if not patch337.is_file() or not verifier337.is_file():
@@ -31,8 +29,6 @@ def main() -> int:
     subprocess.run([sys.executable, str(patch337), str(root)], check=True)
     subprocess.run([sys.executable, str(verifier337), str(root)], check=True)
 
-    # Step 338 applies the supplied 2026-09-16 3.26 PM offline-profile reference
-    # after all final UI generation, so later generators cannot overwrite it.
     patch338 = Path(__file__).with_name("apply_step338_offline_profile_gui.py")
     verifier338 = Path(__file__).with_name("verify_step338_offline_profile_gui.py")
     if not patch338.is_file() or not verifier338.is_file():
@@ -40,9 +36,17 @@ def main() -> int:
     subprocess.run([sys.executable, str(patch338), str(root)], check=True)
     subprocess.run([sys.executable, str(verifier338), str(root)], check=True)
 
+    patch339 = Path(__file__).with_name("apply_step339_settings_renderer_reference_gui.py")
+    verifier339 = Path(__file__).with_name("verify_step339_settings_renderer_reference_gui.py")
+    if not patch339.is_file() or not verifier339.is_file():
+        raise SystemExit("[step339] Settings Renderer GUI patch/verifier missing")
+    subprocess.run([sys.executable, str(patch339), str(root)], check=True)
+    subprocess.run([sys.executable, str(verifier339), str(root)], check=True)
+
     print(f"[step297] EditText single-line normalization complete; property replacements={token_replacements}; setter replacements={setter_replacements}")
     print("[step337] Microsoft custom sign-in GUI and top-right Home action finalized after UI generation")
     print("[step338] Offline profile reference GUI and Home return action finalized after UI generation")
+    print("[step339] Settings · Renderer reference GUI and working option controls finalized after UI generation")
     return 0
 
 if __name__ == "__main__":
