@@ -14,9 +14,9 @@ REQUIRED = [
 ]
 
 
-def run_fixture(repair: Path, fixture: Path) -> str:
+def run_fixture(repair: Path, root: Path, fixture: Path) -> str:
     result = subprocess.run(
-        [sys.executable, str(repair), str(fixture.parents[4])],
+        [sys.executable, str(repair), str(root)],
         text=True,
         capture_output=True,
         check=False,
@@ -68,7 +68,7 @@ newlines"""
             encoding='utf-8',
         )
 
-        source = run_fixture(repair, fixture)
+        source = run_fixture(repair, base, fixture)
         for needle in REQUIRED:
             if source.count(needle) != 1:
                 raise SystemExit(f'expected exactly one repaired helper: {needle}')
