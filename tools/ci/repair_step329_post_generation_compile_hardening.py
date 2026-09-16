@@ -64,7 +64,13 @@ def patch_installer(root: Path) -> None:
             )
         s = s.replace(
             "    private val executor = Executors.newCachedThreadPool()\n",
-            "    private val executor = Executors.newCachedThreadPool()\n    private val cancellations = ConcurrentHashMap.newKeySet<String>()\n",
+            "    private val executor = Executors.newCachedThreadPool()\n    private val cancellations = ConcurrentHashMap.newKeySet<String>()\n    @Volatile private var progressContext: Context? = null\n",
+            1,
+        )
+    elif "@Volatile private var progressContext: Context? = null" not in s:
+        s = s.replace(
+            "    private val cancellations = ConcurrentHashMap.newKeySet<String>()\n",
+            "    private val cancellations = ConcurrentHashMap.newKeySet<String>()\n    @Volatile private var progressContext: Context? = null\n",
             1,
         )
 
@@ -80,11 +86,13 @@ def patch_installer(root: Path) -> None:
 '''
         s = add_once(s, anchor, block, "cancel")
 
-    if "cancellations.remove(version)" not in s:
+    if "progressContext = context.applicationContext" not in s:
         marker = "        if (isInstalled(context, version)) {\n            listener?.onComplete(version)\n            return\n        }\n"
         if marker not in s:
             raise SystemExit("[step329] install preflight anchor missing")
-        s = s.replace(marker, marker + "        cancellations.remove(version)\n", 1)
+        s = s.replace(marker, marker + "        progressContext = context.applicationContext\n        cancellations.remove(version)\n", 1)
+    else:
+        s = s.replace("        cancellations.remove(version)\n        executor.execute", "        cancellations.remove(version)\n        progressContext = context.applicationContext\n        executor.execute", 1)
 
     if "if (isCancellationRequested(version))" not in s:
         marker = "                    while (true) {\n                        val count = input.read(buffer)"
@@ -96,63 +104,59 @@ def patch_installer(root: Path) -> None:
             1,
         )
 
-    # Persist the same data displayed by savedProgress(). This is intentionally
-    # done in the final generated copy because late canonical-source restoration
-    # can replace Step 228's generated installer implementation.
     report_start = "    private fun report(listener: Listener?, version: String, downloaded: Long, total: Long, stage: String) {"
+    if report_start not in s:
+        raise SystemExit("[step329] report function missing")
+    brace = s.find("{", s.find(report_start))
+    if brace < 0:
+        raise SystemExit("[step329] report opening brace missing")
+    depth = 0
+    end = -1
+    in_string = False
+    escaped = False
+    for i in range(brace, len(s)):
+        ch = s[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+        else:
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+    if end < 0:
+        raise SystemExit("[step329] report body unterminated")
     report_body = '''    private fun report(listener: Listener?, version: String, downloaded: Long, total: Long, stage: String) {
-        val p = prefsForProgress(version)
-        p.edit()
-            .putLong(progressKey(version), downloaded.coerceAtLeast(0L))
-            .putLong(totalKey(version), total.coerceAtLeast(0L))
-            .putString(stageKey(version), stage)
-            .apply()
+        progressContext?.let { context ->
+            prefs(context).edit()
+                .putLong(progressKey(version), downloaded.coerceAtLeast(0L))
+                .putLong(totalKey(version), total.coerceAtLeast(0L))
+                .putString(stageKey(version), stage)
+                .apply()
+        }
         listener?.onProgress(Progress(version, downloaded, total, stage, State.DOWNLOADING))
     }'''
-    if report_start in s:
-        brace = s.find("{", s.find(report_start))
-        if brace < 0:
-            raise SystemExit("[step329] report opening brace missing")
-        depth = 0
-        end = -1
-        in_string = False
-        escaped = False
-        for i in range(brace, len(s)):
-            ch = s[i]
-            if in_string:
-                if escaped:
-                    escaped = False
-                elif ch == "\\":
-                    escaped = True
-                elif ch == '"':
-                    in_string = False
-            else:
-                if ch == '"':
-                    in_string = True
-                elif ch == "{":
-                    depth += 1
-                elif ch == "}":
-                    depth -= 1
-                    if depth == 0:
-                        end = i + 1
-                        break
-        if end < 0:
-            raise SystemExit("[step329] report body unterminated")
-        s = s[:s.find(report_start)] + report_body + s[end:]
-    else:
-        raise SystemExit("[step329] report function missing")
+    s = s[:s.find(report_start)] + report_body + s[end:]
 
-    if "private fun prefsForProgress(version: String)" not in s:
-        anchor = "    private fun progressKey(version: String) ="
-        block = '''    private fun prefsForProgress(version: String) =
-        prefs(applicationContext = null)
-
+    if "private fun progressKey(version: String)" not in s:
+        pos = s.rfind("\n}")
+        if pos < 0:
+            raise SystemExit("[step329] installer closing brace missing")
+        block = '''
+    private fun progressKey(version: String) = "mc_install_${version}_downloaded"
+    private fun totalKey(version: String) = "mc_install_${version}_total"
+    private fun stageKey(version: String) = "mc_install_${version}_stage"
 '''
-        # The installer does not retain an application context, so use the
-        # progress helpers only when an existing report implementation already
-        # exposes prefs(context). If not possible, fail closed rather than adding
-        # an uncompilable fake context API.
-        raise SystemExit("[step329] installer report needs an explicit Context; generated compatibility source must provide it")
+        s = s[:pos] + block + s[pos:]
 
     path.write_text(s, encoding="utf-8")
 
@@ -235,7 +239,7 @@ def main() -> int:
     patch_ui(root)
     patch_tuner(root)
     print("[step329] post-generation compile contracts restored")
-    print("[step329] installer now retains launch-readiness, progress and cancellation APIs")
+    print("[step329] installer retains launch-readiness, persisted progress and cancellation APIs")
     print("[step329] UI version-selection helpers and text-color references are compile-safe")
     print("[step329] performance tier destructuring replaced with a typed settings record")
     return 0
