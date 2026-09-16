@@ -99,10 +99,10 @@ METHODS = r'''    private fun libraryPage(page: String) {
                 "26.1" to "Mar 24, 2026, 12:11:04 pm",
                 "1.21.11" to "Dec 9, 2025, 12:23:30 pm",
                 "1.21.10" to "Oct 7, 2025, 9:17:23 am",
-                "1.21.9" to "Sept 36, 2025, 11:58:43 am"
+                "1.21.9" to "Sept 30, 2025, 11:58:43 am"
             )
             "Modpack" -> listOf("SkyFactory", "All the Mods", "Better Minecraft", "Create: Perfect World")
-            "Mod" -> listOf("Sodium", "Lithium", "Fabric API", "Iris Shaders", "JourneyMap")
+            "Mod" -> listOf("Sodium", "Lithium", "Fabric API", "Iris Shaders", "JourneyMap", "OptiFine")
             "Resource Pack" -> listOf("Faithful", "Bare Bones", "Stay True", "Vanilla Tweaks")
             "Shader Pack" -> listOf("Complementary", "BSL", "Sildur's Vibrant", "MakeUp - Ultra Fast")
             else -> emptyList()
@@ -128,7 +128,7 @@ METHODS = r'''    private fun libraryPage(page: String) {
                     android.widget.Toast.makeText(this, "Selected Minecraft $name", android.widget.Toast.LENGTH_SHORT).show()
                     libraryPage(page)
                 } else {
-                    android.widget.Toast.makeText(this, "Installing $name for $selectedMinecraftVersion with $selectedLoader", android.widget.Toast.LENGTH_SHORT).show()
+                    startContentImport(page)
                 }
             }
             row.addView(action, LinearLayout.LayoutParams(dp(if (page == "Game") 64 else 94), dp(58)))
@@ -191,7 +191,7 @@ def main() -> int:
         raise SystemExit("[step341] libraryPage/aboutPage boundary not found")
     s = boundary.sub(METHODS + "    private fun aboutPage()", s, count=1)
     ui.write_text(s, encoding="utf-8")
-    print("[step341] Download/install manager UI installed from 3.jpeg reference")
+    print("[step341] Download/install/version manager UI installed from 3.jpeg reference")
     return 0
 
 if __name__ == "__main__":
