@@ -60,8 +60,21 @@ def main() -> None:
         print("[repair] added renderer automatic-install startup log")
 
     runtime_manager = find_one(src, "JavaRuntimeManager.kt")
-    if "ensureRuntime" not in runtime_manager.read_text(encoding="utf-8"):
+    runtime_text = runtime_manager.read_text(encoding="utf-8")
+    if "ensureRuntime" not in runtime_text:
         raise SystemExit("JavaRuntimeManager.kt does not expose ensureRuntime()")
+    if "Build.SUPPORTED_ABIS" not in runtime_text:
+        raise SystemExit("JavaRuntimeManager.kt does not expose Android ABI selection")
+    if "private fun verifySha256" not in runtime_text:
+        raise SystemExit("JavaRuntimeManager.kt does not expose SHA-256 verification")
+    if '"%02x".format(it)' in runtime_text:
+        raise SystemExit("JavaRuntimeManager.kt still formats signed SHA-256 bytes directly")
+    if "byte.toInt() and 0xff" not in runtime_text:
+        raise SystemExit("JavaRuntimeManager.kt SHA-256 byte normalization is missing")
+    for major in ("8", "17", "21", "25"):
+        if major not in runtime_text:
+            raise SystemExit(f"JavaRuntimeManager.kt missing Java {major} runtime contract")
+    print("[repair] Android JRE manager ABI/SHA-256/runtime contracts verified")
 
     renderer_manager = find_one(src, "RendererManager.kt")
     if "ensureNativeStack" not in renderer_manager.read_text(encoding="utf-8"):
