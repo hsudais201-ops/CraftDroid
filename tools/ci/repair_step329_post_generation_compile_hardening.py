@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Step 329: restore compile-critical installer/UI contracts after all late generators."""
 from pathlib import Path
-import re
 import sys
 
 
@@ -57,11 +56,12 @@ def patch_installer(root: Path) -> None:
         s = add_once(s, anchor, block, "savedProgress")
 
     if "private val cancellations = ConcurrentHashMap.newKeySet<String>()" not in s:
-        s = s.replace(
-            "import java.util.concurrent.Executors\n",
-            "import java.util.concurrent.Executors\nimport java.util.concurrent.ConcurrentHashMap\n",
-            1,
-        )
+        if "import java.util.concurrent.ConcurrentHashMap" not in s:
+            s = s.replace(
+                "import java.util.concurrent.Executors\n",
+                "import java.util.concurrent.Executors\nimport java.util.concurrent.ConcurrentHashMap\n",
+                1,
+            )
         s = s.replace(
             "    private val executor = Executors.newCachedThreadPool()\n",
             "    private val executor = Executors.newCachedThreadPool()\n    private val cancellations = ConcurrentHashMap.newKeySet<String>()\n",
@@ -96,16 +96,63 @@ def patch_installer(root: Path) -> None:
             1,
         )
 
-    if "private fun progressKey(version: String)" not in s:
-        pos = s.rfind("\n}")
-        if pos < 0:
-            raise SystemExit("[step329] installer closing brace missing")
-        block = '''
-    private fun progressKey(version: String) = "mc_install_${version}_downloaded"
-    private fun totalKey(version: String) = "mc_install_${version}_total"
-    private fun stageKey(version: String) = "mc_install_${version}_stage"
+    # Persist the same data displayed by savedProgress(). This is intentionally
+    # done in the final generated copy because late canonical-source restoration
+    # can replace Step 228's generated installer implementation.
+    report_start = "    private fun report(listener: Listener?, version: String, downloaded: Long, total: Long, stage: String) {"
+    report_body = '''    private fun report(listener: Listener?, version: String, downloaded: Long, total: Long, stage: String) {
+        val p = prefsForProgress(version)
+        p.edit()
+            .putLong(progressKey(version), downloaded.coerceAtLeast(0L))
+            .putLong(totalKey(version), total.coerceAtLeast(0L))
+            .putString(stageKey(version), stage)
+            .apply()
+        listener?.onProgress(Progress(version, downloaded, total, stage, State.DOWNLOADING))
+    }'''
+    if report_start in s:
+        brace = s.find("{", s.find(report_start))
+        if brace < 0:
+            raise SystemExit("[step329] report opening brace missing")
+        depth = 0
+        end = -1
+        in_string = False
+        escaped = False
+        for i in range(brace, len(s)):
+            ch = s[i]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+            else:
+                if ch == '"':
+                    in_string = True
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+        if end < 0:
+            raise SystemExit("[step329] report body unterminated")
+        s = s[:s.find(report_start)] + report_body + s[end:]
+    else:
+        raise SystemExit("[step329] report function missing")
+
+    if "private fun prefsForProgress(version: String)" not in s:
+        anchor = "    private fun progressKey(version: String) ="
+        block = '''    private fun prefsForProgress(version: String) =
+        prefs(applicationContext = null)
+
 '''
-        s = s[:pos] + block + s[pos:]
+        # The installer does not retain an application context, so use the
+        # progress helpers only when an existing report implementation already
+        # exposes prefs(context). If not possible, fail closed rather than adding
+        # an uncompilable fake context API.
+        raise SystemExit("[step329] installer report needs an explicit Context; generated compatibility source must provide it")
 
     path.write_text(s, encoding="utf-8")
 
@@ -114,11 +161,9 @@ def patch_ui(root: Path) -> None:
     path = one(root / "app/src/main/java", "DroidLauncherUiActivity.kt")
     s = path.read_text(encoding="utf-8")
 
-    # Remove accidental references to a nonexistent activity `text` property.
     s = s.replace("setTextColor(this@DroidLauncherUiActivity.text)", "setTextColor(primaryText)")
     s = s.replace("setTextColor(text)", "setTextColor(primaryText)")
 
-    # Restore the persistent version/profile helper lost by compatibility replacement.
     if "private fun saveMinecraftVersion(version: String)" not in s:
         anchor = "    private fun rendererPage() {"
         block = '''    private fun saveMinecraftVersion(version: String) {
@@ -129,7 +174,6 @@ def patch_ui(root: Path) -> None:
 '''
         s = add_once(s, anchor, block, "saveMinecraftVersion")
 
-    # Keep selected-version access available when the late UI generator has replaced it.
     if "private fun selectedMinecraftVersion(): String" not in s:
         anchor = "    private fun rendererPage() {"
         block = '''    private fun selectedMinecraftVersion(): String =
