@@ -10,15 +10,13 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.zip.GZIPInputStream
+import java.util.zip.ZipInputStream
 
 /**
  * Owns Java runtime selection, validation and installation state for the launcher.
- *
- * The launcher keeps runtimes inside its private files directory. Downloads are
- * metadata-driven and verified with size + SHA-256 before an archive is promoted
- * to an installed runtime. No runtime is executed before verification succeeds.
+ * Runtimes are kept inside the application's private files directory and are only
+ * promoted after HTTPS download, exact-size and SHA-256 verification.
  */
 class JavaRuntimeManager(private val context: Context) {
 
@@ -45,6 +43,8 @@ class JavaRuntimeManager(private val context: Context) {
         private const val BUFFER_SIZE = 64 * 1024
         private const val CONNECT_TIMEOUT_MS = 15_000
         private const val READ_TIMEOUT_MS = 60_000
+        private const val MAX_ARCHIVE_MULTIPLIER = 2L
+        private const val TAR_BLOCK = 512
     }
 
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -80,10 +80,7 @@ class JavaRuntimeManager(private val context: Context) {
         values.forEach(::registerSpec)
     }
 
-    /**
-     * Resolves and installs a runtime when necessary. This method is intentionally
-     * synchronous: callers should execute it from their existing IO coroutine.
-     */
+    /** Execute from the launch/install coroutine; it performs blocking file/network I/O. */
     fun ensureRuntime(requiredJava: Int): RuntimeInstallResult {
         require(requiredJava in supportedMajors()) { "Unsupported Java runtime: $requiredJava" }
         synchronized(installLocks.computeIfAbsent(requiredJava) { Any() }) {
@@ -97,7 +94,8 @@ class JavaRuntimeManager(private val context: Context) {
             val spec = specs[requiredJava]
                 ?: return RuntimeInstallResult(requiredJava, home, executable, false, "Java $requiredJava requires runtime metadata before download")
 
-            val archive = File(runtimeRoot, "java-${requiredJava}.archive")
+            val extension = archiveExtension(spec.url)
+            val archive = File(runtimeRoot, "java-${requiredJava}$extension")
             downloadAndVerify(spec, archive)
             val staging = File(runtimeRoot, ".staging-$requiredJava-${System.nanoTime()}")
             try {
@@ -120,6 +118,7 @@ class JavaRuntimeManager(private val context: Context) {
                 return RuntimeInstallResult(requiredJava, finalHome, finalExecutable, true, "Java $requiredJava installed and verified")
             } finally {
                 staging.deleteRecursively()
+                archive.delete()
             }
         }
     }
@@ -137,7 +136,16 @@ class JavaRuntimeManager(private val context: Context) {
 
     private fun javaExecutableFor(home: File): File = File(home, "bin/java")
 
-    private fun isUsableJavaExecutable(file: File): Boolean = file.isFile && file.canRead() && file.length() > 0L
+    private fun isUsableJavaExecutable(file: File): Boolean {
+        return file.isFile && file.canRead() && file.length() > 0L && file.setExecutable(true, false)
+    }
+
+    private fun archiveExtension(url: String): String = when {
+        url.contains(".tar.gz", ignoreCase = true) -> ".tar.gz"
+        url.contains(".tgz", ignoreCase = true) -> ".tgz"
+        url.contains(".zip", ignoreCase = true) -> ".zip"
+        else -> ".archive"
+    }
 
     private fun downloadAndVerify(spec: RuntimeSpec, destination: File) {
         destination.parentFile?.mkdirs()
@@ -174,7 +182,7 @@ class JavaRuntimeManager(private val context: Context) {
                         val read = input.read(buffer)
                         if (read < 0) break
                         total += read
-                        if (total > spec.archiveSize * 2L) throw IOException("Runtime archive exceeds declared size")
+                        if (total > spec.archiveSize * MAX_ARCHIVE_MULTIPLIER) throw IOException("Runtime archive exceeds safe declared-size limit")
                         output.write(buffer, 0, read)
                     }
                 }
@@ -200,48 +208,111 @@ class JavaRuntimeManager(private val context: Context) {
                 digest.update(buffer, 0, count)
             }
         }
-        return digest.digest().joinToString("") { "%02x".format(it) }
+        return digest.digest().joinToString("") { byte ->
+            "%02x".format(byte.toInt() and 0xff)
+        }
     }
 
     private fun extractArchive(archive: File, target: File) {
-        // Runtime archives are deliberately handled without external executables.
-        // A tar reader can be supplied by the project when its native/runtime layer
-        // supports it; ZIP is used for the portable JVM bundles currently packaged.
-        if (archive.name.endsWith(".zip")) {
-            java.util.zip.ZipInputStream(FileInputStream(archive)).use { input ->
-                val buffer = ByteArray(BUFFER_SIZE)
-                while (true) {
-                    val entry = input.nextEntry ?: break
-                    val clean = entry.name.replace('\\', '/')
-                    if (clean.startsWith("/") || clean.contains("../")) throw IOException("Unsafe runtime archive path")
-                    val out = File(target, clean)
-                    if (!out.canonicalPath.startsWith(target.canonicalPath + File.separator)) throw IOException("Runtime archive path escapes staging directory")
-                    if (entry.isDirectory) out.mkdirs() else {
-                        out.parentFile?.mkdirs()
-                        FileOutputStream(out).use { output ->
-                            while (true) {
-                                val count = input.read(buffer)
-                                if (count < 0) break
-                                output.write(buffer, 0, count)
-                            }
-                        }
-                    }
+        when {
+            archive.name.endsWith(".zip", ignoreCase = true) -> extractZip(archive, target)
+            archive.name.endsWith(".tar.gz", ignoreCase = true) || archive.name.endsWith(".tgz", ignoreCase = true) -> {
+                extractTarGz(archive, target)
+            }
+            else -> throw IOException("Unsupported Java runtime archive format: ${archive.name}")
+        }
+    }
+
+    private fun extractZip(archive: File, target: File) {
+        ZipInputStream(FileInputStream(archive)).use { input ->
+            val buffer = ByteArray(BUFFER_SIZE)
+            while (true) {
+                val entry = input.nextEntry ?: break
+                writeArchiveEntry(entry.name, entry.isDirectory, target, input, buffer)
+            }
+        }
+    }
+
+    private fun extractTarGz(archive: File, target: File) {
+        GZIPInputStream(BufferedInputStream(FileInputStream(archive), BUFFER_SIZE), BUFFER_SIZE).use { input ->
+            val header = ByteArray(TAR_BLOCK)
+            val buffer = ByteArray(BUFFER_SIZE)
+            while (true) {
+                readFully(input, header)
+                if (header.all { it.toInt() == 0 }) break
+                val name = tarString(header, 0, 100)
+                val prefix = tarString(header, 345, 155)
+                val entryName = if (prefix.isEmpty()) name else "$prefix/$name"
+                val size = parseTarOctal(header, 124, 12)
+                val type = header[156].toInt().toChar()
+                when (type) {
+                    '5' -> writeArchiveEntry(entryName, true, target, input, buffer)
+                    '0', '\u0000' -> writeTarFile(entryName, size, target, input, buffer)
+                    else -> skipFully(input, roundUpTar(size))
                 }
             }
-            return
         }
+    }
 
-        if (archive.name.endsWith(".tar.gz") || archive.name.endsWith(".tgz")) {
-            throw IOException("tar.gz runtime extraction is delegated to the platform runtime installer")
+    private fun writeArchiveEntry(
+        name: String,
+        directory: Boolean,
+        target: File,
+        input: java.io.InputStream,
+        buffer: ByteArray
+    ) {
+        val clean = name.replace('\\', '/')
+        if (clean.startsWith("/") || clean.split('/').any { it == ".." }) throw IOException("Unsafe runtime archive path")
+        val canonicalTarget = target.canonicalPath + File.separator
+        val out = File(target, clean)
+        if (!out.canonicalPath.startsWith(canonicalTarget)) throw IOException("Runtime archive path escapes staging directory")
+        if (directory) {
+            out.mkdirs()
+        } else {
+            out.parentFile?.mkdirs()
+            FileOutputStream(out).use { output ->
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    output.write(buffer, 0, count)
+                }
+            }
+            out.setExecutable(true, false)
         }
-        throw IOException("Unsupported Java runtime archive format: ${archive.name}")
+    }
+
+    private fun writeTarFile(
+        name: String,
+        size: Long,
+        target: File,
+        input: java.io.InputStream,
+        buffer: ByteArray
+    ) {
+        if (size < 0L) throw IOException("Negative tar entry size")
+        val clean = name.replace('\\', '/')
+        if (clean.startsWith("/") || clean.split('/').any { it == ".." }) throw IOException("Unsafe runtime tar path")
+        val canonicalTarget = target.canonicalPath + File.separator
+        val out = File(target, clean)
+        if (!out.canonicalPath.startsWith(canonicalTarget)) throw IOException("Runtime tar path escapes staging directory")
+        out.parentFile?.mkdirs()
+        FileOutputStream(out).use { output ->
+            var remaining = size
+            while (remaining > 0) {
+                val read = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                if (read < 0) throw IOException("Unexpected end of tar archive")
+                output.write(buffer, 0, read)
+                remaining -= read
+            }
+        }
+        out.setExecutable(true, false)
+        val padding = roundUpTar(size) - size
+        if (padding > 0) skipFully(input, padding)
     }
 
     private fun findJavaHome(staging: File): File? {
         val candidates = mutableListOf<File>()
         fun visit(dir: File, depth: Int) {
-            if (depth > 4) return
-            if (!dir.isDirectory) return
+            if (depth > 5 || !dir.isDirectory) return
             if (File(dir, "bin/java").isFile) candidates += dir
             dir.listFiles()?.forEach { visit(it, depth + 1) }
         }
@@ -256,6 +327,49 @@ class JavaRuntimeManager(private val context: Context) {
         } else {
             destination.parentFile?.mkdirs()
             FileInputStream(source).use { input -> FileOutputStream(destination).use { output -> input.copyTo(output) } }
+            if (source.canExecute()) destination.setExecutable(true, false)
         }
+    }
+
+    private fun readFully(input: java.io.InputStream, buffer: ByteArray) {
+        var offset = 0
+        while (offset < buffer.size) {
+            val count = input.read(buffer, offset, buffer.size - offset)
+            if (count < 0) throw IOException("Unexpected end of tar header")
+            offset += count
+        }
+    }
+
+    private fun skipFully(input: java.io.InputStream, length: Long) {
+        var remaining = length
+        while (remaining > 0) {
+            val skipped = input.skip(remaining)
+            if (skipped > 0) remaining -= skipped else {
+                if (input.read() < 0) throw IOException("Unexpected end of runtime archive")
+                remaining--
+            }
+        }
+    }
+
+    private fun roundUpTar(size: Long): Long = ((size + TAR_BLOCK - 1L) / TAR_BLOCK) * TAR_BLOCK
+
+    private fun tarString(bytes: ByteArray, offset: Int, length: Int): String {
+        var end = offset
+        val limit = offset + length
+        while (end < limit && bytes[end].toInt() != 0) end++
+        return bytes.copyOfRange(offset, end).toString(Charsets.UTF_8).trim()
+    }
+
+    private fun parseTarOctal(bytes: ByteArray, offset: Int, length: Int): Long {
+        var value = 0L
+        var seenDigit = false
+        for (i in offset until offset + length) {
+            val c = bytes[i].toInt() and 0xff
+            if (c == 0 || c == 32) continue
+            if (c !in 48..55) break
+            seenDigit = true
+            value = value * 8L + (c - 48)
+        }
+        return if (seenDigit) value else 0L
     }
 }
