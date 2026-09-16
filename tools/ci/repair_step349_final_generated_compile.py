@@ -199,6 +199,17 @@ def main() -> int:
     if 'private var progressContext: android.content.Context? = null' not in inst:
         raise SystemExit('[step349] installer progressContext declaration missing')
 
+    # Final late-generation writers can replace buildUi/showPage after Step295.
+    # Reapply the idempotent navigation repair immediately before the quality gate.
+    navigation = repo_root / 'tools/ci/repair_step295_final_navigation.py'
+    if navigation.is_file():
+        subprocess.run([sys.executable, str(navigation), str(root)], cwd=repo_root, check=True)
+        source = ui.read_text(encoding='utf-8')
+        if '"Features" -> featuresPage()' not in source or 'setOnClickListener { showPage("Features") }' not in source:
+            raise SystemExit('[step349] Feature Center navigation was not restored at final boundary')
+    else:
+        raise SystemExit('[step349] final Feature Center navigation repair script is missing')
+
     run_quality_gate(repo_root, root)
     print(f'[step349] final repair complete; ui_changed={int(source != before)} installer_changed={int(inst != inst_before)}')
     return 0
