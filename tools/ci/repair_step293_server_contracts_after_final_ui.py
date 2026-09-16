@@ -205,12 +205,19 @@ def main() -> int:
     else:
         raise SystemExit("[step331] whole-tree audit script missing")
 
+    lifecycle_script = project / "tools/ci/repair_step332_background_task_lifecycle.py"
+    if lifecycle_script.is_file():
+        subprocess.run([sys.executable, str(lifecycle_script), str(root)], check=True)
+    else:
+        raise SystemExit("[step332] background task lifecycle script missing")
+
     print("[step293] self-contained server Add/Edit/Delete/Select/Refresh contracts installed")
     print("[step293] server reachability checks run off the Android UI thread")
     print("[step328] latest-version wiring applied after final UI replacement")
     print("[step329] post-generation compile hardening applied")
     print("[step330] installer race and version-path hardening applied")
     print("[step331] whole-tree structural audit applied")
+    print("[step332] background task lifecycle/retry hardening applied")
     return 0
 
 
