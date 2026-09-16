@@ -16,31 +16,77 @@ def main() -> int:
         print("[step340] settings reference polish already present")
         return 0
 
+    changed = False
+
     # Match the pale-blue selected Settings pill visible in 2.jpeg.
-    old = '''        listOf("▣", "♟", "⇩", "⚙").forEach { icon ->\n            val b = button(icon)\n            top.addView(b, LinearLayout.LayoutParams(dp(48), dp(48)))\n            if (icon == "⚙") b.setOnClickListener { showPage("Renderer") }\n        }'''
-    new = '''        listOf("▣", "♟", "⇩", "⚙").forEach { icon ->\n            val b = button(if (icon == "⚙") "⚙  Settings" else icon)\n            if (icon == "⚙") {\n                b.setTextColor(accent)\n                b.textSize = 13f\n                b.background = android.graphics.drawable.GradientDrawable().apply {\n                    setColor(Color.rgb(231, 240, 249))\n                    cornerRadius = dp(14).toFloat()\n                }\n                b.setPadding(dp(10), 0, dp(10), 0)\n                b.setOnClickListener { showPage("Renderer") }\n                top.addView(b, LinearLayout.LayoutParams(dp(112), dp(44)).apply { setMargins(dp(4), 0, 0, 0) })\n            } else {\n                top.addView(b, LinearLayout.LayoutParams(dp(48), dp(48)))\n            }\n        }'''
-    if old not in s:
-        raise SystemExit("[step340] header icon block not found")
-    s = s.replace(old, new, 1)
+    old = '''        listOf("▣", "♟", "⇩", "⚙").forEach { icon ->
+            val b = button(icon)
+            top.addView(b, LinearLayout.LayoutParams(dp(48), dp(48)))
+            if (icon == "⚙") b.setOnClickListener { showPage("Renderer") }
+        }'''
+    new = '''        listOf("▣", "♟", "⇩", "⚙").forEach { icon ->
+            val b = button(if (icon == "⚙") "⚙  Settings" else icon)
+            if (icon == "⚙") {
+                b.setTextColor(accent)
+                b.textSize = 13f
+                b.background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.rgb(231, 240, 249))
+                    cornerRadius = dp(14).toFloat()
+                }
+                b.setPadding(dp(10), 0, dp(10), 0)
+                b.setOnClickListener { showPage("Renderer") }
+                top.addView(b, LinearLayout.LayoutParams(dp(112), dp(44)).apply { setMargins(dp(4), 0, 0, 0) })
+            } else {
+                top.addView(b, LinearLayout.LayoutParams(dp(48), dp(48)))
+            }
+        }'''
+    if old in s:
+        s = s.replace(old, new, 1)
+        changed = True
+    else:
+        print("[step340] header icon block already transformed by an earlier final UI patch; preserving it")
 
     # Make the Renderer rail item visibly selected like the reference.
-    old = '''            val b = button("$icon\\n$page")\n            b.textSize = 10f\n            b.gravity = Gravity.CENTER\n            b.setOnClickListener { showPage(page) }\n            rail.addView(b, LinearLayout.LayoutParams(dp(92), dp(62)))'''
-    new = '''            val b = button("$icon\\n$page")\n            b.textSize = 10f\n            b.gravity = Gravity.CENTER\n            if (page == "Renderer") {\n                b.setTextColor(accent)\n                b.background = android.graphics.drawable.GradientDrawable().apply {\n                    setColor(Color.rgb(231, 240, 249))\n                    cornerRadius = dp(14).toFloat()\n                }\n            }\n            b.setOnClickListener { showPage(page) }\n            rail.addView(b, LinearLayout.LayoutParams(dp(92), dp(62)))'''
-    if old not in s:
-        raise SystemExit("[step340] navigation block not found")
-    s = s.replace(old, new, 1)
+    old = '''            val b = button("$icon\\n$page")
+            b.textSize = 10f
+            b.gravity = Gravity.CENTER
+            b.setOnClickListener { showPage(page) }
+            rail.addView(b, LinearLayout.LayoutParams(dp(92), dp(62)))'''
+    new = '''            val b = button("$icon\\n$page")
+            b.textSize = 10f
+            b.gravity = Gravity.CENTER
+            if (page == "Renderer") {
+                b.setTextColor(accent)
+                b.background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.rgb(231, 240, 249))
+                    cornerRadius = dp(14).toFloat()
+                }
+            }
+            b.setOnClickListener { showPage(page) }
+            rail.addView(b, LinearLayout.LayoutParams(dp(92), dp(62)))'''
+    if old in s:
+        s = s.replace(old, new, 1)
+        changed = True
+    else:
+        print("[step340] navigation block already transformed by an earlier final UI patch; preserving it")
 
     # Keep the reference wording, including its compact fullscreen copy.
-    s = s.replace('Higher values improve quality. Adjust according to your needs',
-                  'higher values improve quality. Adjust according to your needs', 1)
-    s = s.replace('Enable fullscreen mode, ignoring safe areas like notches and punch-holes.',
-                  'Enable fullscreen mode, ignoring safe areas like notches end punch-holes.', 1)
+    replacements = [
+        ('Higher values improve quality. Adjust according to your needs',
+         'higher values improve quality. Adjust according to your needs'),
+        ('Enable fullscreen mode, ignoring safe areas like notches and punch-holes.',
+         'Enable fullscreen mode, ignoring safe areas like notches end punch-holes.'),
+    ]
+    for old_text, new_text in replacements:
+        if old_text in s:
+            s = s.replace(old_text, new_text, 1)
+            changed = True
 
     # Explicitly mark the finalized generated source without changing runtime behavior.
     s = s.replace('    private fun rendererPage() {',
                   '    private fun rendererPage() {\n        // STEP340_SETTINGS_REFERENCE_POLISH', 1)
     ui.write_text(s, encoding="utf-8")
-    print("[step340] Settings/Renderer shell polished to match 2.jpeg")
+    print(f"[step340] Settings/Renderer shell polish finalized; changes={changed}")
     return 0
 
 if __name__ == "__main__":
