@@ -43,6 +43,16 @@ HELPERS = '''    private fun recommendedJavaForVersion(version: String): Int {
 
 '''
 
+BLOCK_HELPERS = {
+    '    private fun recommendedJavaForVersion(version: String): Int',
+    '    private fun storedJavaOverride(): Int?',
+    '    private fun saveJavaOverride(value: String)',
+}
+EXPRESSION_HELPERS = {
+    '    private fun resolveJavaForVersion(version: String): Int',
+    '    private fun getResolvedJavaForLaunch(version: String): Int',
+}
+
 
 def function_end(source: str, start: int) -> int:
     brace = source.find('{', start)
@@ -89,26 +99,29 @@ def function_end(source: str, start: int) -> int:
     raise ValueError('unterminated function body')
 
 
-def remove_all_functions(source: str, signature: str) -> str:
+def expression_end(source: str, start: int) -> int:
+    line_end = source.find('\n', start)
+    if line_end < 0:
+        return len(source)
+    return line_end + 1
+
+
+def remove_function(source: str, signature: str, expression: bool) -> str:
     while True:
         start = source.find(signature)
         if start < 0:
             return source
-        end = function_end(source, start)
+        end = expression_end(source, start) if expression else function_end(source, start)
         while end < len(source) and source[end] in '\r\n':
             end += 1
         source = source[:start] + source[end:]
 
 
 def restore_helpers(source: str) -> str:
-    for sig in (
-        '    private fun recommendedJavaForVersion(version: String): Int',
-        '    private fun storedJavaOverride(): Int?',
-        '    private fun resolveJavaForVersion(version: String): Int',
-        '    private fun saveJavaOverride(value: String)',
-        '    private fun getResolvedJavaForLaunch(version: String): Int',
-    ):
-        source = remove_all_functions(source, sig)
+    for sig in BLOCK_HELPERS:
+        source = remove_function(source, sig, expression=False)
+    for sig in EXPRESSION_HELPERS:
+        source = remove_function(source, sig, expression=True)
     anchor = source.find('    private fun rendererPage() {')
     if anchor < 0:
         anchor = source.find('    private fun controlsPage() {')
