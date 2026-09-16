@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Final generated UI repair chain through Step350."""
+"""Final generated UI repair chain through Step352."""
 from pathlib import Path
 import re
 import subprocess
@@ -42,6 +42,17 @@ def main() -> int:
 
     for n, patch, verify in PAIRS:
         run_pair(root, n, patch, verify)
+
+    # Step 352 consumes the existing Step 342 Activity Result callback and makes
+    # the Microsoft-page skin/cape selectors persist real document URIs.
+    cosmetic_patch = Path(__file__).with_name('apply_step352_real_cosmetic_picker_callback.py')
+    if not cosmetic_patch.is_file():
+        raise SystemExit('step352 real cosmetic picker patch is missing')
+    subprocess.run([sys.executable, str(cosmetic_patch), str(root)], check=True)
+    cosmetic_marker = '// STEP352_REAL_COSMETIC_PICKER_CALLBACK'
+    final_text = ui.read_text(encoding='utf-8')
+    if cosmetic_marker not in final_text:
+        raise SystemExit('step352 cosmetic callback marker missing after patch')
 
     # The later Version / Instances steps replace a large method block in the same
     # generated Kotlin file. Re-assert the Settings/Renderer reference contract at
