@@ -180,17 +180,23 @@ def main() -> int:
             raise SystemExit(f"[step293] missing server contract: {needle}")
     copy_modern_sources(root)
 
-    # Apply Step 328 only after the whole-UI replacement and manager restoration,
-    # so the dynamic Mojang latest-release wiring cannot be overwritten later.
-    latest_script = project_script = Path.cwd().resolve() / "tools/ci/repair_step328_latest_version_wiring.py"
+    project = Path.cwd().resolve()
+    latest_script = project / "tools/ci/repair_step328_latest_version_wiring.py"
     if latest_script.is_file():
         subprocess.run([sys.executable, str(latest_script), str(root)], check=True)
     else:
         raise SystemExit("[step328] latest-version wiring script missing")
 
+    compile_script = project / "tools/ci/repair_step329_post_generation_compile_hardening.py"
+    if compile_script.is_file():
+        subprocess.run([sys.executable, str(compile_script), str(root)], check=True)
+    else:
+        raise SystemExit("[step329] post-generation compile hardening script missing")
+
     print("[step293] self-contained server Add/Edit/Delete/Select/Refresh contracts installed")
     print("[step293] server reachability checks run off the Android UI thread")
     print("[step328] latest-version wiring applied after final UI replacement")
+    print("[step329] post-generation compile hardening applied")
     return 0
 
 
