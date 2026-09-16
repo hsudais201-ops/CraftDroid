@@ -45,7 +45,6 @@ def normalized_hash(text: str) -> str:
 
 
 def insecure_http_literal(path: Path, text: str) -> bool:
-    """Detect insecure network endpoints, not schemas or protocol identifiers."""
     if path.suffix.lower() in {".xml", ".md", ".txt", ".json", ".yml", ".yaml"}:
         return False
     if "test" in path.parts:
@@ -64,27 +63,26 @@ def insecure_http_literal(path: Path, text: str) -> bool:
 
 
 def has_unfinished_marker(path: Path, text: str) -> bool:
-    """Check production code for unfinished markers."""
     if path.suffix.lower() not in {".kt", ".java", ".cpp", ".h", ".py", ".gradle", ".kts"}:
         return False
     return bool(re.search(r"\b(?:TODO|FIXME|NotImplementedException)\b", text))
 
 
 def make_checks() -> list[Check]:
+    # These checks describe the current Droid Launcher contract. In particular,
+    # startup must not depend on the old fake component/bootstrap gate.
     return [
-        Check("ui-bootstrap", "private fun showBootstrapGate()"),
-        Check("ui-bootstrap-extract", "private fun extractBootstrapComponents("),
-        Check("ui-bootstrap-complete", "private fun bootstrapComplete(): Boolean"),
-        Check("ui-bootstrap-success", 'putBoolean("components_extracted", true)'),
+        Check("ui-direct-startup", 'buildUi()'),
         Check("ui-game", 'showPage("Game")'),
+        Check("ui-landscape", "SCREEN_ORIENTATION_LANDSCAPE"),
         Check("ui-features", 'private fun featuresPage()'),
-        Check("ui-feature-nav", 'setOnClickListener { showPage("Features") }'),
+        Check("ui-feature-nav", 'showPage("Features")'),
         Check("ui-server-dialog", "private fun showServerDialog(index: Int)"),
         Check("ui-server-list", "private fun getSavedServers(): List<Pair<String, Int>>"),
         Check("ui-server-refresh", "private fun refreshServerStatus(host: String, port: Int)"),
         Check("ui-server-delete", "private fun deleteServer(index: Int)"),
         Check("ui-server-select", "private fun selectServer(host: String, port: Int)"),
-        Check("ui-edittext-single-line", "isSingleLine = true"),
+        Check("ui-edittext-single-line", "setSingleLine(true)"),
         Check("launch-java", "launchJava"),
         Check("launch-handoff", "MinecraftLaunchHandoff"),
         Check("launch-validator", "MinecraftLaunchHandoffValidator"),
@@ -164,14 +162,22 @@ def main() -> int:
     ui = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
     if ui.is_file():
         ui_text = read_text(ui)
-        declaration_checks = {
+        forbidden_declarations = {
             "showBootstrapGate": ui_text.count("private fun showBootstrapGate()"),
+            "extractBootstrapComponents": ui_text.count("private fun extractBootstrapComponents("),
             "bootstrapComplete": ui_text.count("private fun bootstrapComplete(): Boolean"),
-            "buildUi": ui_text.count("private fun buildUi()"),
         }
-        for name, count in declaration_checks.items():
-            if count != 1:
-                errors.append(f"declaration {name} expected exactly once, found {count}")
+        for name, count in forbidden_declarations.items():
+            if count != 0:
+                errors.append(f"legacy bootstrap declaration {name} must be absent, found {count}")
+
+        direct_startup = (
+            'requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE' in ui_text
+            and 'buildUi()' in ui_text
+            and 'showPage("Game")' in ui_text
+        )
+        if not direct_startup:
+            errors.append("direct launcher startup contract is incomplete")
 
     output = root.parent / "artifacts/build/deep-quality-1000.txt"
     output.parent.mkdir(parents=True, exist_ok=True)
