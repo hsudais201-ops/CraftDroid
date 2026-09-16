@@ -26,7 +26,7 @@ def main() -> int:
         ("338", "apply_step338_offline_profile_gui.py", "verify_step338_offline_profile_gui.py", "offline profile GUI patch/verifier missing"),
         ("339", "apply_step339_settings_renderer_reference_gui.py", "verify_step339_settings_renderer_reference_gui.py", "Settings Renderer GUI patch/verifier missing"),
         ("340", "apply_step340_settings_reference_polish.py", "verify_step340_settings_reference_polish.py", "Settings reference polish patch/verifier missing"),
-        ("341", "apply_step341_download_manager_reference_gui.py", "verify_step341_download_manager_gui.py", "3.jpeg download/install/version GUI patch/verifier missing"),
+        ("341", "apply_step341_download_manager_reference_gui.py", "verify_step341_download_manager_reference_gui.py", "3.jpeg download/install/version GUI patch/verifier missing"),
         ("342", "apply_step342_content_install_picker.py", "verify_step342_content_install_picker.py", "real content install picker patch/verifier missing"),
         ("344", "apply_step344_download_world_and_dependencies.py", "verify_step344_download_world_and_dependencies.py", "one-click download/required/world patch/verifier missing"),
         ("345", "apply_step345_required_mods_after_download.py", "verify_step345_required_mods_after_download.py", "required-mod post-download patch/verifier missing"),
