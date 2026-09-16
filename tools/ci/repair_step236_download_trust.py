@@ -119,6 +119,12 @@ def main() -> int:
                 raise SystemExit(f"[step236] required final Home patch missing: {patch}")
             subprocess.run([sys.executable, str(patch), str(root)], check=True)
             print(message)
+
+        verifier = Path(__file__).with_name("verify_step337_home_version_instance_downloads.py")
+        if not verifier.is_file():
+            raise SystemExit("[step337] final Home selector/download verifier is missing")
+        subprocess.run([sys.executable, str(verifier), str(root)], check=True)
+        print("[step337] final Home version/instance/download verifier chained successfully")
     else:
         print("[step236] Home presentation patches deferred; final Home toolbar is not present in this phase")
 
