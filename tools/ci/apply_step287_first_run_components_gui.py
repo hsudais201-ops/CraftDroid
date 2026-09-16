@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Step 287: install/validate the isolated first-run Droid Launcher component gate.
 
-This script is intentionally idempotent. Generated source may already contain the
-first-run gate when the upstream source-generation job produced it. In that case
-we validate the complete gate rather than failing on a harmless duplicate apply.
+The gate is idempotent and also repairs older generated gates.  In particular,
+all surfaces and text colors are explicit so a device theme cannot turn the
+component screen into large blank white panels with invisible text.
 """
 from pathlib import Path
 import sys
@@ -28,6 +28,35 @@ REQUIRED_METHODS = (
     'putBoolean("components_extracted", true)',
     'requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE',
     'showPage("Game")',
+)
+
+THEME_PATCHES = (
+    ('            setPadding(24, 18, 24, 18)\n',
+     '            setPadding(24, 18, 24, 18)\n            setBackgroundColor(android.graphics.Color.rgb(15, 17, 21))\n'),
+    ('            typeface = android.graphics.Typeface.DEFAULT_BOLD\n            setPadding(8, 4, 18, 8)\n',
+     '            typeface = android.graphics.Typeface.DEFAULT_BOLD\n            setTextColor(android.graphics.Color.WHITE)\n            setPadding(8, 4, 18, 8)\n',),
+    ('            typeface = android.graphics.Typeface.DEFAULT_BOLD\n            setPadding(8, 2, 18, 8)\n',
+     '            typeface = android.graphics.Typeface.DEFAULT_BOLD\n            setTextColor(android.graphics.Color.rgb(185, 194, 207))\n            setPadding(8, 2, 18, 8)\n',),
+    ('                setBackgroundColor(android.graphics.Color.WHITE)\n',
+     '                setBackgroundColor(android.graphics.Color.rgb(31, 35, 43))\n',),
+    ('                textSize = 15f\n                typeface = android.graphics.Typeface.DEFAULT_BOLD\n',
+     '                textSize = 15f\n                typeface = android.graphics.Typeface.DEFAULT_BOLD\n                setTextColor(android.graphics.Color.WHITE)\n',),
+    ('                textSize = 11f\n',
+     '                textSize = 11f\n                setTextColor(android.graphics.Color.rgb(185, 194, 207))\n',),
+    ('            setBackgroundColor(android.graphics.Color.WHITE)\n        }\n        right.addView',
+     '            setBackgroundColor(android.graphics.Color.rgb(24, 27, 33))\n        }\n        right.addView',),
+    ('            typeface = android.graphics.Typeface.DEFAULT_BOLD\n        })\n        right.addView',
+     '            typeface = android.graphics.Typeface.DEFAULT_BOLD\n            setTextColor(android.graphics.Color.WHITE)\n        })\n        right.addView',),
+    ('            textSize = 13f\n            setPadding(0, 12, 0, 12)\n',
+     '            textSize = 13f\n            setTextColor(android.graphics.Color.rgb(185, 194, 207))\n            setPadding(0, 12, 0, 12)\n',),
+    ('            textSize = 13f\n            setPadding(0, 12, 0, 18)\n',
+     '            textSize = 13f\n            setTextColor(android.graphics.Color.rgb(120, 220, 150))\n            setPadding(0, 12, 0, 18)\n',),
+    ('            textSize = 18f\n            setOnClickListener {\n',
+     '            textSize = 18f\n            setTextColor(android.graphics.Color.WHITE)\n            setBackgroundColor(android.graphics.Color.rgb(43, 123, 255))\n            setOnClickListener {\n',),
+    ('            list.addView(row, android.widget.LinearLayout.LayoutParams(-1, 70))\n',
+     '            val rowParams = android.widget.LinearLayout.LayoutParams(-1, -2)\n            rowParams.minimumHeight = 70\n            list.addView(row, rowParams)\n',),
+    ('        val scroll = android.widget.ScrollView(this)\n',
+     '        val scroll = android.widget.ScrollView(this).apply {\n            setBackgroundColor(android.graphics.Color.rgb(15, 17, 21))\n        }\n',),
 )
 
 
@@ -59,14 +88,23 @@ def method_span(source: str, start: int) -> tuple[int, int]:
     raise SystemExit("[step287] unterminated method")
 
 
-def validate_existing_gate(source: str) -> None:
+def repair_existing_gate(source: str) -> str:
+    updated = source
+    for old, new in THEME_PATCHES:
+        updated = updated.replace(old, new)
+    return updated
+
+
+def validate_existing_gate(source: str) -> str:
     missing = [needle for needle in REQUIRED_METHODS if needle not in source]
     for name, _description in REQUIRED:
         if name not in source:
             missing.append(name)
     if missing:
         raise SystemExit("[step287] existing bootstrap gate is incomplete: " + ", ".join(missing))
-    print("[step287] existing Droid Launcher first-run component gate validated; no duplicate insertion")
+    repaired = repair_existing_gate(source)
+    print("[step287] existing Droid Launcher first-run component gate validated and rendering repaired")
+    return repaired
 
 
 def replace_on_create(source: str) -> str:
@@ -145,14 +183,17 @@ HELPERS = r'''
         val root = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.HORIZONTAL
             setPadding(24, 18, 24, 18)
+            setBackgroundColor(android.graphics.Color.rgb(15, 17, 21))
         }
         val left = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
+            setBackgroundColor(android.graphics.Color.rgb(15, 17, 21))
         }
         val header = android.widget.TextView(this).apply {
             text = "Droid Launcher"
             textSize = 26f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(android.graphics.Color.WHITE)
             setPadding(8, 4, 18, 8)
         }
         left.addView(header, android.widget.LinearLayout.LayoutParams(-1, 64))
@@ -160,10 +201,13 @@ HELPERS = r'''
             text = "Launcher Components"
             textSize = 18f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(android.graphics.Color.rgb(185, 194, 207))
             setPadding(8, 2, 18, 8)
         }
         left.addView(subtitle)
-        val scroll = android.widget.ScrollView(this)
+        val scroll = android.widget.ScrollView(this).apply {
+            setBackgroundColor(android.graphics.Color.rgb(15, 17, 21))
+        }
         val list = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
         }
@@ -171,18 +215,22 @@ HELPERS = r'''
             val row = android.widget.LinearLayout(this).apply {
                 orientation = android.widget.LinearLayout.VERTICAL
                 setPadding(12, 8, 12, 8)
-                setBackgroundColor(android.graphics.Color.WHITE)
+                setBackgroundColor(android.graphics.Color.rgb(31, 35, 43))
             }
             row.addView(android.widget.TextView(this).apply {
                 text = component.name
                 textSize = 15f
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(android.graphics.Color.WHITE)
             })
             row.addView(android.widget.TextView(this).apply {
                 text = component.description
                 textSize = 11f
+                setTextColor(android.graphics.Color.rgb(185, 194, 207))
             })
-            list.addView(row, android.widget.LinearLayout.LayoutParams(-1, 70))
+            val rowParams = android.widget.LinearLayout.LayoutParams(-1, -2)
+            rowParams.minimumHeight = 70
+            list.addView(row, rowParams)
         }
         scroll.addView(list)
         left.addView(scroll, android.widget.LinearLayout.LayoutParams(-1, 0, 1f))
@@ -192,27 +240,32 @@ HELPERS = r'''
             orientation = android.widget.LinearLayout.VERTICAL
             gravity = android.view.Gravity.CENTER_VERTICAL
             setPadding(22, 22, 22, 22)
-            setBackgroundColor(android.graphics.Color.WHITE)
+            setBackgroundColor(android.graphics.Color.rgb(24, 27, 33))
         }
         right.addView(android.widget.TextView(this).apply {
             text = "Droid Launcher needs its runtime components prepared before the main interface opens."
             textSize = 15f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(android.graphics.Color.WHITE)
         })
         right.addView(android.widget.TextView(this).apply {
             text = "Bundled files are verified when present; other runtime components are registered for on-demand installation."
             textSize = 13f
+            setTextColor(android.graphics.Color.rgb(185, 194, 207))
             setPadding(0, 12, 0, 12)
         })
         val status = android.widget.TextView(this).apply {
             text = "Ready to install"
             textSize = 13f
+            setTextColor(android.graphics.Color.rgb(120, 220, 150))
             setPadding(0, 12, 0, 18)
         }
         right.addView(status)
         val install = android.widget.Button(this).apply {
             text = "Install"
             textSize = 18f
+            setTextColor(android.graphics.Color.WHITE)
+            setBackgroundColor(android.graphics.Color.rgb(43, 123, 255))
             setOnClickListener {
                 isEnabled = false
                 text = "Preparing…"
@@ -251,7 +304,10 @@ def main() -> int:
     ui = find_ui(root)
     source = ui.read_text(encoding="utf-8")
     if "private fun showBootstrapGate()" in source:
-        validate_existing_gate(source)
+        repaired = validate_existing_gate(source)
+        if repaired != source:
+            ui.write_text(repaired, encoding="utf-8")
+            print("[step287] repaired existing first-run component screen")
         return 0
     source = replace_on_create(source)
     insert_at = source.rfind("\n}")
