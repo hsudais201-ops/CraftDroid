@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 297/298/337/338/339/340/341/342/344: normalize generated Android APIs and apply final UIs."""
+"""Step 297/298/337/338/339/340/341/342/344/345: normalize generated Android APIs and apply final UIs."""
 from pathlib import Path
 import re
 import subprocess
@@ -29,6 +29,7 @@ def main() -> int:
         ("341", "apply_step341_download_manager_reference_gui.py", "verify_step341_download_manager_reference_gui.py", "3.jpeg download/install/version GUI patch/verifier missing"),
         ("342", "apply_step342_content_install_picker.py", "verify_step342_content_install_picker.py", "real content install picker patch/verifier missing"),
         ("344", "apply_step344_download_world_and_dependencies.py", "verify_step344_download_world_and_dependencies.py", "one-click download/required/world patch/verifier missing"),
+        ("345", "apply_step345_required_mods_after_download.py", "verify_step345_required_mods_after_download.py", "required-mod post-download patch/verifier missing"),
     ]
     for step, patch_name, verifier_name, error_text in patches:
         patch = Path(__file__).with_name(patch_name)
@@ -46,6 +47,7 @@ def main() -> int:
     print("[step341] 3.jpeg Download/install/version manager GUI finalized")
     print("[step342] Modpack/Mod/Shader/Resource Pack local import support finalized")
     print("[step344] One-click Modrinth downloads, required dependency display, and Worlds manager finalized")
+    print("[step345] Required-mod dialog now appears after modpack download")
     return 0
 
 if __name__ == "__main__":
