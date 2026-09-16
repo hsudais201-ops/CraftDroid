@@ -62,6 +62,46 @@ METHODS = r'''
 '''
 
 
+def inject_listener_into_action(s: str) -> str | None:
+    """Attach the content picker to generated Install rows across UI variants."""
+    if 'startContentImport(page)' in s:
+        return s
+    # Current Step 341 generated row shape.
+    pattern = re.compile(
+        r'(?ms)(^\s*val action = button\(if \(page == "Game"\) "↪" else "Install"\)\s*\n'
+        r'\s*action\.contentDescription = if \(page == "Game"\) "Select \$name" else "Install \$name"\s*\n)'
+    )
+    m = pattern.search(s)
+    if m:
+        injected = m.group(1) + '''            action.setOnClickListener {
+                if (page == "Game") {
+                    selectedMinecraftVersion = name
+                    android.widget.Toast.makeText(this, "Selected Minecraft $name", android.widget.Toast.LENGTH_SHORT).show()
+                    libraryPage(page)
+                } else {
+                    startContentImport(page)
+                }
+            }
+'''
+        return s[:m.start()] + injected + s[m.end():]
+
+    # Fallback: find any generated action variable followed by a content install label.
+    generic = re.compile(r'(?ms)(^\s*val action = button\([^\n]*\)\s*\n)(\s*action\.contentDescription[^\n]*Install[^\n]*\n)')
+    m = generic.search(s)
+    if m:
+        injected = m.group(1) + m.group(2) + '''            action.setOnClickListener {
+                if (page == "Game") {
+                    selectedMinecraftVersion = name
+                    libraryPage(page)
+                } else {
+                    startContentImport(page)
+                }
+            }
+'''
+        return s[:m.start()] + injected + s[m.end():]
+    return None
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
     ui = root / "app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt"
@@ -74,26 +114,26 @@ def main() -> int:
         or 'override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?)' not in s
         or 'MinecraftContentManager.importFile' not in s
     )
-    # Marker alone is insufficient: later generated-source rewrites can leave the
-    # marker while deleting the implementation and the Install action.
-    if not implementation_missing and MARKER in s and 'startContentImport(page)' in s:
-        print("[step342] complete content install picker already present")
-        return 0
+    listener_missing = 'startContentImport(page)' not in s
 
-    old = '''                } else {
+    # Marker alone is insufficient: late UI generators can leave it while deleting
+    # the implementation or the Install action. Repair the generated row first.
+    repaired_listener = False
+    if listener_missing:
+        repaired = inject_listener_into_action(s)
+        if repaired is not None:
+            s = repaired
+            repaired_listener = True
+
+    if 'startContentImport(page)' not in s:
+        # Older variants used a toast-only content Install branch.
+        old = '''                } else {
                     android.widget.Toast.makeText(this, "Installing $name for $selectedMinecraftVersion with $selectedLoader", android.widget.Toast.LENGTH_SHORT).show()
                 }'''
-    if old in s:
-        s = s.replace(old, '''                } else {
+        if old in s:
+            s = s.replace(old, '''                } else {
                     startContentImport(page)
                 }''', 1)
-    elif 'startContentImport(page)' not in s:
-        generic = re.compile(r'(?ms)(setOnClickListener\s*\{\s*)([^{}]{0,300}?Installing[^{}]{0,300}?)(\})')
-        gm = generic.search(s)
-        if gm:
-            s = s[:gm.start()] + gm.group(1) + 'startContentImport(page)' + gm.group(3) + s[gm.end():]
-        else:
-            raise SystemExit("[step342] no content Install action anchor found")
 
     if implementation_missing:
         # Remove only our known partial implementation, if any, before reinserting it.
@@ -112,14 +152,16 @@ def main() -> int:
         s = s[:end] + '\n        private const val CONTENT_PICKER_REQUEST = 341' + s[end:]
 
     if MARKER not in s:
-        companion_match = re.search(r"(?m)^[ \t]*companion object[ \t]*\{", s)
-        if not companion_match:
-            raise SystemExit("[step342] marker insertion anchor not found")
         start, _ = companion_match.span()
         s = s[:start] + '    ' + MARKER + '\n' + s[start:]
 
+    # Fail only when all known generated shapes are genuinely absent. This keeps the
+    # step strict enough to catch regressions while handling late UI rewrites.
+    if 'startContentImport(page)' not in s:
+        raise SystemExit("[step342] no content Install action anchor found in generated UI")
+
     ui.write_text(s, encoding="utf-8")
-    print(f"[step342] real local import picker wired; repaired_partial={implementation_missing}")
+    print(f"[step342] real local import picker wired; repaired_partial={implementation_missing}; repaired_listener={repaired_listener}")
     return 0
 
 
