@@ -96,6 +96,9 @@ def main() -> int:
             'private fun serverPrefs()', 'private fun getSavedServers()',
             'private fun getServerName(', 'private fun getServerStatus(',
             'private fun selectServer(', 'private fun showServerDialog(',
+            'STEP352_REAL_COSMETIC_PICKER_CALLBACK', 'microsoft_skin_uri',
+            'microsoft_cape_uri', 'contentResolver.takePersistableUriPermission',
+            'requestCode == 3371 || requestCode == 3372',
         )
         for needle in ui_checks:
             if needle not in ui:
@@ -104,6 +107,8 @@ def main() -> int:
             errors.append("DroidLauncherUiActivity.kt: obsolete fake bootstrap gate remains")
         if re.search(r"(?m)^\s*singleLine\s*=", ui):
             errors.append("DroidLauncherUiActivity.kt: Android EditText singleLine property remains")
+        if re.search(r'Cosmetic slot \$slotIndex', ui):
+            errors.append("DroidLauncherUiActivity.kt: obsolete toast-only cosmetic slot action remains")
 
     screen_files = list((root / "app/src/main/java").rglob("CustomizeControlsScreen.kt"))
     if len(screen_files) != 1:
