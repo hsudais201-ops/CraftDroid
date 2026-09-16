@@ -46,3 +46,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+# Post-fix trigger: force a clean CI run from the current generator chain.
