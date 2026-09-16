@@ -125,6 +125,39 @@ def repair_progress_context(text: str) -> str:
     raise SystemExit('[step349] cannot locate installer class field insertion point')
 
 
+def repair_real_cosmetic_picker(text: str) -> str:
+    """Ensure skin/cape selection uses the Android document picker and persists the URI."""
+    required = ('microsoft_skin_uri', 'microsoft_cape_uri', 'resultCode != RESULT_OK', 'contentResolver.takePersistableUriPermission')
+    if all(token in text for token in required):
+        return text
+    anchor = '        super.onActivityResult(requestCode, resultCode, data)\n'
+    if anchor not in text:
+        raise SystemExit('[step349] onActivityResult anchor missing for real cosmetic picker')
+    callback = '''        if (requestCode == 3371 || requestCode == 3372) {
+            if (resultCode != RESULT_OK) return
+            val uri = data?.data ?: return
+            try {
+                contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (_: Throwable) {
+                // Some document providers do not support persistable permissions.
+            }
+            val key = if (requestCode == 3371) "microsoft_skin_uri" else "microsoft_cape_uri"
+            getSharedPreferences("droid_launcher_accounts", MODE_PRIVATE)
+                .edit()
+                .putString(key, uri.toString())
+                .apply()
+            android.widget.Toast.makeText(
+                this,
+                if (requestCode == 3371) "Skin image selected and saved" else "Cape image selected and saved",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+            showMicrosoftSignInPage()
+            return
+        }
+'''
+    return text.replace(anchor, anchor + callback + '        // STEP352_REAL_COSMETIC_PICKER_CALLBACK\n', 1)
+
+
 def run_quality_gate(repo_root: Path, generated_root: Path) -> None:
     checker = repo_root / 'tools/ci/deep_quality_pass_1000.py'
     if checker.is_file():
@@ -144,6 +177,8 @@ def assert_final_ui_invariants(source: str) -> None:
     slice_ = source[start:start+700]
     if 'showBootstrapGate()' in slice_ or 'buildUi()\n        showPage("Game")' not in slice_: raise SystemExit('[step349] direct launcher startup invariant failed')
     if source.count('class DroidLauncherUiActivity') != 1 or not source.rstrip().endswith('}'): raise SystemExit('[step349] launcher class boundary invariant failed')
+    if 'STEP352_REAL_COSMETIC_PICKER_CALLBACK' not in source: raise SystemExit('[step349] real skin/cape picker callback missing')
+    if 'microsoft_skin_uri' not in source or 'microsoft_cape_uri' not in source: raise SystemExit('[step349] cosmetic URI persistence missing')
 
 
 def main() -> int:
@@ -161,6 +196,7 @@ def main() -> int:
     source = repair_truncated_server_helpers(source)
     source = dedupe_methods(source, ('featuresPage','featureToggle','rendererPage','javaPage','controlsPage','libraryPage','aboutPage','serverPrefs','getSavedServers','getServerName','getServerStatus','selectServer','deleteServer','showServerDialog','refreshServerStatus','resolveJavaForVersion','getResolvedJavaForLaunch'))
     source = normalize_on_create(source)
+    source = repair_real_cosmetic_picker(source)
     source = normalize_edit_text(source)
     ui.write_text(source, encoding='utf-8')
     inst_before = installer.read_text(encoding='utf-8')
@@ -178,6 +214,7 @@ def main() -> int:
     source = normalize_edit_text(source)
     source = repair_truncated_server_helpers(source)
     source = dedupe_methods(source, ('featuresPage','featureToggle','rendererPage','javaPage','controlsPage','libraryPage','aboutPage','serverPrefs','getSavedServers','getServerName','getServerStatus','selectServer','deleteServer','showServerDialog','refreshServerStatus','resolveJavaForVersion','getResolvedJavaForLaunch'))
+    source = repair_real_cosmetic_picker(source)
     source = normalize_edit_text(source)
     ui.write_text(source, encoding='utf-8')
     source = ui.read_text(encoding='utf-8')
