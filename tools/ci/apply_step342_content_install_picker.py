@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Step 342: turn the 3.jpeg Install buttons into real local-content import actions."""
 from pathlib import Path
-import re
 import sys
 
 MARKER = "// STEP342_CONTENT_INSTALL_PICKER"
@@ -44,7 +43,6 @@ METHODS = r'''
             android.widget.Toast.makeText(this, "Install failed: ${t.message ?: "unknown error"}", android.widget.Toast.LENGTH_LONG).show()
         } finally {
             pendingContentPage = null
-            try { data?.dataString?.let { } } catch (_: Throwable) {}
         }
     }
 
@@ -52,13 +50,7 @@ METHODS = r'''
         pendingContentPage = pageName
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            type = when (pageName) {
-                "Mod" -> "*/*"
-                "Modpack" -> "*/*"
-                "Shader Pack" -> "*/*"
-                "Resource Pack" -> "*/*"
-                else -> "*/*"
-            }
+            type = "*/*"
         }
         try {
             startActivityForResult(intent, CONTENT_PICKER_REQUEST)
@@ -79,28 +71,40 @@ def main() -> int:
     if MARKER in s:
         print("[step342] content install picker already present")
         return 0
-    # Replace the content-page Install branch only.
+
+    # Step341 may already have converted Install to startContentImport(page). In that
+    # case only the implementation and marker remain to be installed. Older generated
+    # variants used a Toast-only else branch, which is normalized here too.
     old = '''                } else {
                     android.widget.Toast.makeText(this, "Installing $name for $selectedMinecraftVersion with $selectedLoader", android.widget.Toast.LENGTH_SHORT).show()
                 }'''
-    new = '''                } else {
+    if old in s:
+        s = s.replace(old, '''                } else {
                     startContentImport(page)
-                }'''
-    if old not in s:
-        raise SystemExit("[step342] Install branch not found")
-    s = s.replace(old, new, 1)
-    # Add request constant in companion object by inserting immediately before it.
+                }''', 1)
+    elif 'startContentImport(page)' not in s:
+        raise SystemExit("[step342] no content Install action anchor found")
+
     companion = '    companion object {\n'
     if companion not in s:
         raise SystemExit("[step342] companion object not found")
-    s = s.replace(companion, '    companion object {\n        private const val CONTENT_PICKER_REQUEST = 341\n', 1)
-    # Add implementation before companion object.
-    s = s.replace('    companion object {\n        private const val CONTENT_PICKER_REQUEST = 341\n', METHODS + '\n    companion object {\n        private const val CONTENT_PICKER_REQUEST = 341\n', 1)
-    # Marker after methods, before companion.
-    s = s.replace(METHODS + '\n    companion object', '    ' + MARKER + '\n' + METHODS + '\n    companion object', 1)
+    if 'CONTENT_PICKER_REQUEST' not in s:
+        s = s.replace(companion, '    companion object {\n        private const val CONTENT_PICKER_REQUEST = 341\n', 1)
+
+    # Avoid duplicate declarations on partially patched generated sources.
+    if 'private fun startContentImport(' not in s:
+        s = s.replace(companion if '    companion object {\n' in s else '    companion object {', METHODS + '\n    companion object {', 1)
+    if MARKER not in s:
+        anchor = '    companion object {\n'
+        if anchor in s:
+            s = s.replace(anchor, '    ' + MARKER + '\n' + anchor, 1)
+        else:
+            raise SystemExit("[step342] companion insertion anchor not found")
+
     ui.write_text(s, encoding="utf-8")
     print("[step342] real local import picker wired to Modpack/Mod/Shader/Resource Pack Install buttons")
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
