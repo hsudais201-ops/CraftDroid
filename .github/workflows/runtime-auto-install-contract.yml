@@ -38,6 +38,13 @@ jobs:
             rmdir "$PROJECT_DIR"
           fi
 
+      - name: Generate Droid Launcher UI source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/apply_step205_droid_launcher_ui.py craftdroid-src
+          python3 tools/ci/repair_step205_ui.py craftdroid-src
+
       - name: Apply authoritative runtime byte-format repair
         shell: bash
         run: |
