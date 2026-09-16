@@ -11,7 +11,11 @@ permissions:
 
 jobs:
   finalize:
-    if: ${{ github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'success' }}
+    # Step 257 is authoritative on success: it already performs source repair,
+    # 1000-check quality validation, Gradle build, and complete APK validation.
+    # This workflow is therefore recovery-only and consumes generated-source.tgz
+    # only when Step 257 actually fails and publishes diagnostics.
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -19,7 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
-      - name: Download Step 257 generated-source artifact
+      - name: Download Step 257 diagnostics
         uses: actions/download-artifact@v4
         with:
           name: Droid-Launcher-Step257-diagnostics
