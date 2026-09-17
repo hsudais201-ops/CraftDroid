@@ -1,0 +1,134 @@
+name: Step 359 - Final APK rescue build
+
+on:
+  workflow_run:
+    workflows: ["Step 200 - Droid Launcher authoritative build"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  rescue-build:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout repair scripts
+        uses: actions/checkout@v4
+
+      - name: Download generated-source diagnostics from failed authoritative build
+        uses: actions/download-artifact@v4
+        with:
+          name: Droid-Launcher-Step253-diagnostics
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: upstream-diagnostics
+
+      - name: Restore generated launcher source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s upstream-diagnostics/artifacts/build/generated-source.tgz
+          rm -rf droid-src artifacts
+          mkdir -p artifacts/build artifacts/apk
+          tar -xzf upstream-diagnostics/artifacts/build/generated-source.tgz
+          test -f droid-src/settings.gradle || test -f droid-src/settings.gradle.kts
+          test -f droid-src/app/build.gradle || test -f droid-src/app/build.gradle.kts
+
+      - name: Apply final generated UI cleanup
+        run: python3 tools/ci/repair_step359_final_ui_cleanup.py droid-src
+
+      - name: Validate final source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m compileall -q tools/ci
+          python3 tools/ci/verify_minecraft_launch_contract.py droid-src
+          python3 tools/ci/verify_step233_handoff_validator.py droid-src
+          python3 tools/ci/verify_step235_audit.py droid-src
+          python3 tools/ci/verify_step236_download_trust.py droid-src
+          python3 tools/ci/verify_step239_generated_kotlin.py droid-src
+          if grep -RInE 'TODO|FIXME|NotImplementedException' droid-src/app/src/main/java; then
+            echo 'Unfinished implementation marker found in generated launcher source.' >&2
+            exit 1
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install Android SDK, NDK and CMake
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+
+      - name: Set up Gradle 9.6.0 directly
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.6.0'
+          validate-wrappers: false
+
+      - name: Run Android Lint
+        working-directory: droid-src
+        run: gradle --no-daemon --stacktrace :app:lintDebug 2>&1 | tee ../artifacts/build/lintDebug.log
+
+      - name: Run unit tests
+        working-directory: droid-src
+        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest 2>&1 | tee ../artifacts/build/unit-tests.log
+
+      - name: Build Droid Launcher debug APK
+        working-directory: droid-src
+        run: gradle --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee ../artifacts/build/assembleDebug.log
+
+      - name: Verify debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          cp "$APK" artifacts/apk/Droid-Launcher-Step359-debug.apk
+          sha256sum "$APK" | tee artifacts/apk/SHA256SUMS.txt
+          python3 tools/ci/verify_runtime_preflight.py "$APK" | tee artifacts/build/runtime-preflight.txt
+
+      - name: Verify APK package, signature and alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=droid-src/app/build/outputs/apk/debug/app-debug.apk
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
+          export PATH="$BUILD_TOOLS:$PATH"
+          "$BUILD_TOOLS/aapt2" dump badging "$APK" | tee artifacts/build/apk-badging.txt
+          grep -F "package: name='com.craftdroid.launcher'" artifacts/build/apk-badging.txt
+          "$BUILD_TOOLS/apksigner" verify --verbose "$APK" | tee artifacts/build/apk-signature.txt
+          "$BUILD_TOOLS/zipalign" -c -P 16 -v 4 "$APK" | tee artifacts/build/apk-zipalign.txt
+          unzip -l "$APK" > artifacts/build/apk-contents.txt
+          grep -Eq '[[:space:]]AndroidManifest.xml$' artifacts/build/apk-contents.txt
+          grep -Eq '[[:space:]]classes(2)?\.dex$' artifacts/build/apk-contents.txt
+          echo 'Step 359 APK package/signature/alignment/content verification: PASS'
+
+      - name: Upload final APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Droid-Launcher-Step359-debug
+          path: artifacts/apk/*
+          if-no-files-found: error
+
+      - name: Upload rescue diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Droid-Launcher-Step359-diagnostics
+          path: artifacts/build/**
+          if-no-files-found: ignore
