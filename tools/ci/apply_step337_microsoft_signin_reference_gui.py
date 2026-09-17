@@ -104,16 +104,33 @@ PAGE = r'''    private fun showMicrosoftAccountInfo() { showMicrosoftSignInPage(
 '''
 
 
+def insert_before_class_end(source: str, block: str) -> str:
+    pos = source.rfind('\n}')
+    if pos < 0:
+        raise SystemExit('[step337] class closing brace not found')
+    return source[:pos] + '\n\n' + block + source[pos:]
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
     path = find_ui(root)
     source = path.read_text(encoding="utf-8")
+
+    # Modern generated variants may no longer contain the old account-info helper.
+    # In that case insert the complete real Microsoft page directly before the
+    # activity class closing brace. This makes the repair independent of an older
+    # generator shape.
     if "private fun showMicrosoftSignInPage()" not in source:
         old = "    private fun showMicrosoftAccountInfo()"
-        start, end = method_span(source, old)
-        source = source[:start] + PAGE + source[end:]
+        if old in source:
+            start, end = method_span(source, old)
+            source = source[:start] + PAGE + source[end:]
+        else:
+            source = insert_before_class_end(source, PAGE)
+
     source = source.replace('ms.setOnClickListener { showMicrosoftAccountInfo() }', 'ms.setOnClickListener { showMicrosoftSignInPage() }', 1)
     path.write_text(source, encoding="utf-8")
+
     verify = path.read_text(encoding="utf-8")
     required = (
         "private fun showMicrosoftSignInPage()",
