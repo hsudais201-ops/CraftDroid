@@ -139,33 +139,102 @@ jobs:
           printf '%s\n' "$ACTIVITY" > artifacts/apk/activity.txt
 
       - name: Run real Minecraft boot harness on Android 35 x86_64
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          disk-size: 4G
-          heap-size: 512M
-          ram-size: 1536M
-          cores: 2
-          avd-name: craftdroid-step283
-          force-avd-creation: true
-          emulator-boot-timeout: 900
-          emulator-port: 5554
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
-          disable-animations: true
-          enable-hw-keyboard: false
-          channel: stable
-          script: |
-            bash -c '
-              set -euo pipefail
-              mkdir -p artifacts/runtime
-              adb wait-for-device
-              adb shell getprop ro.product.cpu.abi | tee artifacts/runtime/emulator-abi.txt
-              adb shell getprop ro.build.version.sdk | tee artifacts/runtime/emulator-api.txt
-              bash tools/ci/real_minecraft_boot_step182.sh "$APK" artifacts/runtime artifacts/fixture
-            '
+        shell: bash
+        env:
+          ANDROID_AVD_HOME: ${{ env.HOME }}/.android/avd
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/runtime "$ANDROID_AVD_HOME"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -path '*/bin/sdkmanager' -print -quit)"; fi
+          AVD_NAME="craftdroid-step368"
+          EMULATOR_BIN="$ANDROID_HOME/emulator/emulator"
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          test -x "$EMULATOR_BIN"
+          test -x "$ADB"
+
+          echo 'no' | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force \
+            -n "$AVD_NAME" \
+            -k 'system-images;android-35;google_apis;x86_64' \
+            -d 'pixel_2'
+          printf '%s\n' 'hw.cpu.ncore=2' 'hw.ramSize=2048M' 'hw.heapSize=512M' 'disk.dataPartition.size=4G' >> "$ANDROID_AVD_HOME/$AVD_NAME.avd/config.ini"
+
+          "$ADB" kill-server >/dev/null 2>&1 || true
+          "$ADB" start-server
+          LOG="$GITHUB_WORKSPACE/artifacts/runtime/emulator.log"
+          set +e
+          "$EMULATOR_BIN" \
+            -port 5554 \
+            -avd "$AVD_NAME" \
+            -no-window \
+            -gpu swiftshader_indirect \
+            -no-snapshot \
+            -noaudio \
+            -no-boot-anim \
+            -no-metrics \
+            -accel off > >(tee "$LOG") 2>&1 &
+          EMU_PID=$!
+          set -e
+          echo "$EMU_PID" > artifacts/runtime/emulator-pid.txt
+
+          cleanup() {
+            set +e
+            "$ADB" -s emulator-5554 emu kill >/dev/null 2>&1 || true
+            kill "$EMU_PID" >/dev/null 2>&1 || true
+            wait "$EMU_PID" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          STATE=''
+          for attempt in $(seq 1 720); do
+            STATE="$($ADB -s emulator-5554 get-state 2>/dev/null | tr -d '\r\n' || true)"
+            if [ "$STATE" = 'device' ]; then
+              echo "ADB device online after $attempt polling intervals." | tee artifacts/runtime/adb-online.txt
+              break
+            fi
+            if ! kill -0 "$EMU_PID" >/dev/null 2>&1; then
+              echo 'Emulator process exited before ADB became online.' >&2
+              tail -n 200 "$LOG" >&2 || true
+              exit 1
+            fi
+            if (( attempt % 15 == 0 )); then
+              echo "Waiting for ADB device (poll $attempt/720, state=${STATE:-unknown})."
+              "$ADB" kill-server >/dev/null 2>&1 || true
+              "$ADB" start-server >/dev/null 2>&1 || true
+            fi
+            sleep 2
+          done
+          test "$STATE" = 'device'
+
+          for attempt in $(seq 1 360); do
+            BOOTED="$($ADB -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n' || true)"
+            if [ "$BOOTED" = '1' ]; then
+              echo "Android sys.boot_completed=1 after poll $attempt." | tee artifacts/runtime/android-boot-complete.txt
+              break
+            fi
+            sleep 2
+          done
+          test "${BOOTED:-}" = '1'
+
+          for attempt in $(seq 1 60); do
+            READY="$($ADB -s emulator-5554 shell sh -c 'echo ready' 2>/dev/null | tr -d '\r\n' || true)"
+            STATE="$($ADB -s emulator-5554 get-state 2>/dev/null | tr -d '\r\n' || true)"
+            if [ "$STATE" = 'device' ] && [ "$READY" = 'ready' ]; then
+              echo 'ADB shell readiness confirmed.' | tee artifacts/runtime/adb-ready.txt
+              break
+            fi
+            sleep 2
+          done
+          test "${STATE:-}" = 'device'
+          test "${READY:-}" = 'ready'
+
+          "$ADB" -s emulator-5554 shell getprop ro.product.cpu.abi | tee artifacts/runtime/emulator-abi.txt
+          "$ADB" -s emulator-5554 shell getprop ro.build.version.sdk | tee artifacts/runtime/emulator-api.txt
+          "$ADB" -s emulator-5554 shell settings put global window_animation_scale 0 >/dev/null 2>&1 || true
+          "$ADB" -s emulator-5554 shell settings put global transition_animation_scale 0 >/dev/null 2>&1 || true
+          "$ADB" -s emulator-5554 shell settings put global animator_duration_scale 0 >/dev/null 2>&1 || true
+
+          bash tools/ci/real_minecraft_boot_step182.sh "$APK" artifacts/runtime artifacts/fixture
 
       - name: Upload real boot diagnostics
         if: always()
