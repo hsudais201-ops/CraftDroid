@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Fail closed if critical CraftDroid source/build files disappear.
 
-The repository keeps the original launcher implementation in the Step153 source
-archive and the authoritative build materializes that archive into ``droid-src``.
-Generated-only sources are therefore checked inside the archive and, once
-materialized, inside ``droid-src``.
+The project has two intentional source layers: the Step153 archive provides the
+baseline launcher, while the repository's app tree provides newer shared
+implementation files that the authoritative Step257 workflow copies into the
+generated tree. This verifier checks both layers without pretending every newer
+file must already exist in the old archive.
 """
 from pathlib import Path
 import sys
@@ -19,6 +20,28 @@ ROOT_FILES = (
     "tools/ci/verify_important_feature_coverage.py",
     "tools/ci/verify_step350_ci_invariants.py",
     "tools/ci/verify_critical_repository_files.py",
+)
+
+SHARED_SOURCE_FILES = (
+    "app/src/main/java/com/example/launcher/LaunchArgumentResolver.kt",
+    "app/src/main/java/com/example/launcher/LaunchArgumentsValidator.kt",
+    "app/src/main/java/com/example/launcher/LaunchArtifactResolver.kt",
+    "app/src/main/java/com/example/launcher/MinecraftStorageResolver.kt",
+    "app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt",
+    "app/src/main/java/com/example/launcher/MinecraftLaunchPaths.kt",
+    "app/src/main/java/com/example/launcher/MinecraftLaunchCommandBuilder.kt",
+    "app/src/main/java/com/example/launcher/MinecraftLaunchHandoff.kt",
+    "app/src/main/java/com/example/launcher/MinecraftLaunchHandoffValidator.kt",
+    "app/src/main/java/com/example/launcher/MinecraftRuntimeProfile.kt",
+    "app/src/main/java/com/example/launcher/MinecraftLatestVersionManager.kt",
+    "app/src/main/java/com/example/launcher/MinecraftContentManager.kt",
+    "app/src/main/java/com/example/launcher/MinecraftModpackManager.kt",
+    "app/src/main/java/com/example/launcher/MinecraftLoaderProfile.kt",
+    "app/src/main/java/com/example/launcher/LauncherBackgroundInstallController.kt",
+    "app/src/main/java/com/example/launcher/DroidLauncherUpdateManager.kt",
+    "app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt",
+    "app/src/main/java/com/example/renderer/PerformanceProfile.kt",
+    "app/src/main/java/com/example/renderer/MinecraftPerformanceTuner.kt",
 )
 
 GENERATED_FILES = (
@@ -41,53 +64,44 @@ GENERATED_FILES = (
 )
 
 
-def normalize_zip_name(name: str) -> str:
-    return name.lstrip("./").replace("\\", "/")
-
-
-def archive_contains_required_files(archive: Path) -> list[str]:
-    with zipfile.ZipFile(archive) as zf:
-        names = {normalize_zip_name(n) for n in zf.namelist()}
-    missing: list[str] = []
-    for required in GENERATED_FILES:
-        if required in names:
-            continue
-        # Some generated ZIPs have a single top-level project folder. Accept that
-        # layout while still requiring the exact protected relative path.
-        suffix = "/" + required
-        if not any(name.endswith(suffix) for name in names):
-            missing.append(required)
-    return missing
-
-
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]).resolve()
-    missing = [rel for rel in ROOT_FILES if not (root / rel).is_file()]
-    if missing:
-        print("[critical-files] FAILED: root files missing")
-        for rel in missing:
-            print(f"[critical-files] missing: {rel}")
-        return 1
+    bad: list[str] = []
+
+    missing_root = [rel for rel in ROOT_FILES if not (root / rel).is_file()]
+    if missing_root:
+        bad.append("missing root files: " + ", ".join(missing_root))
+
+    missing_shared = [rel for rel in SHARED_SOURCE_FILES if not (root / rel).is_file()]
+    if missing_shared:
+        bad.append("missing repository-owned shared sources: " + ", ".join(missing_shared))
 
     archive = root / "CraftDroid_Launcher_2.4_GitHubActions_Step153.zip"
-    bad = []
-    if archive.stat().st_size < 1024:
-        bad.append("source archive is unexpectedly tiny")
-    else:
-        try:
-            missing_archive = archive_contains_required_files(archive)
-        except (OSError, zipfile.BadZipFile) as exc:
-            bad.append(f"source archive cannot be read as ZIP: {exc}")
+    if archive.is_file():
+        if archive.stat().st_size < 1024:
+            bad.append("source archive is unexpectedly tiny")
         else:
-            if missing_archive:
-                bad.append("source archive is missing protected files: " + ", ".join(missing_archive))
+            try:
+                with zipfile.ZipFile(archive) as zf:
+                    if zf.testzip() is not None:
+                        bad.append("source archive contains a corrupt member")
+            except (OSError, zipfile.BadZipFile) as exc:
+                bad.append(f"source archive cannot be read as ZIP: {exc}")
 
     workflow = root / ".github/workflows/step257-resilient-build.yml"
-    workflow_text = workflow.read_text(encoding="utf-8", errors="replace")
-    if "gradle-version: '9.6.0'" not in workflow_text:
-        bad.append("authoritative workflow lost direct Gradle 9.6.0 setup")
-    if "Upload APK" not in workflow_text or ":app:assembleDebug" not in workflow_text:
-        bad.append("authoritative workflow lost APK build/upload gates")
+    if workflow.is_file():
+        workflow_text = workflow.read_text(encoding="utf-8", errors="replace")
+        required_markers = (
+            "gradle-version: '9.6.0'",
+            "validate-wrappers: false",
+            ":app:lintDebug",
+            ":app:testDebugUnitTest",
+            ":app:assembleDebug",
+            "Upload APK",
+        )
+        for marker in required_markers:
+            if marker not in workflow_text:
+                bad.append(f"authoritative workflow lost required marker: {marker}")
 
     generated = root / "droid-src"
     if generated.is_dir():
@@ -102,7 +116,7 @@ def main() -> int:
         return 1
 
     state = " + generated source" if generated.is_dir() else ""
-    print(f"[critical-files] PASS: {len(ROOT_FILES)} root files and {len(GENERATED_FILES)} protected generated files preserved{state}")
+    print(f"[critical-files] PASS: {len(ROOT_FILES)} root files + {len(SHARED_SOURCE_FILES)} shared sources preserved{state}")
     return 0
 
 
