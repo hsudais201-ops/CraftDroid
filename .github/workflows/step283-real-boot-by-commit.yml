@@ -95,7 +95,8 @@ jobs:
           printf '%s\n' "$found" > artifacts/apk/artifact-id.txt
           printf '%s\n' "$SOURCE_RUN_ID" > artifacts/apk/source-run-id.txt
           printf '%s\n' "$TARGET_SHA" > artifacts/apk/source-sha.txt
-          gh api -H 'Accept: application/vnd.github+json' "/repos/${GITHUB_REPOSITORY}/actions/artifacts/$found/zip" > artifacts/apk/artifact.zip
+          gh api -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/artifacts/$found/zip" > artifacts/apk/artifact.zip
           unzip -q artifacts/apk/artifact.zip -d artifacts/apk
           APK="$(find artifacts/apk -type f -name '*.apk' -print -quit)"
           test -s "$APK"
@@ -152,17 +153,19 @@ jobs:
           force-avd-creation: true
           emulator-boot-timeout: 900
           emulator-port: 5554
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
           disable-animations: true
           enable-hw-keyboard: false
           channel: stable
           script: |
-            set -euo pipefail
-            mkdir -p artifacts/runtime
-            adb shell getprop ro.product.cpu.abi | tee artifacts/runtime/emulator-abi.txt
-            adb shell getprop ro.build.version.sdk | tee artifacts/runtime/emulator-api.txt
-            adb wait-for-device
-            bash tools/ci/real_minecraft_boot_step182.sh "$APK" artifacts/runtime artifacts/fixture
+            bash -c '
+              set -euo pipefail
+              mkdir -p artifacts/runtime
+              adb wait-for-device
+              adb shell getprop ro.product.cpu.abi | tee artifacts/runtime/emulator-abi.txt
+              adb shell getprop ro.build.version.sdk | tee artifacts/runtime/emulator-api.txt
+              bash tools/ci/real_minecraft_boot_step182.sh "$APK" artifacts/runtime artifacts/fixture
+            '
 
       - name: Upload real boot diagnostics
         if: always()
