@@ -44,8 +44,7 @@ jobs:
             SOURCE_RUN_ID='${{ inputs.apk_build_run_id }}'
             if [ -z "$SOURCE_RUN_ID" ]; then
               SOURCE_RUN_ID="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=$TARGET_SHA&per_page=100" \
-                --jq '.workflow_runs[] | select(.name == "Step 200 - Droid Launcher authoritative build" and .head_sha == "'"$TARGET_SHA"'" and .conclusion == "success") | .id' \
-                | head -n1)"
+                --jq '([.workflow_runs[] | select(.name == "Step 200 - Droid Launcher authoritative build" and .head_sha == "'"$TARGET_SHA"'" and .conclusion == "success") | .id] | first) // empty')"
             fi
           fi
           test -n "$TARGET_SHA"
@@ -65,11 +64,15 @@ jobs:
           fetch-depth: 1
 
       - name: Validate CI helper syntax
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m compileall -q tools/ci
-          bash -n tools/ci/real_minecraft_boot_step370.sh
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const { execFileSync } = require('child_process');
+            const path = 'tools/ci/real_minecraft_boot_step370.sh';
+            if (!fs.existsSync(path)) core.setFailed(`Missing ${path}`);
+            execFileSync('bash', ['-n', path], { stdio: 'inherit' });
+            execFileSync('python3', ['-m', 'compileall', '-q', 'tools/ci'], { stdio: 'inherit' });
 
       - name: Materialize real Minecraft 1.21.1 fixture
         shell: bash
@@ -80,8 +83,12 @@ jobs:
             python3 tools/ci/verify_minecraft_install_fixture.py | tee artifacts/fixture/fixture-result.txt
           test -s artifacts/fixture/versions/1.21.1/1.21.1.jar
           test -s artifacts/fixture/versions/1.21.1/1.21.1.json
-          test -s artifacts/fixture/assets/indexes/*.json
-          find artifacts/fixture/libraries -type f -print -quit | grep -q .
+          ASSET_INDEX="$(find artifacts/fixture/assets/indexes -type f -name '*.json' -print -quit)"
+          test -n "$ASSET_INDEX"
+          test -s "$ASSET_INDEX"
+          LIBRARY_FILE="$(find artifacts/fixture/libraries -type f -print -quit)"
+          test -n "$LIBRARY_FILE"
+          test -s "$LIBRARY_FILE"
 
       - name: Download exact authoritative APK artifact
         shell: bash
@@ -91,7 +98,7 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts/apk
           FOUND="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
-            --jq '.artifacts[] | select((.name == "Droid-Launcher-Step253-debug") and .expired == false) | .id' | head -n1)"
+            --jq '([.artifacts[] | select((.name == "Droid-Launcher-Step253-debug") and .expired == false) | .id] | first) // empty')"
           test -n "$FOUND"
           printf '%s\n' "$FOUND" > artifacts/apk/artifact-id.txt
           printf '%s\n' "$SOURCE_RUN_ID" > artifacts/apk/source-run-id.txt
@@ -109,12 +116,14 @@ jobs:
         run: |
           set -euo pipefail
           AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
-          "$AAPT" dump badging "$APK" | tee artifacts/apk/badging.txt
+          "$AAPT" dump badging "$APK" > artifacts/apk/badging.txt
+          cat artifacts/apk/badging.txt
           PACKAGE="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" artifacts/apk/badging.txt)"
           ACTIVITY="$(sed -n "s/^launchable-activity: name='\([^']*\)'.*/\1/p" artifacts/apk/badging.txt)"
           test "$PACKAGE" = 'com.craftdroid.launcher'
           test "$ACTIVITY" = 'com.example.launcher.DroidLauncherUiActivity'
-          unzip -l "$APK" | tee artifacts/apk/contents.txt
+          unzip -l "$APK" > artifacts/apk/contents.txt
+          cat artifacts/apk/contents.txt
           grep -q 'lib/x86_64/libcraftdroidbridge.so' artifacts/apk/contents.txt
           printf '%s\n' "$PACKAGE" > artifacts/apk/package.txt
           printf '%s\n' "$ACTIVITY" > artifacts/apk/activity.txt
