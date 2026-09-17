@@ -3,11 +3,12 @@
 
 The repository keeps the original launcher implementation in the Step153 source
 archive and the authoritative build materializes that archive into ``droid-src``.
-Therefore generated-only sources must be checked in droid-src when it exists,
-not incorrectly required from the repository root.
+Generated-only sources are therefore checked inside the archive and, once
+materialized, inside ``droid-src``.
 """
 from pathlib import Path
 import sys
+import zipfile
 
 ROOT_FILES = (
     "CraftDroid_Launcher_2.4_GitHubActions_Step153.zip",
@@ -40,6 +41,25 @@ GENERATED_FILES = (
 )
 
 
+def normalize_zip_name(name: str) -> str:
+    return name.lstrip("./").replace("\\", "/")
+
+
+def archive_contains_required_files(archive: Path) -> list[str]:
+    with zipfile.ZipFile(archive) as zf:
+        names = {normalize_zip_name(n) for n in zf.namelist()}
+    missing: list[str] = []
+    for required in GENERATED_FILES:
+        if required in names:
+            continue
+        # Some generated ZIPs have a single top-level project folder. Accept that
+        # layout while still requiring the exact protected relative path.
+        suffix = "/" + required
+        if not any(name.endswith(suffix) for name in names):
+            missing.append(required)
+    return missing
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parents[2]).resolve()
     missing = [rel for rel in ROOT_FILES if not (root / rel).is_file()]
@@ -53,6 +73,14 @@ def main() -> int:
     bad = []
     if archive.stat().st_size < 1024:
         bad.append("source archive is unexpectedly tiny")
+    else:
+        try:
+            missing_archive = archive_contains_required_files(archive)
+        except (OSError, zipfile.BadZipFile) as exc:
+            bad.append(f"source archive cannot be read as ZIP: {exc}")
+        else:
+            if missing_archive:
+                bad.append("source archive is missing protected files: " + ", ".join(missing_archive))
 
     workflow = root / ".github/workflows/step257-resilient-build.yml"
     workflow_text = workflow.read_text(encoding="utf-8", errors="replace")
@@ -74,7 +102,7 @@ def main() -> int:
         return 1
 
     state = " + generated source" if generated.is_dir() else ""
-    print(f"[critical-files] PASS: {len(ROOT_FILES)} root files preserved{state}")
+    print(f"[critical-files] PASS: {len(ROOT_FILES)} root files and {len(GENERATED_FILES)} protected generated files preserved{state}")
     return 0
 
 
