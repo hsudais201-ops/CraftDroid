@@ -146,6 +146,11 @@ jobs:
           python3 tools/ci/repair_step293_server_contracts_after_final_ui.py droid-src
           python3 tools/ci/repair_step329_post_generation_compile_hardening.py droid-src
           python3 tools/ci/repair_step349_final_generated_compile.py droid-src
+      - name: Final generated UI cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step359_final_ui_cleanup.py droid-src
       - name: Verify all hardened contracts
         shell: bash
         run: |
@@ -189,13 +194,19 @@ jobs:
           gradle --version
       - name: Run Android Lint
         working-directory: droid-src
-        run: gradle --no-daemon --stacktrace :app:lintDebug 2>&1 | tee ../artifacts/build/lintDebug.log
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace :app:lintDebug 2>&1 | tee ../artifacts/build/lintDebug.log
       - name: Run unit tests
         working-directory: droid-src
         run: gradle --no-daemon --stacktrace :app:testDebugUnitTest
       - name: Build Droid Launcher debug APK
         working-directory: droid-src
-        run: gradle --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee ../artifacts/build/assembleDebug.log
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee ../artifacts/build/assembleDebug.log
       - name: Verify debug APK
         shell: bash
         run: |
