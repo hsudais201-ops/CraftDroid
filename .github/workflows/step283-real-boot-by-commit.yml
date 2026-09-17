@@ -141,7 +141,7 @@ jobs:
       - name: Run real Minecraft boot harness on Android 35 x86_64
         shell: bash
         env:
-          ANDROID_AVD_HOME: ${{ env.HOME }}/.android/avd
+          ANDROID_AVD_HOME: ${{ runner.temp }}/android-avd
         run: |
           set -euo pipefail
           mkdir -p artifacts/runtime "$ANDROID_AVD_HOME"
