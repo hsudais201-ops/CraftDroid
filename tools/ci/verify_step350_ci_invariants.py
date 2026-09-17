@@ -5,9 +5,6 @@ import re
 import subprocess
 import sys
 
-# Keep this verifier intentionally side-effect free: it validates the build graph,
-# while the authoritative workflow performs the actual generated-source build.
-
 
 def main() -> int:
     root = Path(__file__).resolve().parents[2]
@@ -49,7 +46,15 @@ def main() -> int:
     generated = root / 'droid-src'
     if not coverage.is_file():
         raise SystemExit('[step350] important feature coverage verifier missing')
+
+    # Step357 is an explicit final generated-source repair stage. The workflow
+    # invokes Step349 first; this guard makes the final scope/API repair unavoidable
+    # before the invariant audit and before the Gradle compiler runs.
+    final_scope = root / 'tools/ci/repair_step357_final_scope_compile.py'
+    if not final_scope.is_file():
+        raise SystemExit('[step350] Step357 final generated scope repair is missing')
     if generated.is_dir():
+        subprocess.run([sys.executable, str(final_scope), str(generated)], cwd=root, check=True)
         subprocess.run([sys.executable, str(coverage), str(generated)], cwd=root, check=True)
     else:
         print('[step350] generated source tree is unavailable; feature coverage will run in the workflow after generation')
@@ -57,20 +62,22 @@ def main() -> int:
     verifier_requirements = {
         'tools/ci/verify_step337_microsoft_signin_gui.py': ('openCosmeticImagePicker(3371)', 'takePersistableUriPermission'),
         'tools/ci/verify_important_feature_coverage.py': ('microsoft_skin_uri', 'microsoft_cape_uri', 'STEP352_REAL_COSMETIC_PICKER_CALLBACK'),
+        'tools/ci/repair_step357_final_scope_compile.py': ('repair_server_helpers', 'normalize_edit_text', 'showMicrosoftSignInPage'),
     }
     for rel, markers in verifier_requirements.items():
         path = root / rel
         if not path.is_file():
-            raise SystemExit(f'[step350] verifier missing: {rel}')
+            raise SystemExit(f'[step350] verifier/repair missing: {rel}')
         verifier_text = path.read_text(encoding='utf-8', errors='replace')
         for marker in markers:
             if marker not in verifier_text:
-                raise SystemExit(f'[step350] verifier contract missing from {rel}: {marker}')
+                raise SystemExit(f'[step350] contract missing from {rel}: {marker}')
 
     print('[step350] authoritative workflow contracts verified')
     print('[step350] direct Gradle 9.6.0, lint, unit tests, APK build and APK integrity gates are present')
     print('[step350] Microsoft/skin-cape picker and requested launcher subsystem coverage verifiers are chained into CI')
     print('[step350] critical-file preservation audit is chained into CI')
+    print('[step350] Step357 final generated scope/API repair is chained before Gradle')
     return 0
 
 if __name__ == '__main__':
