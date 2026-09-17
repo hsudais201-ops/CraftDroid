@@ -86,10 +86,18 @@ adb shell settings put global animator_duration_scale 0 >/dev/null 2>&1 || true
 phase 'INSTALL_APK'
 adb uninstall "$PACKAGE" >/dev/null 2>&1 || true
 INSTALL_LOG="$OUT/apk-install.txt"
-if ! timeout 300 "$ADB_BIN" ${ADB_SERIAL:+-s "$ADB_SERIAL"} install "$APK" > "$INSTALL_LOG" 2>&1; then
-  cat "$INSTALL_LOG" >&2 || true
-  phase 'INSTALL_APK_FAILED'
-  exit 1
+if [ -n "$ADB_SERIAL" ]; then
+  if ! timeout 300 "$ADB_BIN" -s "$ADB_SERIAL" install "$APK" > "$INSTALL_LOG" 2>&1; then
+    cat "$INSTALL_LOG" >&2 || true
+    phase 'INSTALL_APK_FAILED'
+    exit 1
+  fi
+else
+  if ! timeout 300 "$ADB_BIN" install "$APK" > "$INSTALL_LOG" 2>&1; then
+    cat "$INSTALL_LOG" >&2 || true
+    phase 'INSTALL_APK_FAILED'
+    exit 1
+  fi
 fi
 cat "$INSTALL_LOG"
 adb shell pm path "$PACKAGE" | tee "$OUT/pm-path.txt"
