@@ -1,0 +1,244 @@
+name: Step 370 - Hardened Real Minecraft Android Boot
+
+on:
+  workflow_run:
+    workflows: ["Step 200 - Droid Launcher authoritative build"]
+    types: [completed]
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: 'Exact source commit to test; defaults to this workflow commit'
+        required: false
+        type: string
+      apk_build_run_id:
+        description: 'Successful Step200 build run ID; optional auto-discovery by source SHA'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: step370-real-boot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Select exact source and authoritative build
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            TARGET_SHA='${{ github.event.workflow_run.head_sha }}'
+            SOURCE_RUN_ID='${{ github.event.workflow_run.id }}'
+          else
+            TARGET_SHA='${{ inputs.source_sha }}'
+            if [ -z "$TARGET_SHA" ]; then TARGET_SHA="$GITHUB_SHA"; fi
+            SOURCE_RUN_ID='${{ inputs.apk_build_run_id }}'
+            if [ -z "$SOURCE_RUN_ID" ]; then
+              SOURCE_RUN_ID="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=$TARGET_SHA&per_page=100" \
+                --jq '.workflow_runs[] | select(.name == "Step 200 - Droid Launcher authoritative build" and .head_sha == "'"$TARGET_SHA"'" and .conclusion == "success") | .id' \
+                | head -n1)"
+            fi
+          fi
+          test -n "$TARGET_SHA"
+          test -n "$SOURCE_RUN_ID"
+          RUN_JSON="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/$SOURCE_RUN_ID")"
+          test "$(printf '%s' "$RUN_JSON" | jq -r '.conclusion // empty')" = success
+          test "$(printf '%s' "$RUN_JSON" | jq -r '.head_sha // empty')" = "$TARGET_SHA"
+          printf '%s\n' "$TARGET_SHA" > target-sha.txt
+          printf '%s\n' "$SOURCE_RUN_ID" > source-run-id.txt
+          echo "TARGET_SHA=$TARGET_SHA" >> "$GITHUB_ENV"
+          echo "SOURCE_RUN_ID=$SOURCE_RUN_ID" >> "$GITHUB_ENV"
+
+      - name: Checkout exact source commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 1
+
+      - name: Validate CI helper syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m compileall -q tools/ci
+          bash -n tools/ci/real_minecraft_boot_step370.sh
+
+      - name: Materialize real Minecraft 1.21.1 fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/fixture
+          CRAFTDROID_FIXTURE_DIR="$GITHUB_WORKSPACE/artifacts/fixture" \
+            python3 tools/ci/verify_minecraft_install_fixture.py | tee artifacts/fixture/fixture-result.txt
+          test -s artifacts/fixture/versions/1.21.1/1.21.1.jar
+          test -s artifacts/fixture/versions/1.21.1/1.21.1.json
+          test -s artifacts/fixture/assets/indexes/*.json
+          find artifacts/fixture/libraries -type f -print -quit | grep -q .
+
+      - name: Download exact authoritative APK artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/apk
+          FOUND="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
+            --jq '.artifacts[] | select((.name == "Droid-Launcher-Step253-debug") and .expired == false) | .id' | head -n1)"
+          test -n "$FOUND"
+          printf '%s\n' "$FOUND" > artifacts/apk/artifact-id.txt
+          printf '%s\n' "$SOURCE_RUN_ID" > artifacts/apk/source-run-id.txt
+          printf '%s\n' "$TARGET_SHA" > artifacts/apk/source-sha.txt
+          gh api -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/artifacts/$FOUND/zip" > artifacts/apk/artifact.zip
+          unzip -q artifacts/apk/artifact.zip -d artifacts/apk
+          APK="$(find artifacts/apk -type f -name '*.apk' -print -quit)"
+          test -s "$APK"
+          echo "APK=$APK" >> "$GITHUB_ENV"
+          sha256sum "$APK" | tee artifacts/apk/sha256.txt
+
+      - name: Preflight authoritative APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          "$AAPT" dump badging "$APK" | tee artifacts/apk/badging.txt
+          PACKAGE="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" artifacts/apk/badging.txt)"
+          ACTIVITY="$(sed -n "s/^launchable-activity: name='\([^']*\)'.*/\1/p" artifacts/apk/badging.txt)"
+          test "$PACKAGE" = 'com.craftdroid.launcher'
+          test "$ACTIVITY" = 'com.example.launcher.DroidLauncherUiActivity'
+          unzip -l "$APK" | tee artifacts/apk/contents.txt
+          grep -q 'lib/x86_64/libcraftdroidbridge.so' artifacts/apk/contents.txt
+          printf '%s\n' "$PACKAGE" > artifacts/apk/package.txt
+          printf '%s\n' "$ACTIVITY" > artifacts/apk/activity.txt
+
+      - name: Install Android emulator dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -path '*/bin/sdkmanager' -print -quit)"; fi
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "emulator" "build-tools;36.0.0" "platforms;android-35" "system-images;android-35;google_apis;x86_64"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpulse0
+          ldconfig -p | grep -q 'libpulse.so.0'
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
+
+      - name: Start emulator and execute hardened boot test
+        shell: bash
+        env:
+          ANDROID_AVD_HOME: ${{ runner.temp }}/android-avd
+          ANDROID_SERIAL: emulator-5554
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/runtime "$ANDROID_AVD_HOME"
+          AVD_NAME='craftdroid-step370'
+          AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
+          EMULATOR="$ANDROID_HOME/emulator/emulator"
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          test -x "$AVDMANAGER"
+          test -x "$EMULATOR"
+          test -x "$ADB"
+
+          echo 'no' | "$AVDMANAGER" create avd --force \
+            -n "$AVD_NAME" \
+            -k 'system-images;android-35;google_apis;x86_64' \
+            -d 'pixel_2'
+          cat >> "$ANDROID_AVD_HOME/$AVD_NAME.avd/config.ini" <<'EOF'
+          hw.cpu.ncore=4
+          hw.ramSize=2560M
+          hw.heapSize=512M
+          disk.dataPartition.size=4G
+          hw.lcd.width=720
+          hw.lcd.height=1280
+          hw.lcd.density=320
+          showDeviceFrame=no
+          EOF
+
+          "$ADB" kill-server >/dev/null 2>&1 || true
+          "$ADB" start-server >/dev/null
+          EMU_LOG="$GITHUB_WORKSPACE/artifacts/runtime/emulator.log"
+          set +e
+          "$EMULATOR" \
+            -port 5554 \
+            -avd "$AVD_NAME" \
+            -no-window \
+            -gpu swiftshader_indirect \
+            -no-snapshot \
+            -noaudio \
+            -no-boot-anim \
+            -no-metrics \
+            -accel off > >(tee "$EMU_LOG") 2>&1 &
+          EMU_PID=$!
+          set -e
+          printf '%s\n' "$EMU_PID" > artifacts/runtime/emulator-pid.txt
+
+          cleanup() {
+            set +e
+            "$ADB" -s "$ANDROID_SERIAL" emu kill >/dev/null 2>&1 || true
+            kill "$EMU_PID" >/dev/null 2>&1 || true
+            wait "$EMU_PID" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          STATE=''
+          for attempt in $(seq 1 720); do
+            STATE="$($ADB -s "$ANDROID_SERIAL" get-state 2>/dev/null | tr -d '\r\n' || true)"
+            if [ "$STATE" = 'device' ]; then
+              printf 'device_online_attempt=%s\n' "$attempt" | tee artifacts/runtime/adb-online.txt
+              break
+            fi
+            if ! kill -0 "$EMU_PID" >/dev/null 2>&1; then
+              tail -n 200 "$EMU_LOG" >&2 || true
+              exit 1
+            fi
+            if (( attempt % 30 == 0 )); then
+              printf 'waiting-for-adb attempt=%s state=%s\n' "$attempt" "${STATE:-unknown}" | tee -a artifacts/runtime/boot-wait.log
+            fi
+            sleep 2
+          done
+          test "$STATE" = 'device'
+
+          BOOTED=''
+          for attempt in $(seq 1 900); do
+            BOOTED="$($ADB -s "$ANDROID_SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n' || true)"
+            if [ "$BOOTED" = '1' ]; then
+              printf 'boot_completed_attempt=%s\n' "$attempt" | tee artifacts/runtime/android-boot-complete.txt
+              break
+            fi
+            if (( attempt % 30 == 0 )); then
+              printf 'waiting-for-android-boot attempt=%s\n' "$attempt" | tee -a artifacts/runtime/boot-wait.log
+            fi
+            sleep 2
+          done
+          test "$BOOTED" = '1'
+
+          "$ADB" -s "$ANDROID_SERIAL" shell getprop ro.product.cpu.abi | tee artifacts/runtime/emulator-abi.txt
+          "$ADB" -s "$ANDROID_SERIAL" shell getprop ro.build.version.sdk | tee artifacts/runtime/emulator-api.txt
+          "$ADB" -s "$ANDROID_SERIAL" shell getprop ro.product.model | tee artifacts/runtime/emulator-model.txt
+          "$ADB" -s "$ANDROID_SERIAL" shell settings put global window_animation_scale 0 >/dev/null 2>&1 || true
+          "$ADB" -s "$ANDROID_SERIAL" shell settings put global transition_animation_scale 0 >/dev/null 2>&1 || true
+          "$ADB" -s "$ANDROID_SERIAL" shell settings put global animator_duration_scale 0 >/dev/null 2>&1 || true
+
+          bash tools/ci/real_minecraft_boot_step370.sh "$APK" artifacts/runtime artifacts/fixture
+
+      - name: Upload Step 370 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CraftDroid-step370-real-boot
+          path: |
+            artifacts/runtime/**
+            artifacts/apk/**
+            artifacts/fixture/fixture-result.txt
+          if-no-files-found: ignore
