@@ -1,9 +1,12 @@
 name: Step 257 - Droid Launcher resilient authoritative build
+run-name: Step 257 Droid Launcher build - ${{ github.sha }}
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: {}
   push:
-    branches: [main, master]
+    branches:
+      - main
+      - master
 
 permissions:
   contents: read
@@ -149,7 +152,6 @@ jobs:
           python3 tools/ci/apply_step287_first_run_components_gui.py droid-src
           python3 - <<'PY'
           from pathlib import Path
-          import re
           root = Path('droid-src')
           matches = list((root / 'app/src/main/java').rglob('DroidLauncherUiActivity.kt'))
           if len(matches) != 1:
@@ -321,6 +323,7 @@ jobs:
           python3 tools/ci/verify_step239_generated_kotlin.py droid-src
           python3 - <<'PY'
           from pathlib import Path
+          import re
           import xml.etree.ElementTree as ET
           root = Path('droid-src')
           ui = next((root / 'app/src/main/java').rglob('DroidLauncherUiActivity.kt'))
