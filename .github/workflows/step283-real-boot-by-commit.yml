@@ -10,7 +10,7 @@ on:
         required: false
         type: string
       apk_build_run_id:
-        description: 'Successful Step296 authoritative APK build run ID; optional auto-discovery by source SHA'
+        description: 'Successful Step200 authoritative APK build run ID; optional auto-discovery by source SHA'
         required: false
         type: string
 
@@ -38,7 +38,7 @@ jobs:
           echo "SOURCE_RUN_ID=$SOURCE_RUN_ID" >> "$GITHUB_ENV"
           printf '%s\n' "$TARGET_SHA" > target-sha.txt
 
-      - name: Wait for successful Step296 authoritative APK for this commit
+      - name: Wait for successful Step200 authoritative APK for this commit
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -47,12 +47,12 @@ jobs:
           if [ -z "$SOURCE_RUN_ID" ]; then
             for attempt in $(seq 1 120); do
               SOURCE_RUN_ID="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=$TARGET_SHA&per_page=100" \
-                --jq '.workflow_runs[] | select(.name == "Step 296 - Authoritative APK finalizer loop" and .head_sha == "'"$TARGET_SHA"'" and .conclusion == "success") | .id' \
+                --jq '.workflow_runs[] | select(.name == "Step 200 - Droid Launcher authoritative build" and .head_sha == "'"$TARGET_SHA"'" and .conclusion == "success") | .id' \
                 | head -n1)"
               if [ -n "$SOURCE_RUN_ID" ]; then
                 break
               fi
-              echo "Waiting for successful Step296 authoritative APK build for $TARGET_SHA (poll $attempt/120)."
+              echo "Waiting for successful Step200 authoritative APK build for $TARGET_SHA (poll $attempt/120)."
               sleep 15
             done
           fi
@@ -81,7 +81,7 @@ jobs:
           test -s artifacts/fixture/assets/indexes/*.json
           find artifacts/fixture/libraries -type f -print -quit | grep -q .
 
-      - name: Download exact Step296 APK artifact
+      - name: Download exact Step200 APK artifact
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -89,7 +89,7 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts/apk
           found="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
-            --jq '.artifacts[] | select((.name|startswith("Droid-Launcher-Step")) and ((.name|endswith("-debug")) or (.name|endswith("-final"))) and .expired==false) | .id' \
+            --jq '.artifacts[] | select((.name == "Droid-Launcher-Step253-debug") and .expired==false) | .id' \
             | head -n1)"
           test -n "$found"
           printf '%s\n' "$found" > artifacts/apk/artifact-id.txt
