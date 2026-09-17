@@ -125,6 +125,36 @@ def deduplicate_final_ui_helpers(ui_path: Path) -> str:
     return source
 
 
+def normalize_final_generated_ui(ui_path: Path) -> str:
+    """Normalize mutations that were historically performed by this verifier.
+
+    The verifier itself is a mutation stage in the generated-source pipeline.  Keep
+    that behavior, but ensure its final writes use the same canonical UI contracts
+    consumed by Gradle so a later verification pass cannot reintroduce compilation
+    failures.
+    """
+    source = ui_path.read_text(encoding="utf-8")
+    source = re.sub(r"\bsingleLine\s*=\s*(true|false)\b", r"setSingleLine(\1)", source)
+
+    # After duplicate removal, canonicalize the remaining Microsoft entrypoint.
+    # The historical placeholder body is a flat builder chain, so a method-level
+    # regex is deterministic for the generated activity while preserving all other UI.
+    source, _ = remove_duplicate_functions(source, "    private fun showMicrosoftAccountInfo()")
+    microsoft_method = re.compile(
+        r"(?ms)^    private fun showMicrosoftAccountInfo\(\)\s*\{.*?^    \}\s*"
+    )
+    canonical = "    private fun showMicrosoftAccountInfo() { showMicrosoftSignInPage() }\n\n"
+    if re.search(r"(?m)^    private fun showMicrosoftAccountInfo\(\)", source):
+        source, replaced = microsoft_method.subn(canonical, source, count=1)
+        if replaced != 1:
+            raise SystemExit(f"[step239] Microsoft account helper canonicalization replaced {replaced} declaration(s)")
+    else:
+        raise SystemExit("[step239] Microsoft account helper is missing")
+
+    ui_path.write_text(source, encoding="utf-8")
+    return source
+
+
 def patch_base_navigation(ui: str) -> str:
     if '"Features" -> featuresPage()' not in ui:
         anchor = '            "Controls" -> controlsPage()'
@@ -191,6 +221,8 @@ def main() -> int:
     # Canonicalize helper ownership after every late UI/launch repair and immediately
     # persist the repaired source so later Gradle compilation sees the unique form.
     ui = deduplicate_final_ui_helpers(ui_path)
+    ui_path.write_text(ui, encoding="utf-8")
+    ui = normalize_final_generated_ui(ui_path)
 
     manager = find_one(src, "MinecraftLaunchManager.kt").read_text(encoding="utf-8")
     for signature in (
@@ -202,6 +234,15 @@ def main() -> int:
         count = count_decl(ui, signature)
         if count != 1:
             raise SystemExit(f"[step239] {signature} must have exactly one declaration, found {count}")
+
+    if re.search(r"\bsingleLine\s*=\s*(true|false)\b", ui):
+        raise SystemExit('[step239] invalid Android EditText singleLine property remains')
+    if count_decl(ui, 'private fun showMicrosoftAccountInfo()') != 1:
+        raise SystemExit('[step239] Microsoft account helper is not unique')
+    if 'private fun showMicrosoftAccountInfo() { showMicrosoftSignInPage() }' not in ui:
+        raise SystemExit('[step239] Microsoft account entrypoint is not canonical')
+    if 'private fun showMicrosoftSignInPage()' not in ui:
+        raise SystemExit('[step239] real Microsoft sign-in page is missing')
 
     for needle in (
         'private fun resolveLaunchJavaRuntime(requestedJava: Int): Int',
@@ -243,7 +284,7 @@ def main() -> int:
 
     print('[step239] generated UI helper declarations are unique')
     print('[step239] MinecraftLaunchManager Java resolver is Int -> Int')
-    print('[step239] no stale String-based Java launch resolver remains')
+    print('[step239] no stale String-based launch Java resolver remains')
     print('[step291] Home + Account/Profile mockups finalized with preserved Feature Center navigation')
     print('[step293] final server contracts are self-contained and background-safe')
     return 0
