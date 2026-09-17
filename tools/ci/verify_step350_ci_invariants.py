@@ -55,6 +55,10 @@ def main() -> int:
         raise SystemExit('[step350] Step357 final generated scope repair is missing')
     if generated.is_dir():
         subprocess.run([sys.executable, str(final_scope), str(generated)], cwd=root, check=True)
+        custom_ui = root / 'tools/ci/apply_step375_custom_ui.py'
+        if not custom_ui.is_file():
+            raise SystemExit('[step375] final custom UI patch script is missing')
+        subprocess.run([sys.executable, str(custom_ui), str(generated)], cwd=root, check=True)
         subprocess.run([sys.executable, str(coverage), str(generated)], cwd=root, check=True)
     else:
         print('[step350] generated source tree is unavailable; feature coverage will run in the workflow after generation')
@@ -78,6 +82,7 @@ def main() -> int:
     print('[step350] Microsoft/skin-cape picker and requested launcher subsystem coverage verifiers are chained into CI')
     print('[step350] critical-file preservation audit is chained into CI')
     print('[step350] Step357 final generated scope/API repair is chained before Gradle')
+    print('[step375] custom reference-driven UI applied after Step357 and before feature coverage')
     return 0
 
 if __name__ == '__main__':
