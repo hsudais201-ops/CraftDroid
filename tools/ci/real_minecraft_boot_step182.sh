@@ -179,8 +179,8 @@ PY
     sleep 4
     for attempt in $(seq 1 12); do
       "$ADB" shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
-      "$ADB" shell cat /sdcard/window.xml > "$OUT/post-install-ui-\${attempt}.xml" 2>/dev/null || true
-      PLAY_BOUNDS="$(python3 - "$OUT/post-install-ui-\${attempt}.xml" <<'PY'
+      "$ADB" shell cat /sdcard/window.xml > "$OUT/post-install-ui-${attempt}.xml" 2>/dev/null || true
+      PLAY_BOUNDS="$(python3 - "$OUT/post-install-ui-${attempt}.xml" <<'PY'
 import re, sys, xml.etree.ElementTree as ET
 try:
     root = ET.parse(sys.argv[1]).getroot()
@@ -199,8 +199,8 @@ for node in root.iter('node'):
 PY
 )"
       if [ -n "$PLAY_BOUNDS" ]; then
-        cp "$OUT/post-install-ui-\${attempt}.xml" "$OUT/ui.xml"
-        printf '%s\n' "\${attempt}" > "$OUT/ui-attempt.txt"
+        cp "$OUT/post-install-ui-${attempt}.xml" "$OUT/ui.xml"
+        printf '%s\n' "${attempt}" > "$OUT/ui-attempt.txt"
         break
       fi
       sleep 2
