@@ -31,6 +31,14 @@ class JavaRuntimeManagerContractTest {
     }
 
     @Test
+    fun allSupportedMinecraft26ReleasesRequireJava25() {
+        listOf("26.1", "26.1.1", "26.1.2", "26.2", "26.3").forEach { version ->
+            val profile = MinecraftRuntimeProfile.forMinecraftVersion(version)
+            assertTrue("$version must require Java 25", profile.requiredJava == 25)
+        }
+    }
+
+    @Test
     fun runtimePageExposesAllConfiguredChoices() {
         val candidates = listOf(8, 16, 17, 21, 25)
         assertTrue(candidates.contains(8))
