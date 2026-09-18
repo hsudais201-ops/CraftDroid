@@ -196,7 +196,7 @@ jobs:
           requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
           buildUi()
           showPage("Game")
-      }'''
+          }'''
           source = source[:begin] + replacement + source[end:]
 
           block_start = source.find('\n    private data class BootstrapComponent')
