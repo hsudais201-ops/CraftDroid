@@ -13,8 +13,6 @@ def main() -> int:
     source = path.read_text(encoding="utf-8")
     marker = "    fun lastError(context: Context, version: String): String? =\n"
     if "fun installedVersions(context: Context): List<String>" not in source:
-        if marker not in source:
-            raise SystemExit("[step336] lastError anchor not found")
         helper = '''    /** Returns version directories that contain a verified Minecraft client JAR + metadata. */
     fun installedVersions(context: Context): List<String> {
         val versionsDir = File(minecraftRoot(context), "versions")
@@ -29,7 +27,15 @@ def main() -> int:
     }
 
 '''
-        source = source.replace(marker, helper + marker, 1)
+        if marker in source:
+            source = source.replace(marker, helper + marker, 1)
+        elif "\n}" in source:
+            # Current manager variant has no lastError method. Insert the same
+            # real inventory API immediately before the single class terminator.
+            pos = source.rfind("\n}")
+            source = source[:pos] + "\n" + helper.rstrip("\n") + source[pos:]
+        else:
+            raise SystemExit("[step336] no safe insertion point for installedVersions")
     if source.count("fun installedVersions(context: Context): List<String>") != 1:
         raise SystemExit("[step336] installedVersions declaration count is not exactly one")
     path.write_text(source, encoding="utf-8")
