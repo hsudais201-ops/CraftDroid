@@ -78,27 +78,29 @@ def patch_monitor(path: Path) -> None:
         )
         changed = True
 
-    # Normalize malformed monitor-loop boundaries structurally rather than relying
-    # on one exact indentation string. Older generators sometimes leave repeated
-    # closing braces immediately before lastKnownLogLength.
+    # Normalize malformed monitor-loop boundaries structurally. Older generated
+    # variants can contain two identical inner closing braces before the outer
+    # log-length guard. Remove only that exact indentation pattern.
     lines = text.splitlines()
     removed = 0
     last_idx = next((i for i, line in enumerate(lines)
                      if "lastKnownLogLength = currentLogLength" in line), -1)
-    if last_idx >= 2:
-        while last_idx >= 2:
-            prev = lines[last_idx - 1]
-            prev2 = lines[last_idx - 2]
-            indent_prev = len(prev) - len(prev.lstrip(" "))
-            indent_prev2 = len(prev2) - len(prev2.lstrip(" "))
-            indent_target = len(lines[last_idx]) - len(lines[last_idx].lstrip(" "))
+    if last_idx >= 3:
+        while last_idx >= 3:
+            outer = lines[last_idx - 1]
+            duplicate = lines[last_idx - 2]
+            original = lines[last_idx - 3]
+            indent_outer = len(outer) - len(outer.lstrip(" "))
+            indent_duplicate = len(duplicate) - len(duplicate.lstrip(" "))
+            indent_original = len(original) - len(original.lstrip(" "))
             if (
-                prev.strip() == "}"
-                and prev2.strip() == "}"
-                and indent_prev2 == indent_prev
-                and indent_prev > indent_target
+                outer.strip() == "}"
+                and duplicate.strip() == "}"
+                and original.strip() == "}"
+                and indent_duplicate == indent_original
+                and indent_duplicate > indent_outer
             ):
-                del lines[last_idx - 1]
+                del lines[last_idx - 2]
                 removed += 1
                 last_idx -= 1
             else:
@@ -294,10 +296,18 @@ def main() -> int:
         raise SystemExit("[step433] monitor log-length state anchor missing")
     prev = monitor_lines[last_idx - 1]
     prev2 = monitor_lines[last_idx - 2]
+    if prev.strip() != "}" or prev2.strip() != "}":
+        raise SystemExit("[step433] monitor-loop boundary remains malformed after normalization")
     indent_prev = len(prev) - len(prev.lstrip(" "))
     indent_prev2 = len(prev2) - len(prev2.lstrip(" "))
-    if prev.strip() != "}" or prev2.strip() != "}" or indent_prev2 == indent_prev or indent_prev2 <= indent_prev:
-        raise SystemExit("[step433] malformed monitor-loop boundary remains after normalization")
+    if indent_prev2 <= indent_prev:
+        raise SystemExit("[step433] monitor-loop boundary remains malformed after normalization")
+    if last_idx >= 3:
+        prev3 = monitor_lines[last_idx - 3]
+        indent_prev3 = len(prev3) - len(prev3.lstrip(" "))
+        if prev3.strip() == "}" and indent_prev3 == indent_prev2:
+            raise SystemExit("[step433] duplicate monitor-loop closing brace remains")
+
     if "MAX_EVENT_LOG_BYTES" not in monitor_text:
         raise SystemExit("[step426] event-log bound constant missing")
 
