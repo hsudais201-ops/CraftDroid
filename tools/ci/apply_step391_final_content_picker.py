@@ -140,7 +140,13 @@ def main() -> int:
             val uri = data?.data ?: return
             val pageName = step391PendingContentPage ?: return
             try {
-                val temp = java.io.File.createTempFile("droid-content-", ".tmp", cacheDir)
+                val originalName = contentResolver.query(
+                    uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                } ?: "selected-content"
+                val safeSuffix = originalName.substringAfterLast(".", "").takeIf { it.length in 1..12 }?.let { "." + it } ?: ".tmp"
+                val temp = java.io.File.createTempFile("droid-content-", safeSuffix, cacheDir)
                 contentResolver.openInputStream(uri)?.use { input ->
                     java.io.FileOutputStream(temp).use { output ->
                         val buffer = ByteArray(64 * 1024)
