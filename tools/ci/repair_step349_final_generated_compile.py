@@ -239,6 +239,12 @@ def assert_final_ui_invariants(source: str) -> None:
     if 'STEP352_REAL_COSMETIC_PICKER_CALLBACK' not in source: raise SystemExit('[step349] real skin/cape picker callback missing')
     if 'private fun openMicrosoftLoginWebsite()' not in source: raise SystemExit('[step349] Microsoft browser helper missing')
     if 'STEP391_FINAL_CONTENT_PICKER' not in source: raise SystemExit('[step349] final content picker marker missing')
+    if 'private fun minecraftVersionChoices(): List<String>' not in source:
+        raise SystemExit('[step349] dynamic Minecraft version choices helper missing')
+    if 'MinecraftLatestVersionManager.getCached(this)' not in source:
+        raise SystemExit('[step349] cached Mojang latest-version lookup missing')
+    if 'refreshLatestMinecraftVersion()' not in source:
+        raise SystemExit('[step349] automatic latest-version refresh missing')
     if 'requestCode == CONTENT_PICKER_REQUEST' not in source: raise SystemExit('[step349] content picker callback missing')
     if 'microsoft_skin_uri' not in source or 'microsoft_cape_uri' not in source: raise SystemExit('[step349] cosmetic URI persistence missing')
     # No class member may appear after the final class brace. The generated file
@@ -335,7 +341,13 @@ def main() -> int:
     )
     ui.write_text(source, encoding='utf-8')
     source = ui.read_text(encoding='utf-8')
-    # Last boundary: no subsequent generator is allowed to erase this helper.
+    # Last boundary: no subsequent generator is allowed to erase the latest-version
+    # UI wiring or Microsoft helper.
+    latest_repair = repo_root / 'tools/ci/repair_step328_latest_version_wiring.py'
+    if not latest_repair.is_file():
+        raise SystemExit('[step349] latest-version UI repair script is missing')
+    subprocess.run([sys.executable, str(latest_repair), str(root)], cwd=repo_root, check=True)
+    source = ui.read_text(encoding='utf-8')
     source = ensure_microsoft_browser_helper(source)
     ui.write_text(source, encoding='utf-8')
     source = ui.read_text(encoding='utf-8')
