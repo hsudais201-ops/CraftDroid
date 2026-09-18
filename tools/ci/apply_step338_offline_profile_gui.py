@@ -101,7 +101,7 @@ def main() -> int:
             repeat(4) { idx ->
                 val slot = button("+")
                 val slotIndex = rowIndex * 4 + idx + 1
-                slot.contentDescription = "Cosmetic slot $slotIndex"
+                slot.contentDescription = "Cosmetic slot " + slotIndex
                 slot.setOnClickListener {
                     // Each visible slot opens a real persisted image picker: odd
                     // slots select a Minecraft skin, even slots select a cape.
