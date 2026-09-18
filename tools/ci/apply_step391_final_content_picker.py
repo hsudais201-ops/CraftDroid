@@ -205,6 +205,11 @@ def main() -> int:
         if callback_pos < 0:
             raise SystemExit("[step391] canonical callback insertion failed")
         source = source[:callback_pos] + "    " + MARKER + "\n" + source[callback_pos:]
+    if "// STEP352_REAL_COSMETIC_PICKER_CALLBACK" not in source:
+        callback_pos = source.find(callback)
+        if callback_pos < 0:
+            raise SystemExit("[step391] canonical callback insertion failed while restoring cosmetic marker")
+        source = source[:callback_pos] + "    // STEP352_REAL_COSMETIC_PICKER_CALLBACK\n" + source[callback_pos:]
 
     # Exactly one callback is non-negotiable: cosmetic + content picker share it.
     if source.count("override fun onActivityResult(") != 1:
