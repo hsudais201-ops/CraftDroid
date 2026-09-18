@@ -81,14 +81,15 @@ def assert_clean(text: str) -> None:
         "private fun getSavedServers(): List<Pair<String, Int>> {",
         "private fun showMicrosoftSignInPage()",
         "override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?)",
-        "setSingleLine(true)",
         "STEP352_REAL_COSMETIC_PICKER_CALLBACK",
     )
     for marker in required:
         if marker not in text:
             raise SystemExit(f"[step357] required final-source marker missing: {marker}")
     if "singleLine =" in text:
-        raise SystemExit("[step357] raw singleLine assignment remains in generated activity")
+        raise SystemExit("[step357] raw invalid singleLine assignment remains in generated activity")
+    if "setSingleLine(true)" not in text and "isSingleLine = true" not in text:
+        raise SystemExit("[step357] generated EditText single-line contract is missing")
     if text.count("private fun serverPrefs():") != 1:
         raise SystemExit("[step357] serverPrefs declaration count is not exactly one")
     if text.count("private fun showMicrosoftSignInPage()") != 1:
