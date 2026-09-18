@@ -40,6 +40,7 @@ object MinecraftVersionInstallManager {
         }
     }
     private val cancellations = ConcurrentHashMap.newKeySet<String>()
+    private val inFlight = ConcurrentHashMap.newKeySet<String>()
 
     enum class State { NOT_INSTALLED, DOWNLOADING, INSTALLED, FAILED }
 
@@ -98,6 +99,7 @@ object MinecraftVersionInstallManager {
             listener?.onComplete(safeVersion)
             return
         }
+        if (!inFlight.add(safeVersion)) return
         cancellations.remove(safeVersion)
         executor.execute {
             try {
@@ -110,6 +112,8 @@ object MinecraftVersionInstallManager {
             } catch (t: Throwable) {
                 setState(context, safeVersion, State.FAILED, t.message ?: t.javaClass.simpleName)
                 listener?.onError(safeVersion, t)
+            } finally {
+                inFlight.remove(safeVersion)
             }
         }
     }
