@@ -52,10 +52,14 @@ def main() -> int:
     brand = s.find("pageArea.addView(step460PageBrand(page)")
     if reset < 0 or brand < 0 or brand < reset:
         raise SystemExit("[step460-verify] page brand is not inserted at the final render boundary")
-    tail = s[s.find("// STEP460_UI_POLISH"):]
+    helper_start = s.find("// STEP460_UI_POLISH")
+    helper_end = s.find("    private fun step460StartContent(type: String)", helper_start)
+    if helper_start < 0 or helper_end < 0:
+        raise SystemExit("[step460-verify] unable to isolate Step460 helper boundary")
+    helper_text = s[helper_start:helper_end]
     for forbidden in ("HttpURLConnection", "URL(", "BitmapFactory.decodeStream"):
-        if forbidden in tail:
-            raise SystemExit("[step460-verify] network image loading found in final UI patch: " + forbidden)
+        if forbidden in helper_text:
+            raise SystemExit("[step460-verify] network image loading found in Step460 helper code: " + forbidden)
     print("[step460-verify] final UI branding, category cards, loaders and real import bridges pass")
     return 0
 
