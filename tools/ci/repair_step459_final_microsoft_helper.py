@@ -6,6 +6,7 @@ idempotent repair runs after those mutations and guarantees that both Microsoft
 browser/cosmetic picker calls have exactly one real implementation.
 """
 from pathlib import Path
+import re
 import sys
 
 UI_REL = Path("app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt")
