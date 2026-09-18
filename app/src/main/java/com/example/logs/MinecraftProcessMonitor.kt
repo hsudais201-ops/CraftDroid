@@ -125,7 +125,7 @@ class MinecraftProcessMonitor(
 
             // Never materialize an unbounded Minecraft log into RAM. On a 2GB
             // phone a runaway log can otherwise compete directly with the JVM.
-            val maxBytes = 256L * 1024L
+            val maxBytes = 128L * 1024L
             val start = maxOf(currentOffset, length - maxBytes)
             logFile.inputStream().use { input ->
                 var skipped = 0L
