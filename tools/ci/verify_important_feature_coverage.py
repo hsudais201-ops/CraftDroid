@@ -99,12 +99,16 @@ def main() -> int:
             'STEP352_REAL_COSMETIC_PICKER_CALLBACK', 'microsoft_skin_uri',
             'microsoft_cape_uri', 'contentResolver.takePersistableUriPermission',
             'requestCode == 3371 || requestCode == 3372',
+            'step375Title("DroidLauncher", "First launch only until INSTALL completes.")',
+            'step375Button("INSTALL", true)',
         )
         for needle in ui_checks:
             if needle not in ui:
                 errors.append(f"DroidLauncherUiActivity.kt: missing {needle!r}")
         if "showBootstrapGate" in ui or "BootstrapComponent" in ui:
             errors.append("DroidLauncherUiActivity.kt: obsolete fake bootstrap gate remains")
+        if "Zalith Launcher" in ui:
+            errors.append("DroidLauncherUiActivity.kt: legacy Zalith Launcher title remains")
         if re.search(r"(?m)^\s*singleLine\s*=", ui):
             errors.append("DroidLauncherUiActivity.kt: Android EditText singleLine property remains")
         if re.search(r'Cosmetic slot \$slotIndex', ui):
