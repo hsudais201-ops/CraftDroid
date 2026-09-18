@@ -41,8 +41,7 @@ def patch_settings(path: Path) -> None:
         anchor = "    suspend fun updateSelectedVersion(versionId: String) {"
         if anchor not in s:
             raise SystemExit("[step395] SettingsRepository insertion anchor missing")
-        s = s.replace(anchor, SETTINGS_METHOD + "
-" + anchor, 1)
+        s = s.replace(anchor, SETTINGS_METHOD + "\n" + anchor, 1)
 
     # Device-aware read path: old, excessively high saved values are clamped.
     old = '            ramMb = prefs[Keys.RAM_MB] ?: 2048,'
