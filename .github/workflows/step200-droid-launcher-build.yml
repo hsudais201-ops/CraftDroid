@@ -182,6 +182,7 @@ jobs:
           python3 tools/ci/repair_step349_final_generated_compile.py droid-src
           python3 tools/ci/apply_step391_final_content_picker.py droid-src
           python3 tools/ci/repair_step349_final_generated_compile.py droid-src
+          python3 tools/ci/repair_step459_final_microsoft_helper.py droid-src
 
       - name: Verify all hardened contracts
         shell: bash
