@@ -164,6 +164,9 @@ jobs:
 
       - name: Clean up and activate Settings controls
         run: python3 tools/ci/apply_step382_settings_cleanup.py droid-src
+
+      - name: Restore final content picker after UI rewrite
+        run: python3 tools/ci/apply_step391_final_content_picker.py droid-src
       - name: Verify all hardened contracts
         shell: bash
         run: |
