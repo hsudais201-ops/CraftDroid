@@ -131,6 +131,8 @@ jobs:
         run: python3 tools/ci/repair_step295_final_navigation.py droid-src
       - name: Repair Android EditText property mappings
         run: python3 tools/ci/repair_step297_android_edittext_properties.py droid-src
+      - name: Remove obsolete legacy bootstrap gate from generated UI
+        run: python3 tools/ci/repair_step431_remove_legacy_bootstrap.py droid-src
       - name: Restore canonical launch-contract sources after final UI generation
         shell: bash
         run: |
@@ -167,6 +169,8 @@ jobs:
         run: python3 tools/ci/apply_step395_low_ram_memory_settings.py droid-src
       - name: Harden generated low-RAM diagnostics
         run: python3 tools/ci/repair_step426_low_ram_diagnostics.py droid-src
+      - name: Re-enforce direct Game startup and remove legacy bootstrap
+        run: python3 tools/ci/repair_step431_remove_legacy_bootstrap.py droid-src
       - name: Deep source quality pass - 1000 content-dependent checks
         shell: bash
         run: |
@@ -183,7 +187,7 @@ jobs:
           python3 tools/ci/verify_step239_generated_kotlin.py droid-src
           python3 tools/ci/verify_important_feature_coverage.py droid-src
           python3 tools/ci/verify_step428_minecraft_261_latest.py droid-src
-          python3 tools/ci/verify_step287_first_run_components.py droid-src
+          python3 tools/ci/repair_step431_remove_legacy_bootstrap.py droid-src
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
