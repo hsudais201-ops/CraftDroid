@@ -123,9 +123,17 @@ HELPERS = r'''
                 val probe = java.io.File(root, "readiness.txt")
                 probe.writeText("storage=ready\ninstances=ready\ndownloads=ready\ncontent=ready\nruntimes=on-demand\n")
                 if (!probe.isFile() || probe.length() == 0L) throw java.io.IOException("Launcher readiness verification failed")
-                runOnUiThread { onResult(true, "Launcher storage is ready. Runtime components can be installed on demand.") }
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        onResult(true, "Launcher storage is ready. Runtime components can be installed on demand.")
+                    }
+                }
             } catch (t: Throwable) {
-                runOnUiThread { onResult(false, t.message ?: "Launcher preparation failed") }
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed) {
+                        onResult(false, t.message ?: "Launcher preparation failed")
+                    }
+                }
             }
         }.apply { isDaemon = true; start() }
     }
