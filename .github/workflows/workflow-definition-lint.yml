@@ -1,0 +1,33 @@
+name: CraftDroid Workflow Definition Lint
+run-name: CraftDroid workflow lint - ${{ github.sha }}
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Actionlint
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.12
+          test -x ./actionlint
+
+      - name: Validate resilient build workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./actionlint -no-color .github/workflows/step406-resilient-build.yml
