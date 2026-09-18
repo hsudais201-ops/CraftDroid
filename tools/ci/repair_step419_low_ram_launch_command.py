@@ -34,7 +34,7 @@ def patch_manager(path: Path) -> None:
                 val effectiveRamMb = settingsRepository.getSafeRamMb(ramMb)
                 val effectiveMinRamMb = minOf(512, maxOf(128, effectiveRamMb / 4))
                 LauncherLogger.info(
-                    "Effective Minecraft heap: Xms=\${effectiveMinRamMb}M Xmx=\${effectiveRamMb}M (requested=\${ramMb}M)"
+                    "Effective Minecraft heap: Xms=${effectiveMinRamMb}M Xmx=${effectiveRamMb}M (requested=${ramMb}M)"
                 )
                 val launchConfig = LaunchConfig(
                     versionDetail = versionDetail,
@@ -59,8 +59,8 @@ def patch_manager(path: Path) -> None:
 def patch_builder(path: Path) -> None:
     s = path.read_text(encoding="utf-8")
     old = """        // 1. JVM Memory Arguments
-        args.add("-Xms\${config.minRamMb}M")
-        args.add("-Xmx\${config.ramMb}M")
+        args.add("-Xms${config.minRamMb}M")
+        args.add("-Xmx${config.ramMb}M")
 """
     new = """        // 1. JVM Memory Arguments
         // The manager has already applied the Android device-aware policy. Keep a
@@ -68,16 +68,15 @@ def patch_builder(path: Path) -> None:
         // an accidentally enormous heap.
         val effectiveMaxRamMb = config.ramMb.coerceIn(128, 4096)
         val effectiveMinRamMb = config.minRamMb.coerceIn(128, effectiveMaxRamMb)
-        args.add("-Xms\${effectiveMinRamMb}M")
-        args.add("-Xmx\${effectiveMaxRamMb}M")
+        args.add("-Xms${effectiveMinRamMb}M")
+        args.add("-Xmx${effectiveMaxRamMb}M")
 """
     if old in s:
         s = s.replace(old, new, 1)
     elif "val effectiveMaxRamMb = config.ramMb.coerceIn(128, 4096)" not in s:
         raise SystemExit("[step419] JVM memory argument anchor not found in LaunchCommandBuilder.kt")
 
-    helper =
-        """    private fun isHeapArgument(argument: String): Boolean =
+    helper = """    private fun isHeapArgument(argument: String): Boolean =
         argument.startsWith("-Xmx", ignoreCase = true) ||
             argument.startsWith("-Xms", ignoreCase = true)
 
