@@ -193,6 +193,14 @@ def restore_server_contracts(root: Path) -> str:
     ui_path = find_one(root / "app/src/main/java", "DroidLauncherUiActivity.kt")
     return ui_path.read_text(encoding="utf-8")
 
+def restore_final_microsoft_helpers(root: Path, ui_path: Path) -> str:
+    """Reinstall helpers after this verifier's own late UI rewrite."""
+    script = root.parent / "tools/ci/repair_step459_final_microsoft_helper.py"
+    if not script.is_file():
+        raise SystemExit(f"[step459] final Microsoft helper repair missing: {script}")
+    subprocess.run([sys.executable, str(script), str(root)], check=True)
+    return ui_path.read_text(encoding="utf-8")
+
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
@@ -223,6 +231,7 @@ def main() -> int:
     ui = deduplicate_final_ui_helpers(ui_path)
     ui_path.write_text(ui, encoding="utf-8")
     ui = normalize_final_generated_ui(ui_path)
+    ui = restore_final_microsoft_helpers(root, ui_path)
 
     manager = find_one(src, "MinecraftLaunchManager.kt").read_text(encoding="utf-8")
     for signature in (
@@ -243,6 +252,10 @@ def main() -> int:
         raise SystemExit('[step239] Microsoft account entrypoint is not canonical')
     if 'private fun showMicrosoftSignInPage()' not in ui:
         raise SystemExit('[step239] real Microsoft sign-in page is missing')
+    if ui.count('    private fun openMicrosoftLoginWebsite()') != 1:
+        raise SystemExit('[step459] Microsoft browser helper is not unique after final UI verification')
+    if ui.count('    private fun openCosmeticImagePicker(requestCode: Int)') != 1:
+        raise SystemExit('[step460] cosmetic picker helper is not unique after final UI verification')
 
     for needle in (
         'private fun resolveLaunchJavaRuntime(requestedJava: Int): Int',
