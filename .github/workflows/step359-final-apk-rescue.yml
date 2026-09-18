@@ -63,6 +63,9 @@ jobs:
       - name: Restore final content picker after UI rewrite
         run: python3 tools/ci/apply_step391_final_content_picker.py droid-src
 
+      - name: Harden low-RAM memory settings
+        run: python3 tools/ci/apply_step395_low_ram_memory_settings.py droid-src
+
       - name: Validate final source contracts
         shell: bash
         run: |
