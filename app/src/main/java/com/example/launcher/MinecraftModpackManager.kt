@@ -31,6 +31,7 @@ object MinecraftModpackManager {
     private const val MAX_TOTAL_BYTES = 1024L * 1024L * 1024L
     private const val MAX_FILE_BYTES = 256L * 1024L * 1024L
     private const val MAX_ARCHIVE_ENTRIES = 10_000
+    private const val MAX_INDEX_BYTES = 4L * 1024L * 1024L
     private const val CONNECT_TIMEOUT = 20_000
     private const val READ_TIMEOUT = 60_000
     private const val MAX_REDIRECTS = 3
@@ -51,6 +52,7 @@ object MinecraftModpackManager {
             unzip(mrpack, staging)
             val indexFile = File(staging, "modrinth.index.json")
             require(indexFile.isFile) { "Not a valid Modrinth modpack: modrinth.index.json is missing" }
+            require(indexFile.length() <= MAX_INDEX_BYTES) { "Modrinth index exceeds 4 MiB safety limit" }
             val index = JSONObject(indexFile.readText(Charsets.UTF_8))
             require(index.optString("game") == "minecraft") { "Modpack is not for Minecraft" }
             val formatVersion = index.optInt("formatVersion", 0)
