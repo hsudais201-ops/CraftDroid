@@ -108,10 +108,25 @@ CONTENT_METHODS = r'''
 '''
 
 
+def dedupe_pending_content_state(source: str) -> str:
+    declaration = "    private var step391PendingContentPage: String? = null"
+    lines = source.splitlines(True)
+    seen = False
+    out = []
+    for line in lines:
+        if line.strip() == declaration.strip():
+            if seen:
+                continue
+            seen = True
+        out.append(line)
+    return "".join(out)
+
+
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
     ui = find_ui(root)
     source = ui.read_text(encoding="utf-8")
+    source = dedupe_pending_content_state(source)
 
     # The Step 375 page already uses the startContentImport entrypoint.
     source = source.replace("startContentImport(", "step391StartContentImport(", 1000)
@@ -210,6 +225,8 @@ def main() -> int:
         if callback_pos < 0:
             raise SystemExit("[step391] canonical callback insertion failed while restoring cosmetic marker")
         source = source[:callback_pos] + "    // STEP352_REAL_COSMETIC_PICKER_CALLBACK\n" + source[callback_pos:]
+
+    source = dedupe_pending_content_state(source)
 
     # Exactly one callback is non-negotiable: cosmetic + content picker share it.
     if source.count("override fun onActivityResult(") != 1:
