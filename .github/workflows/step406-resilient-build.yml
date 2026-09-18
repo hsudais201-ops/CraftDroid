@@ -255,6 +255,12 @@ jobs:
           set -euo pipefail
           python3 tools/ci/repair_step349_final_generated_compile.py droid-src
 
+      - name: Apply JVM-safe touch-control test seam
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step361_touch_control_jvm_tests.py droid-src
+
       - name: Verify final generated feature contracts after all late repairs
         shell: bash
         run: |
