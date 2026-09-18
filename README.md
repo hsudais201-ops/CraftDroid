@@ -10,6 +10,9 @@ The GitHub repository remains `CraftDroid`, while the Android application and la
 
 ## Current state
 
+The launcher UI includes a lightweight CraftDroid brand asset, low-RAM visual policies, and persistent per-instance loader selection. The authoritative resilient build validates lint, unit tests, APK compilation, APK integrity, and artifact upload.
+
+
 - GitHub Actions Android build workflow: configured through the source-repair/build/emulator pipeline.
 - Droid Launcher Android source tree: included inside `CraftDroid_Launcher_2.4_GitHubActions_Step153.zip`.
 - Runtime hardening: Step 153-155 repairs are applied in CI for Kotlin/test/native compatibility.
