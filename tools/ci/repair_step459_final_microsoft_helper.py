@@ -139,9 +139,10 @@ def method_span(source: str, signature: str) -> tuple[int, int]:
 
 
 def remove_all_helpers(source: str) -> str:
-    while SIGNATURE in source:
-        start, end = method_span(source, SIGNATURE)
-        source = source[:start] + source[end:]
+    for signature in (BROWSER_SIGNATURE, PICKER_SIGNATURE):
+        while signature in source:
+            start, end = method_span(source, signature)
+            source = source[:start] + source[end:]
     return source
 
 
