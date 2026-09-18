@@ -63,6 +63,10 @@ def main() -> int:
         if not low_ram_ui.is_file():
             raise SystemExit('[step376] low-RAM UI hardening script is missing')
         subprocess.run([sys.executable, str(low_ram_ui), str(generated)], cwd=root, check=True)
+        settings_cleanup = root / 'tools/ci/apply_step382_settings_cleanup.py'
+        if not settings_cleanup.is_file():
+            raise SystemExit('[step382] settings cleanup script is missing')
+        subprocess.run([sys.executable, str(settings_cleanup), str(generated)], cwd=root, check=True)
         subprocess.run([sys.executable, str(coverage), str(generated)], cwd=root, check=True)
     else:
         print('[step350] generated source tree is unavailable; feature coverage will run in the workflow after generation')
@@ -71,6 +75,8 @@ def main() -> int:
         'tools/ci/verify_step337_microsoft_signin_gui.py': ('openCosmeticImagePicker(3371)', 'takePersistableUriPermission'),
         'tools/ci/verify_important_feature_coverage.py': ('microsoft_skin_uri', 'microsoft_cape_uri', 'STEP352_REAL_COSMETIC_PICKER_CALLBACK'),
         'tools/ci/repair_step357_final_scope_compile.py': ('repair_server_helpers', 'normalize_edit_text', 'showMicrosoftSignInPage'),
+        'tools/ci/apply_step376_low_ram_ui.py': ('step376LowRam', 'step376PrepareFirstRun', 'step376LoadBackground', 'step376ReleaseEffects'),
+        'tools/ci/apply_step382_settings_cleanup.py': ('step375Settings()', 'PerformanceProfile.detect', 'Resolution Scale', 'Game Fullscreen'),
     }
     for rel, markers in verifier_requirements.items():
         path = root / rel
