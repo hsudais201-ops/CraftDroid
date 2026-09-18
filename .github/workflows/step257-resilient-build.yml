@@ -398,7 +398,7 @@ jobs:
             if ! grep -Fq "${pkg}" <<< "$installed"; then missing+=("${pkg}"); fi
           done
           if [ "${#missing[@]}" -gt 0 ]; then timeout 25m "$SDKMANAGER" "${missing[@]}"; else echo 'All required Android SDK packages are already installed.'; fi
-          "$SDKMANAGER" --list_installed | grep -E 'platform-tools|platforms;android-36\.1|build-tools;36\.0\.0|ndk;27\.2\.12479018|cmake;3\.22\.1'
+          "$SDKMANAGER" --list_installed | grep -E 'platform-tools|platforms;android-36|build-tools;36\.0\.0|ndk;27\.2\.12479018|cmake;3\.22\.1'
 
       - name: Set up Gradle 9.6.0 directly
         uses: gradle/actions/setup-gradle@v6
