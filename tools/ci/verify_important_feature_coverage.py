@@ -57,7 +57,7 @@ REQUIRED_TEXT = {
         "loadSkinBitmap", "SkinTextureGenerator",
     ),
     "app/src/main/java/com/example/launcher/MinecraftLaunchHandoff.kt": (
-        "launch", "validate",
+        "launch", "valid",
     ),
 }
 
