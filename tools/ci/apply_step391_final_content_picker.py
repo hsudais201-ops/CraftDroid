@@ -148,7 +148,7 @@ def main() -> int:
                 else -> throw java.io.IOException("Unsupported content type: $pageName")
             }
             step391PendingContentPage = null
-            LauncherBackgroundInstallController.importContentUri(this, kind, uri) { state ->
+            LauncherBackgroundInstallController.importContentUri(this, LauncherBackgroundInstallController.Kind.valueOf(kind.name), uri) { state ->
                 when (state.state) {
                     LauncherBackgroundInstallController.State.QUEUED,
                     LauncherBackgroundInstallController.State.RUNNING -> {

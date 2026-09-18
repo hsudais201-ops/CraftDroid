@@ -72,6 +72,18 @@ def dedupe_methods(text: str, names: tuple[str, ...]) -> str:
     return text
 
 
+def dedupe_installer_helpers(text: str) -> str:
+    """Remove only later duplicate helper declarations, preserving the first implementation."""
+    for name in ('minecraftRoot', 'versionRoot', 'normalizeVersionId', 'requireVersionId'):
+        pat = re.compile(r'(?m)^\s*private\s+fun\s+' + re.escape(name) + r'\s*\(')
+        while True:
+            matches = list(pat.finditer(text))
+            if len(matches) <= 1:
+                break
+            m = matches[-1]
+            text = text[:m.start()] + text[method_end(text, m.start()):]
+    return text
+
 def normalize_page_boundary(text: str) -> str:
     bad = '    private fun getResolvedJavaForLaunch(version: String): Int {\n            private fun featuresPage() {'
     if bad in text:
@@ -242,6 +254,7 @@ def main() -> int:
     ui.write_text(source, encoding='utf-8')
     inst_before = installer.read_text(encoding='utf-8')
     inst = repair_progress_context(inst_before)
+    inst = dedupe_installer_helpers(inst)
     installer.write_text(inst, encoding='utf-8')
     navigation = repo_root / 'tools/ci/repair_step295_final_navigation.py'
     if not navigation.is_file(): raise SystemExit('[step349] final Feature Center navigation repair script is missing')
@@ -258,7 +271,15 @@ def main() -> int:
     ui.write_text(source, encoding='utf-8')
     source = ui.read_text(encoding='utf-8')
     assert_final_ui_invariants(source)
-    if 'private var progressContext: android.content.Context? = null' not in inst: raise SystemExit('[step349] installer progressContext declaration missing')
+    for sig in (
+        'private fun minecraftRoot(context: Context): File',
+        'private fun versionRoot(context: Context, version: String): File',
+        'private fun normalizeVersionId(raw: String): String?',
+        'private fun requireVersionId(raw: String): String',
+    ):
+        if inst.count(sig) != 1:
+            raise SystemExit(f'[step349] installer helper count for {sig!r} is {inst.count(sig)}')
+        if 'private var progressContext: android.content.Context? = null' not in inst: raise SystemExit('[step349] installer progressContext declaration missing')
     if '"Features" -> featuresPage()' not in source or 'setOnClickListener { showPage("Features") }' not in source: raise SystemExit('[step349] Feature Center navigation not restored at final boundary')
     run_quality_gate(repo_root, root)
     print(f'[step349] final repair complete; ui_changed={int(source != before)} installer_changed={int(inst != inst_before)}')

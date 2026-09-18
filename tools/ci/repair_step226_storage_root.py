@@ -40,7 +40,7 @@ def patch_installer(root: Path) -> None:
     )
     text, version_changed = replace_function_body(
         text,
-        r"^    private fun versionRoot\(context: Context, version: String\): File =",
+        r"^    private fun versionRoot\(context: Context, version: String\): File(?: =|\s*\{)",
         '''    private fun versionRoot(context: Context, version: String): File =
         MinecraftStorageResolver.version(context, version)''',
     )
@@ -57,7 +57,7 @@ def patch_installer(root: Path) -> None:
 
 ''' + text[idx:]
         root_changed = True
-    if 'MinecraftStorageResolver.version(context, version)' not in text:
+    if not re.search(r"^    private fun versionRoot\(context: Context, version: String\): File\b", text, re.MULTILINE):
         idx = text.find(anchor)
         text = text[:idx] + '''    private fun versionRoot(context: Context, version: String): File =
         MinecraftStorageResolver.version(context, version)
