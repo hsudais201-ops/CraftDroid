@@ -106,7 +106,7 @@ HELPERS = r'''
     private var step376Glow: android.animation.ValueAnimator? = null
 
     private fun step376PrepareFirstRun(onResult: (Boolean, String) -> Unit) {
-        Thread {
+        val worker = Thread {
             try {
                 val root = java.io.File(filesDir, "droid-launcher")
                 val dirs = listOf(
@@ -134,8 +134,12 @@ HELPERS = r'''
                         onResult(false, t.message ?: "Launcher preparation failed")
                     }
                 }
+            } finally {
+                if (step376FirstRunThread === Thread.currentThread()) step376FirstRunThread = null
             }
-        }.apply { isDaemon = true; start() }
+        }.apply { isDaemon = true }
+        step376FirstRunThread = worker
+        worker.start()
     }
 
     private fun step376LoadBackground(target: android.widget.ImageView) {
