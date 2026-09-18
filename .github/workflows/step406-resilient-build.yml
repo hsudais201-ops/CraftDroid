@@ -368,6 +368,18 @@ jobs:
           set -euo pipefail
           python3 tools/ci/verify_step462_low_ram_touch_policy.py droid-src
 
+      - name: Apply Step 463 persistent loader selector
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/apply_step463_persistent_loader.py droid-src
+
+      - name: Verify Step 463 persistent loader selector
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_step463_persistent_loader.py droid-src
+
       - name: Verify generated source contracts and launcher invariants
         shell: bash
         run: |
