@@ -11,6 +11,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 import java.util.concurrent.Executors
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Downloads and verifies a complete vanilla Minecraft client from the official
@@ -30,6 +31,7 @@ object MinecraftVersionInstallManager {
     private const val FINALIZE_ATTEMPTS = 3
 
     private val executor = Executors.newCachedThreadPool()
+    private val cancellations = ConcurrentHashMap.newKeySet<String>()
 
     enum class State { NOT_INSTALLED, DOWNLOADING, INSTALLED, FAILED }
 
@@ -65,6 +67,14 @@ object MinecraftVersionInstallManager {
     fun lastError(context: Context, version: String): String? =
         prefs(context).getString(errorKey(version), null)
 
+    fun cancel(context: Context, version: String) {
+        cancellations.add(version)
+        setState(context, version, State.FAILED, "Installation cancelled")
+    }
+
+    fun isCancellationRequested(version: String): Boolean =
+        cancellations.contains(version)
+
     fun install(context: Context, version: String, listener: Listener? = null) {
         if (version.isBlank()) {
             listener?.onError(version, IllegalArgumentException("Minecraft version is empty"))
@@ -74,11 +84,13 @@ object MinecraftVersionInstallManager {
             listener?.onComplete(version)
             return
         }
+        cancellations.remove(version)
         executor.execute {
             try {
                 setState(context, version, State.DOWNLOADING, null)
                 installInternal(context, version, listener)
                 setState(context, version, State.INSTALLED, null)
+                cancellations.remove(version)
                 listener?.onComplete(version)
             } catch (t: Throwable) {
                 setState(context, version, State.FAILED, t.message ?: t.javaClass.simpleName)
@@ -232,60 +244,67 @@ object MinecraftVersionInstallManager {
 
         val parent = task.target.parentFile ?: throw IOException("Missing parent directory for ${task.target}")
         val part = File(parent, task.target.name + ".part")
-        var resume = if (part.isFile) part.length() else 0L
-        var connection: HttpURLConnection? = null
-        try {
-            connection = openDownloadConnection(task.url, resume)
-            var responseCode = connection.responseCode
-            if (resume > 0L && responseCode != HttpURLConnection.HTTP_PARTIAL) {
-                connection.disconnect()
-                connection = openDownloadConnection(task.url, 0L)
-                resume = 0L
-                part.delete()
-                responseCode = connection.responseCode
-            }
+        if (task.size > 0L && part.isFile && part.length() > task.size) part.delete()
 
-            if (responseCode !in 200..299) {
-                throw IOException("Download failed: HTTP $responseCode for ${task.label}")
-            }
-
-            val append = resume > 0L && responseCode == HttpURLConnection.HTTP_PARTIAL
-            if (!append) resume = 0L
-
-            val expectedTotal = when {
-                task.size > 0L -> task.size
-                append -> resume + connection.contentLengthLong.coerceAtLeast(0L)
-                connection.contentLengthLong > 0L -> connection.contentLengthLong
-                else -> -1L
-            }
-
-            BufferedInputStream(connection.inputStream, BUFFER_SIZE).use { input ->
-                FileOutputStream(part, append).use { output ->
-                    val buffer = ByteArray(BUFFER_SIZE)
-                    var downloaded = resume
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        output.write(buffer, 0, count)
-                        downloaded += count
-                        onProgress(downloaded, expectedTotal)
-                    }
-                    output.fd.sync()
+        var lastError: Throwable? = null
+        repeat(4) { attempt ->
+            var resume = if (part.isFile) part.length() else 0L
+            if (task.size > 0L && resume >= task.size) resume = 0L
+            var connection: HttpURLConnection? = null
+            try {
+                connection = openDownloadConnection(task.url, resume)
+                var responseCode = connection.responseCode
+                if (resume > 0L && responseCode != HttpURLConnection.HTTP_PARTIAL) {
+                    connection.disconnect()
+                    connection = openDownloadConnection(task.url, 0L)
+                    resume = 0L
+                    if (part.exists() && !part.delete()) throw IOException("Could not reset incomplete download for ${task.label}")
+                    responseCode = connection.responseCode
                 }
-            }
+                if (responseCode !in 200..299) throw IOException("Download failed: HTTP $responseCode for ${task.label}")
 
-            if (expectedTotal > 0L && part.length() != expectedTotal) {
-                throw IOException("Incomplete download for ${task.label}: ${part.length()}/$expectedTotal")
-            }
-            if (!isArtifactHealthy(part, task.sha1, task.size)) {
-                part.delete()
-                throw IOException("SHA-1 verification failed for ${task.label}")
-            }
+                val append = resume > 0L && responseCode == HttpURLConnection.HTTP_PARTIAL
+                if (!append) resume = 0L
+                val expectedTotal = when {
+                    task.size > 0L -> task.size
+                    append -> resume + connection.contentLengthLong.coerceAtLeast(0L)
+                    connection.contentLengthLong > 0L -> connection.contentLengthLong
+                    else -> -1L
+                }
 
-            finalizeVerifiedFile(part, task.target, task.label, task.sha1, task.size)
-        } finally {
-            connection?.disconnect()
+                BufferedInputStream(connection.inputStream, BUFFER_SIZE).use { input ->
+                    FileOutputStream(part, append).use { output ->
+                        val buffer = ByteArray(BUFFER_SIZE)
+                        var downloaded = resume
+                        while (true) {
+                            if (isCancellationRequested(version)) throw IOException("Installation cancelled")
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            if (count == 0) continue
+                            output.write(buffer, 0, count)
+                            downloaded += count
+                            onProgress(downloaded, expectedTotal)
+                        }
+                        output.fd.sync()
+                    }
+                }
+
+                if (expectedTotal > 0L && part.length() != expectedTotal) {
+                    throw IOException("Incomplete download for ${task.label}: ${part.length()}/$expectedTotal")
+                }
+                if (!isArtifactHealthy(part, task.sha1, task.size)) {
+                    throw IOException("SHA-1 verification failed for ${task.label}")
+                }
+                finalizeVerifiedFile(part, task.target, task.label, task.sha1, task.size)
+                return
+            } catch (t: Throwable) {
+                lastError = t
+                if (attempt + 1 < 4) Thread.sleep(500L * (attempt + 1))
+            } finally {
+                connection?.disconnect()
+            }
         }
+        throw IOException("Download could not be completed for ${task.label} after 4 attempts", lastError)
     }
 
     private fun openDownloadConnection(url: String, resume: Long): HttpURLConnection =
@@ -437,4 +456,13 @@ object MinecraftVersionInstallManager {
     private fun report(listener: Listener?, version: String, downloaded: Long, total: Long, stage: String) {
         listener?.onProgress(Progress(version, downloaded, total, stage, State.DOWNLOADING))
     }
+    fun savedProgress(context: Context, version: String): Progress {
+        val p = prefs(context)
+        return Progress(version, p.getLong(progressKey(version), 0L), p.getLong(totalKey(version), 0L), p.getString(stageKey(version), "Ready") ?: "Ready", state(context, version))
+    }
+
+    private fun progressKey(version: String) = "mc_install_${version}_downloaded"
+    private fun totalKey(version: String) = "mc_install_${version}_total"
+    private fun stageKey(version: String) = "mc_install_${version}_stage"
+
 }
