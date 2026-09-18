@@ -78,6 +78,21 @@ def patch_monitor(path: Path) -> None:
         )
         changed = True
 
+    # Normalize the exact malformed boundary produced by older monitor repairs.
+    malformed_boundary = """                }
+                }
+            }
+            lastKnownLogLength = currentLogLength
+"""
+    corrected_boundary = """                }
+            }
+            lastKnownLogLength = currentLogLength
+"""
+    if malformed_boundary in text:
+        text = text.replace(malformed_boundary, corrected_boundary, 1)
+        changed = True
+        print("[step433] removed extra monitor-loop closing brace")
+
     old_emit = """    private fun emit(type: EventType, message: String) {
         val event = Event(type, message)
         onEvent(event)
@@ -257,6 +272,8 @@ def main() -> int:
         raise SystemExit("[step426] change-detection poll guard missing")
     if "appendBoundedEventLog(" not in monitor_text:
         raise SystemExit("[step426] bounded event log helper missing")
+    if malformed_boundary in monitor_text:
+        raise SystemExit("[step433] malformed monitor-loop boundary remains")
     if "MAX_EVENT_LOG_BYTES" not in monitor_text:
         raise SystemExit("[step426] event-log bound constant missing")
 
