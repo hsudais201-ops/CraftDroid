@@ -75,7 +75,7 @@ def patch_game_page(s: str) -> str:
         raise SystemExit("[step220] gamePage anchors not found")
     new_page = '''    private fun gamePage() {
         val prefs = getSharedPreferences("droid_launcher", MODE_PRIVATE)
-        val selectedVersion = prefs.getString("selected_minecraft_version", "1.21.11") ?: "1.21.11"
+        val selectedVersion = prefs.getString("selected_minecraft_version", null)?.trim()?.takeIf { it.isNotBlank() } ?: MinecraftLatestVersionManager.getCached(this) ?: "26.1"
         val selectedProfile = prefs.getString("selected_minecraft_profile", "Default") ?: "Default"
         val effectiveJava = getResolvedJavaForLaunch(selectedVersion)
 
@@ -155,7 +155,7 @@ def patch_launch_method(s: str) -> str:
         needle = '        val endpoint = "${saved.first}:${saved.second}"\n'
         if needle not in block: raise SystemExit("[step220] launch endpoint anchor not found")
         block = block.replace(needle, needle + '''        val launchPrefs = getSharedPreferences("droid_launcher", MODE_PRIVATE)
-        val selectedVersion = launchPrefs.getString("selected_minecraft_version", "1.21.11") ?: "1.21.11"
+        val selectedVersion = launchPrefs.getString("selected_minecraft_version", null)?.trim()?.takeIf { it.isNotBlank() } ?: MinecraftLatestVersionManager.getCached(this) ?: "26.1"
         val selectedProfile = launchPrefs.getString("selected_minecraft_profile", "Default") ?: "Default"
         val resolvedJava = getResolvedJavaForLaunch(selectedVersion)
 ''', 1)
