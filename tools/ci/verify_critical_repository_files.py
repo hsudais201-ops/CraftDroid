@@ -23,6 +23,8 @@ ROOT_FILES = (
     "tools/ci/apply_step375_custom_ui.py",
     "tools/ci/apply_step376_low_ram_ui.py",
     "tools/ci/apply_step382_settings_cleanup.py",
+    "tools/ci/apply_step391_final_content_picker.py",
+    "tools/ci/apply_step395_low_ram_memory_settings.py",
     "tools/ci/verify_critical_repository_files.py",
 )
 
