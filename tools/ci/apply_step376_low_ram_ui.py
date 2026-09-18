@@ -97,7 +97,13 @@ def replace_method(src: str, sig: str, replacement: str) -> str:
 HELPERS = r'''
     private val step376LowRam: Boolean by lazy {
         val manager = getSystemService(android.content.Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
-        manager?.isLowRamDevice == true
+        if (manager == null) {
+            false
+        } else {
+            val info = android.app.ActivityManager.MemoryInfo()
+            manager.getMemoryInfo(info)
+            manager.isLowRamDevice || info.totalMem <= 1536L * 1024L * 1024L
+        }
     }
     private var step376BgThread: Thread? = null
     private var step376Glow: android.animation.ValueAnimator? = null
@@ -358,7 +364,7 @@ def main() -> int:
         "readiness.txt",
         "droid-launcher-background.jpg",
         "inPreferredConfig = android.graphics.Bitmap.Config.RGB_565",
-        "manager?.isLowRamDevice == true",
+        "manager.isLowRamDevice || info.totalMem <= 1536L * 1024L * 1024L",
         "step376StartGlow",
         "step376ReleaseEffects",
     )
