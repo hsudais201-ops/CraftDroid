@@ -78,21 +78,35 @@ def patch_monitor(path: Path) -> None:
         )
         changed = True
 
-    # Normalize the exact malformed boundary produced by older monitor repairs.
-    malformed_boundary = """                }
-                }
-            }
-            lastKnownLogLength = currentLogLength
-"""
-    corrected_boundary = """                }
-            }
-            lastKnownLogLength = currentLogLength
-"""
-    if malformed_boundary in text:
-        replacements = text.count(malformed_boundary)
-        text = text.replace(malformed_boundary, corrected_boundary)
-        changed = True
-        print(f"[step433] removed {replacements} extra monitor-loop closing brace(s)")
+    # Normalize malformed monitor-loop boundaries structurally rather than relying
+    # on one exact indentation string. Older generators sometimes leave repeated
+    # closing braces immediately before lastKnownLogLength.
+    lines = text.splitlines()
+    removed = 0
+    last_idx = next((i for i, line in enumerate(lines)
+                     if "lastKnownLogLength = currentLogLength" in line), -1)
+    if last_idx >= 2:
+        while last_idx >= 2:
+            prev = lines[last_idx - 1]
+            prev2 = lines[last_idx - 2]
+            indent_prev = len(prev) - len(prev.lstrip(" "))
+            indent_prev2 = len(prev2) - len(prev2.lstrip(" "))
+            indent_target = len(lines[last_idx]) - len(lines[last_idx].lstrip(" "))
+            if (
+                prev.strip() == "}"
+                and prev2.strip() == "}"
+                and indent_prev2 == indent_prev
+                and indent_prev > indent_target
+            ):
+                del lines[last_idx - 1]
+                removed += 1
+                last_idx -= 1
+            else:
+                break
+        if removed:
+            text = "\n".join(lines) + ("\n" if path.read_text(encoding="utf-8").endswith("\n") else "")
+            changed = True
+            print(f"[step433] removed {removed} structurally duplicated monitor brace(s)")
 
     old_emit = """    private fun emit(type: EventType, message: String) {
         val event = Event(type, message)
@@ -273,12 +287,16 @@ def main() -> int:
         raise SystemExit("[step426] change-detection poll guard missing")
     if "appendBoundedEventLog(" not in monitor_text:
         raise SystemExit("[step426] bounded event log helper missing")
-    malformed_boundary = """                }
-                }
-            }
-            lastKnownLogLength = currentLogLength
-"""
-    if malformed_boundary in monitor_text:
+    monitor_lines = monitor_text.splitlines()
+    last_idx = next((i for i, line in enumerate(monitor_lines)
+                     if "lastKnownLogLength = currentLogLength" in line), -1)
+    if last_idx < 2:
+        raise SystemExit("[step433] monitor log-length state anchor missing")
+    prev = monitor_lines[last_idx - 1]
+    prev2 = monitor_lines[last_idx - 2]
+    indent_prev = len(prev) - len(prev.lstrip(" "))
+    indent_prev2 = len(prev2) - len(prev2.lstrip(" "))
+    if prev.strip() != "}" or prev2.strip() != "}" or indent_prev2 == indent_prev or indent_prev2 <= indent_prev:
         raise SystemExit("[step433] malformed monitor-loop boundary remains after normalization")
     if "MAX_EVENT_LOG_BYTES" not in monitor_text:
         raise SystemExit("[step426] event-log bound constant missing")
