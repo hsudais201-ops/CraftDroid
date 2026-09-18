@@ -272,6 +272,11 @@ def main() -> int:
         raise SystemExit("[step426] change-detection poll guard missing")
     if "appendBoundedEventLog(" not in monitor_text:
         raise SystemExit("[step426] bounded event log helper missing")
+    malformed_boundary = """                }
+                }
+            }
+            lastKnownLogLength = currentLogLength
+"""
     if malformed_boundary in monitor_text:
         raise SystemExit("[step433] malformed monitor-loop boundary remains")
     if "MAX_EVENT_LOG_BYTES" not in monitor_text:
