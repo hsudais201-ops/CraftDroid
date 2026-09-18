@@ -31,6 +31,7 @@ object MinecraftVersionInstallManager {
     private const val BUFFER_SIZE = 64 * 1024
     private const val FINALIZE_ATTEMPTS = 3
     private const val MAX_TEXT_RESPONSE_BYTES = 4L * 1024L * 1024L
+    private const val PROGRESS_PERSIST_INTERVAL_BYTES = 512L * 1024L
     private val VERSION_PATTERN = Regex("^[A-Za-z0-9._+\\-]{1,64}$")
 
     private val executor = Executors.newSingleThreadExecutor { runnable ->
@@ -41,6 +42,7 @@ object MinecraftVersionInstallManager {
     }
     private val cancellations = ConcurrentHashMap.newKeySet<String>()
     private val inFlight = ConcurrentHashMap.newKeySet<String>()
+    private val lastProgressPersisted = ConcurrentHashMap<String, Long>()
 
     enum class State { NOT_INSTALLED, DOWNLOADING, INSTALLED, FAILED }
 
@@ -107,10 +109,13 @@ object MinecraftVersionInstallManager {
                 setState(context, safeVersion, State.DOWNLOADING, null)
                 installInternal(context, safeVersion, listener)
                 setState(context, safeVersion, State.INSTALLED, null)
+                persistProgress(context, safeVersion, Long.MAX_VALUE, Long.MAX_VALUE, "Installed")
+                lastProgressPersisted.remove(safeVersion)
                 cancellations.remove(safeVersion)
                 listener?.onComplete(safeVersion)
             } catch (t: Throwable) {
                 setState(context, safeVersion, State.FAILED, t.message ?: t.javaClass.simpleName)
+                lastProgressPersisted.remove(safeVersion)
                 listener?.onError(safeVersion, t)
             } finally {
                 inFlight.remove(safeVersion)
@@ -126,14 +131,14 @@ object MinecraftVersionInstallManager {
         File(root, "assets/indexes").mkdirs()
         File(root, "assets/objects").mkdirs()
 
-        report(listener, version, 0, 0, "Reading Mojang version manifest")
+        report(context, listener, version, 0, 0, "Reading Mojang version manifest")
         val manifest = JSONObject(httpText(MANIFEST_URL))
         val versionEntry = findVersionEntry(manifest, version)
             ?: throw IOException("Minecraft version $version was not found in the official manifest")
         val versionUrl = versionEntry.optString("url")
         requireHttps(versionUrl, "version metadata")
 
-        report(listener, version, 0, 0, "Downloading version metadata")
+        report(context, listener, version, 0, 0, "Downloading version metadata")
         val metadataRaw = httpText(versionUrl)
         val expectedMetadataSha1 = versionEntry.optString("sha1")
         val expectedMetadataSize = versionEntry.optLong("size", -1L)
@@ -186,13 +191,13 @@ object MinecraftVersionInstallManager {
         var totalBytes = 0L
         for (task in tasks) totalBytes += task.size.coerceAtLeast(0L)
         var completedBytes = 0L
-        report(listener, version, completedBytes, totalBytes, "Installing ${tasks.size} Mojang artifacts")
+        report(context, listener, version, completedBytes, totalBytes, "Installing ${tasks.size} Mojang artifacts")
         for (task in tasks) {
             downloadResumable(task, version) { done, total ->
-                report(listener, version, completedBytes + done, totalBytes.coerceAtLeast(completedBytes + total), "Downloading ${task.label}")
+                report(context, listener, version, completedBytes + done, totalBytes.coerceAtLeast(completedBytes + total), "Downloading ${task.label}")
             }
             completedBytes += task.size.coerceAtLeast(fileLength(task.target))
-            report(listener, version, completedBytes, totalBytes, "Verified ${task.label}")
+            report(context, listener, version, completedBytes, totalBytes, "Verified ${task.label}")
         }
 
         val assetIndex = metadata.optJSONObject("assetIndex")
@@ -204,7 +209,7 @@ object MinecraftVersionInstallManager {
             requireHttps(url, "asset index")
             val indexFile = File(root, "assets/indexes/$id.json")
             downloadResumable(DownloadTask(indexFile, url, sha1, assetIndex.optLong("size", -1L), "Asset index $id"), version) { done, total ->
-                report(listener, version, done, total, "Downloading asset index $id")
+                report(context, listener, version, done, total, "Downloading asset index $id")
             }
             val index = JSONObject(indexFile.readText(Charsets.UTF_8))
             val objects = index.optJSONObject("objects")
@@ -218,7 +223,7 @@ object MinecraftVersionInstallManager {
                     val target = File(root, "assets/objects/${hash.substring(0, 2)}/$hash")
                     val urlObj = RESOURCES_BASE + hash.substring(0, 2) + "/" + hash
                     downloadResumable(DownloadTask(target, urlObj, hash, obj.optLong("size", -1L), "Asset $name"), version) { done, total ->
-                        report(listener, version, done, total, "Downloading asset $name")
+                        report(context, listener, version, done, total, "Downloading asset $name")
                     }
                 }
             }
@@ -495,8 +500,33 @@ object MinecraftVersionInstallManager {
         prefs(context).edit().putString(stateKey(version), state.name).putString(errorKey(version), error).apply()
     }
 
-    private fun report(listener: Listener?, version: String, downloaded: Long, total: Long, stage: String) {
-        listener?.onProgress(Progress(version, downloaded, total, stage, State.DOWNLOADING))
+    private fun report(context: Context, listener: Listener?, version: String, downloaded: Long, total: Long, stage: String) {
+        val safeDownloaded = downloaded.coerceAtLeast(0L)
+        val safeTotal = total.coerceAtLeast(safeDownloaded)
+        val safeStage = stage.take(180)
+        val previous = lastProgressPersisted[version] ?: -1L
+        if (previous < 0L ||
+            safeDownloaded == safeTotal ||
+            safeDownloaded - previous >= PROGRESS_PERSIST_INTERVAL_BYTES
+        ) {
+            persistProgress(context, version, safeDownloaded, safeTotal, safeStage)
+            lastProgressPersisted[version] = safeDownloaded
+        }
+        listener?.onProgress(Progress(version, safeDownloaded, safeTotal, safeStage, State.DOWNLOADING))
+    }
+
+    private fun persistProgress(context: Context, version: String, downloaded: Long, total: Long, stage: String) {
+        val persistedDownloaded = if (downloaded == Long.MAX_VALUE) {
+            prefs(context).getLong(progressKey(version), 0L)
+        } else downloaded
+        val persistedTotal = if (total == Long.MAX_VALUE) {
+            prefs(context).getLong(totalKey(version), 0L)
+        } else total.coerceAtLeast(persistedDownloaded)
+        prefs(context).edit()
+            .putLong(progressKey(version), persistedDownloaded.coerceAtLeast(0L))
+            .putLong(totalKey(version), persistedTotal.coerceAtLeast(0L))
+            .putString(stageKey(version), stage.take(180))
+            .apply()
     }
     fun savedProgress(context: Context, version: String): Progress {
         val safeVersion = normalizeVersionId(version) ?: version.trim()
