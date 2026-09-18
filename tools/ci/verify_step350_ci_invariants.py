@@ -67,13 +67,8 @@ def main() -> int:
         if not generated_ui.is_file():
             raise SystemExit('[step400] generated UI source missing')
         generated_ui_text = generated_ui.read_text(encoding='utf-8', errors='replace')
-        for marker in (
-            'PerformanceProfile.detect(this).tier',
-            'if (bitmap == null && step376LowRam) return@Thread',
-            'LauncherBackgroundInstallController.importContentUri(this, kind, uri)',
-        ):
-            if marker not in generated_ui_text:
-                raise SystemExit(f'[step400] generated low-RAM UI contract missing: {marker}')
+        # These late UI contracts are installed by Step376/Step391 below,
+        # so do not require them before those repair stages have executed.
         for marker in (
             'VERSION_PATTERN = Regex',
             'MAX_TEXT_RESPONSE_BYTES',
@@ -101,6 +96,19 @@ def main() -> int:
         if not low_ram_ui.is_file():
             raise SystemExit('[step376] low-RAM UI hardening script is missing')
         subprocess.run([sys.executable, str(low_ram_ui), str(generated)], cwd=root, check=True)
+
+        # Verify Step376's actual generated contracts immediately after applying
+        # the patch, before later feature patches can change the UI again.
+        generated_ui_after_low_ram = generated / 'app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt'
+        low_ram_text = generated_ui_after_low_ram.read_text(encoding='utf-8', errors='replace')
+        for marker in (
+            'PerformanceProfile.detect(this).tier',
+            'if (bitmap == null && step376LowRam) return@Thread',
+            'step376PrepareFirstRun',
+            'step376ReleaseEffects',
+        ):
+            if marker not in low_ram_text:
+                raise SystemExit(f'[step376] generated low-RAM UI contract missing after repair: {marker}')
         settings_cleanup = root / 'tools/ci/apply_step382_settings_cleanup.py'
         if not settings_cleanup.is_file():
             raise SystemExit('[step382] settings cleanup script is missing')
