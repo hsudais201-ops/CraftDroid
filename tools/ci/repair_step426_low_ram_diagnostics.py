@@ -44,16 +44,20 @@ def patch_monitor(path: Path) -> None:
         changed = True
         print("[step426] stopped polling a nonexistent Minecraft log every cycle")
 
-    callback_assignment = """                lastKnownLogLength = currentLogLength
+    assignment_inside_callback = """                }
+                lastKnownLogLength = currentLogLength
             }
-            }
+
+            val state = NativeGameBridge.javaState()
 """
-    corrected_assignment = """                }
+    assignment_outside_callback = """                }
             }
             lastKnownLogLength = currentLogLength
+
+            val state = NativeGameBridge.javaState()
 """
-    if callback_assignment in text:
-        text = text.replace(callback_assignment, corrected_assignment, 1)
+    if assignment_inside_callback in text:
+        text = text.replace(assignment_inside_callback, assignment_outside_callback, 1)
         changed = True
         print("[step426] moved log-length state update outside the read callback")
 
