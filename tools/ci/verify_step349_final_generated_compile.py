@@ -111,7 +111,8 @@ newlines"""
         if 'private fun rendererPage() {' not in source:
             raise SystemExit('rendererPage anchor was damaged by helper cleanup')
         if 'private fun featuresPage() {}' not in source:
-            raise SystemExit('featuresPage fixture helper disappeared')        if 'java_runtime_override' in source:
+            raise SystemExit('featuresPage fixture helper disappeared')
+        if 'java_runtime_override' in source:
             raise SystemExit('legacy orphan Java runtime fragment survived repair')
         if 'storedJavaOverride() ?: recommendedJavaForVersion(version)' not in source:
             raise SystemExit('canonical resolver helper body was unexpectedly removed')
