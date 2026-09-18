@@ -8,6 +8,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
+import java.io.FileOutputStream
 
 /** Observes the embedded Minecraft JVM without owning or force-killing it. */
 class MinecraftProcessMonitor(
@@ -25,6 +26,11 @@ class MinecraftProcessMonitor(
 
     private var job: Job? = null
     private var lastLogChangeEventAt = 0L
+
+    private companion object {
+        const val MAX_EVENT_LOG_BYTES = 64 * 1024L
+        const val EVENT_LOG_TAIL_BYTES = 48 * 1024L
+    }
 
     fun start(scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) {
         stop()
@@ -56,36 +62,36 @@ class MinecraftProcessMonitor(
             val now = System.currentTimeMillis()
             val currentLogLength = if (logFile.isFile) logFile.length() else -1L
             if (currentLogLength >= 0L && currentLogLength < offset) offset = 0L
-            if (currentLogLength != lastKnownLogLength || currentLogLength < 0L) {
+            if (currentLogLength != lastKnownLogLength) {
                 readNewLogLines(offset) { chunk, newOffset ->
-                offset = newOffset
-                if (chunk.isBlank()) return@readNewLogLines
-                if (now - lastLogChangeEventAt >= 1000L) {
-                    emit(EventType.LOG_CHANGED, "${chunk.length} bytes of Minecraft output captured")
-                    lastLogChangeEventAt = now
-                }
-                val lower = chunk.lowercase()
-                classifyFailure(lower)?.let { emit(it.first, it.second) }
-                if (!lwjglReady && (("lwjgl" in lower && ("initialized" in lower || "version" in lower)) || "opengl version" in lower)) {
-                    lwjglReady = true
-                    emit(EventType.LWJGL_READY, "Minecraft reached LWJGL/OpenGL initialization")
-                }
-                if (!resourceReady && ("reloading resourcemanager" in lower || "resource reload" in lower || "resource manager" in lower)) {
-                    resourceReady = true
-                    emit(EventType.RESOURCE_READY, "Minecraft resource system initialized")
-                }
-                if (!audioReady && ("sound engine started" in lower || ("openal" in lower && "initialized" in lower))) {
-                    audioReady = true
-                    emit(EventType.AUDIO_READY, "Minecraft audio system initialized")
-                }
-                if ("joining world" in lower || "loading world" in lower || "preparing spawn" in lower || "entering world" in lower) {
-                    if (!inGame) {
-                        inGame = true
-                        emit(EventType.IN_GAME, "Minecraft world/in-game state detected")
+                    offset = newOffset
+                    if (chunk.isBlank()) return@readNewLogLines
+                    if (now - lastLogChangeEventAt >= 1000L) {
+                        emit(EventType.LOG_CHANGED, "${chunk.length} bytes of Minecraft output captured")
+                        lastLogChangeEventAt = now
+                    }
+                    val lower = chunk.lowercase()
+                    classifyFailure(lower)?.let { emit(it.first, it.second) }
+                    if (!lwjglReady && (("lwjgl" in lower && ("initialized" in lower || "version" in lower)) || "opengl version" in lower)) {
+                        lwjglReady = true
+                        emit(EventType.LWJGL_READY, "Minecraft reached LWJGL/OpenGL initialization")
+                    }
+                    if (!resourceReady && ("reloading resourcemanager" in lower || "resource reload" in lower || "resource manager" in lower)) {
+                        resourceReady = true
+                        emit(EventType.RESOURCE_READY, "Minecraft resource system initialized")
+                    }
+                    if (!audioReady && ("sound engine started" in lower || ("openal" in lower && "initialized" in lower))) {
+                        audioReady = true
+                        emit(EventType.AUDIO_READY, "Minecraft audio system initialized")
+                    }
+                    if ("joining world" in lower || "loading world" in lower || "preparing spawn" in lower || "entering world" in lower) {
+                        if (!inGame) {
+                            inGame = true
+                            emit(EventType.IN_GAME, "Minecraft world/in-game state detected")
+                        }
                     }
                 }
                 lastKnownLogLength = currentLogLength
-            }
             }
 
             val state = NativeGameBridge.javaState()
@@ -164,10 +170,14 @@ class MinecraftProcessMonitor(
 
     private fun emit(type: EventType, message: String) {
         val event = Event(type, message)
-        onEvent(event)
+        runCatching { onEvent(event) }
+            .onFailure { LauncherLogger.warn("Minecraft monitor listener failed: ${it.message}") }
         runCatching {
             diagnosticsDir.mkdirs()
-            File(diagnosticsDir, "step165-events.log").appendText("${event.timestampMs} [${event.type}] ${event.message}\n")
+            appendBoundedEventLog(
+                File(diagnosticsDir, "step165-events.log"),
+                "${event.timestampMs} [${event.type}] ${event.message}\n"
+            )
         }
         when (type) {
             EventType.CLASS_MISSING, EventType.NATIVE_LINK_FAILURE, EventType.GLFW_FAILURE,
@@ -176,4 +186,31 @@ class MinecraftProcessMonitor(
             else -> LauncherLogger.info(message)
         }
     }
-}
+
+    private fun appendBoundedEventLog(file: File, line: String) {
+        FileOutputStream(file, true).use { output ->
+            output.write(line.toByteArray(Charsets.UTF_8))
+        }
+        if (file.length() <= MAX_EVENT_LOG_BYTES) return
+
+        val tail = runCatching {
+            file.inputStream().use { input ->
+                val length = file.length()
+                var remaining = (length - EVENT_LOG_TAIL_BYTES).coerceAtLeast(0L)
+                while (remaining > 0L) {
+                    val skipped = input.skip(minOf(remaining, 64L * 1024L))
+                    if (skipped <= 0L) break
+                    remaining -= skipped
+                }
+                val buffer = ByteArray(minOf(EVENT_LOG_TAIL_BYTES, length).toInt())
+                val read = input.read(buffer)
+                if (read <= 0) "" else String(buffer, 0, read, Charsets.UTF_8)
+            }
+        }.getOrDefault("")
+
+        if (tail.isNotEmpty()) {
+            file.outputStream().use { it.write(tail.toByteArray(Charsets.UTF_8)) }
+        } else {
+            file.delete()
+        }
+    }}
