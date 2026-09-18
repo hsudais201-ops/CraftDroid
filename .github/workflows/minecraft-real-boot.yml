@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       apk_build_run_id:
-        description: 'Successful authoritative APK build run ID (optional; Step296 finalizer run is supported)'
+        description: 'Successful authoritative APK build run ID (optional; Step257 authoritative build is supported)'
         required: false
         type: string
   workflow_run:
-    workflows: ["Step 296 - Authoritative APK finalizer loop"]
+    workflows: ["Step 257 - Droid Launcher resilient authoritative build"]
     types: [completed]
     branches: [main, master]
 
