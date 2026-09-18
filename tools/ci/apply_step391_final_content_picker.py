@@ -117,6 +117,12 @@ def main() -> int:
     source = source.replace("startContentImport(", "step391StartContentImport(", 1000)
     source = source.replace("private fun step391StartContentImport(pageName: String)", "private fun step391StartContentImport(pageName: String)", 1)
 
+    if "private var step391PendingContentPage: String? = null" not in source:
+        anchor = source.find("    companion object {")
+        if anchor < 0:
+            raise SystemExit("[step391] companion object anchor missing for pending-content state")
+        source = source[:anchor] + "    private var step391PendingContentPage: String? = null\n\n" + source[anchor:]
+
     if "private fun step391StartContentImport(pageName: String)" not in source:
         anchor = source.find("    companion object {")
         if anchor < 0:
