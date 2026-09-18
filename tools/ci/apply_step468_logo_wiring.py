@@ -1,8 +1,25 @@
 #!/usr/bin/env python3
-"""Install and wire the optimized Droid Launcher logo into the generated Android app."""
+"""Install and wire the optimized Droid Launcher logo without rewriting XML namespaces."""
 from pathlib import Path
+import re
 import shutil
 import sys
+
+ANDROID_NS = "http://schemas.android.com/apk/res/android"
+
+def set_manifest_logo(text: str) -> str:
+    match = re.search(r"<manifest\b[^>]*>", text, flags=re.DOTALL)
+    if not match:
+        raise SystemExit("[step468] manifest root tag not found")
+    opening = match.group(0)
+    if "xmlns:android=" not in opening:
+        opening = opening[:-1] + f' xmlns:android="{ANDROID_NS}">'
+    opening = re.sub(r'\s+android:(?:icon|roundIcon)="[^"]*"', "", opening)
+    if opening.endswith("/>"):
+        opening = opening[:-2] + ' android:icon="@drawable/droid_launcher_logo" android:roundIcon="@drawable/droid_launcher_logo"/>'
+    else:
+        opening = opening[:-1] + ' android:icon="@drawable/droid_launcher_logo" android:roundIcon="@drawable/droid_launcher_logo">'
+    return text[:match.start()] + opening + text[match.end():]
 
 def main() -> int:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
@@ -12,8 +29,7 @@ def main() -> int:
 
     res = root / "app/src/main/res/drawable"
     res.mkdir(parents=True, exist_ok=True)
-    target = res / "droid_launcher_logo.webp"
-    shutil.copy2(source, target)
+    shutil.copy2(source, res / "droid_launcher_logo.webp")
 
     ui_candidates = list((root / "app/src/main/java").rglob("DroidLauncherUiActivity.kt"))
     if len(ui_candidates) != 1:
@@ -24,22 +40,16 @@ def main() -> int:
     new = 'resources.getIdentifier("droid_launcher_logo", "drawable", packageName)'
     if old in text:
         text = text.replace(old, new)
-    elif 'resources.getIdentifier("droid_launcher_logo", "drawable", packageName)' not in text:
+    elif new not in text:
         raise SystemExit("[step468] logo ImageView resource lookup not found")
     ui.write_text(text, encoding="utf-8")
 
-    import xml.etree.ElementTree as ET
     manifests = list((root / "app/src/main").rglob("AndroidManifest.xml"))
     if len(manifests) != 1:
         raise SystemExit(f"[step468] expected one manifest, found {len(manifests)}")
     manifest = manifests[0]
-    tree = ET.parse(manifest)
-    root_el = tree.getroot()
-    android = "{http://schemas.android.com/apk/res/android}"
-    root_el.set(android + "icon", "@drawable/droid_launcher_logo")
-    root_el.set(android + "roundIcon", "@drawable/droid_launcher_logo")
-    tree.write(manifest, encoding="utf-8", xml_declaration=True)
-    print("[step468] optimized Droid Launcher logo installed and wired")
+    manifest.write_text(set_manifest_logo(manifest.read_text(encoding="utf-8")), encoding="utf-8")
+    print("[step468] optimized Droid Launcher logo installed and wired with namespace preserved")
     return 0
 
 if __name__ == "__main__":
