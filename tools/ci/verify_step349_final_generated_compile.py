@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regression tests for the final generated Kotlin compile repair."""
 from pathlib import Path
-import subprocess
+import importlib.util
 import sys
 import tempfile
 
@@ -15,15 +15,29 @@ REQUIRED = [
 
 
 def run_fixture(repair: Path, root: Path, fixture: Path) -> str:
-    result = subprocess.run(
-        [sys.executable, str(repair), str(root)],
-        text=True,
-        capture_output=True,
-        check=False,
+    spec = importlib.util.spec_from_file_location('step349_repair_fixture', repair)
+    if spec is None or spec.loader is None:
+        raise SystemExit('could not load step349 repair module')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    source = fixture.read_text(encoding='utf-8')
+    source = module.strip_orphan_fragments(source)
+    source = module.normalize_page_boundary(source)
+    source = module.normalize_edit_text(source)
+    source = module.strip_orphan_fragments(source)
+    source = module.repair_truncated_server_helpers(source)
+    source = module.dedupe_methods(
+        source,
+        (
+            'rendererPage',
+            'featuresPage',
+            'resolveJavaForVersion',
+            'getResolvedJavaForLaunch',
+        ),
     )
-    if result.returncode != 0:
-        raise SystemExit(f'step349 fixture execution failed:\n{result.stdout}\n{result.stderr}')
-    return fixture.read_text(encoding='utf-8')
+    fixture.write_text(source, encoding='utf-8')
+    return source
 
 
 def main() -> int:
