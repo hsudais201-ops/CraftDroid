@@ -9,6 +9,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 import java.security.MessageDigest
 import java.util.concurrent.Executors
@@ -30,6 +31,7 @@ object MinecraftVersionInstallManager {
     private const val READ_TIMEOUT_MS = 60_000
     private const val BUFFER_SIZE = 64 * 1024
     private const val FINALIZE_ATTEMPTS = 3
+    private const val MAX_REDIRECTS = 3
     private const val MAX_TEXT_RESPONSE_BYTES = 4L * 1024L * 1024L
     private const val PROGRESS_PERSIST_INTERVAL_BYTES = 512L * 1024L
     private val VERSION_PATTERN = Regex("^[A-Za-z0-9._+\\-]{1,64}$")
@@ -428,21 +430,51 @@ object MinecraftVersionInstallManager {
         throw IOException("Download could not be completed for ${task.label} after 4 attempts", lastError)
     }
 
-    private fun openDownloadConnection(url: String, resume: Long): HttpURLConnection =
-        (URL(url).openConnection() as HttpURLConnection).apply {
-            requireHttps(url, "download")
-            connectTimeout = CONNECT_TIMEOUT_MS
-            readTimeout = READ_TIMEOUT_MS
-            instanceFollowRedirects = true
-            requestMethod = "GET"
-            if (resume > 0L) setRequestProperty("Range", "bytes=$resume-")
+    private fun openDownloadConnection(rawUrl: String, resume: Long): HttpURLConnection {
+        var current = try { URL(rawUrl) } catch (_: Throwable) {
+            throw IOException("Invalid URL for download")
         }
+        repeat(MAX_REDIRECTS + 1) { attempt ->
+            requireOfficialMinecraftUrl(current, "download")
+            val connection = (current.openConnection() as HttpURLConnection).apply {
+                connectTimeout = CONNECT_TIMEOUT_MS
+                readTimeout = READ_TIMEOUT_MS
+                instanceFollowRedirects = false
+                requestMethod = "GET"
+                if (resume > 0L) setRequestProperty("Range", "bytes=$resume-")
+            }
+            val responseCode = connection.responseCode
+            if (responseCode !in 300..399) return connection
+            val location = connection.getHeaderField("Location")
+            connection.disconnect()
+            if (location.isNullOrBlank()) throw IOException("Redirect has no Location header")
+            if (attempt >= MAX_REDIRECTS) throw IOException("Too many redirects for download")
+            current = try { URI(current.toString()).resolve(location).toURL() } catch (_: Throwable) {
+                throw IOException("Invalid download redirect target")
+            }
+        }
+        throw IOException("Redirect resolution failed for download")
+    }
 
     private fun requireHttps(rawUrl: String, label: String) {
         val parsed = try { URL(rawUrl) } catch (_: Throwable) { throw IOException("Invalid URL for $label") }
-        if (!parsed.protocol.equals("https", ignoreCase = true)) {
+        requireOfficialMinecraftUrl(parsed, label)
+    }
+
+    private fun requireOfficialMinecraftUrl(url: URL, label: String) {
+        if (!url.protocol.equals("https", ignoreCase = true)) {
             throw IOException("Non-HTTPS URL rejected for $label")
         }
+        val host = url.host.lowercase()
+        val official =
+            host == "piston-meta.mojang.com" ||
+            host == "piston-data.mojang.com" ||
+            host == "launcher.mojang.com" ||
+            host == "libraries.minecraft.net" ||
+            host == "resources.download.minecraft.net" ||
+            host.endsWith(".mojang.com") ||
+            host.endsWith(".minecraft.net")
+        if (!official) throw IOException("Untrusted Minecraft download host for $label: $host")
     }
 
     private fun finalizeVerifiedFile(
@@ -539,12 +571,7 @@ object MinecraftVersionInstallManager {
 
     private fun httpText(url: String): String {
         requireHttps(url, "HTTP request")
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = CONNECT_TIMEOUT_MS
-            readTimeout = READ_TIMEOUT_MS
-            instanceFollowRedirects = true
-            requestMethod = "GET"
-        }
+        val connection = openDownloadConnection(url, 0L)
         return try {
             val code = connection.responseCode
             if (code !in 200..299) throw IOException("HTTP $code for $url")
