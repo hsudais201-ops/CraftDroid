@@ -1,9 +1,12 @@
 package com.example.launcher
 
 import android.content.Context
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -24,6 +27,7 @@ object LauncherBackgroundInstallController {
     private const val LATEST = "latest"
     private const val LATEST_TIMEOUT_SECONDS = 30L
     private const val COMPLETED_STATE_RETENTION_MS = 10 * 60 * 1000L
+    private const val MAX_STAGED_CONTENT_BYTES = 1L * 1024L * 1024L * 1024L
     private val executor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "DroidLauncher-BackgroundInstall").apply {
             isDaemon = true
@@ -61,19 +65,86 @@ object LauncherBackgroundInstallController {
     fun importContent(context: Context, kind: Kind, source: File, listener: (TaskState) -> Unit = {}) {
         val key = "${kind.name.lowercase()}:${source.canonicalPath}"
         submit(key, kind, listener) {
-            when (kind) {
-                Kind.MODPACK -> {
-                    if (source.extension.equals("mrpack", true)) {
-                        MinecraftModpackManager.install(context, source)
-                    } else {
-                        MinecraftContentManager.importArchive(context, MinecraftContentManager.Kind.MODPACK, source)
+            performContentImport(context, kind, source)
+        }
+    }
+
+    /** Stages an Android document URI and imports it entirely off the UI thread. */
+    fun importContentUri(
+        context: Context,
+        kind: Kind,
+        uri: Uri,
+        listener: (TaskState) -> Unit = {}
+    ) {
+        val key = "${kind.name.lowercase()}:uri:${uri}"
+        submit(key, kind, listener) {
+            val resolver = context.contentResolver
+            val displayName = resolver.query(
+                uri,
+                arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }?.takeIf { it.isNotBlank() } ?: "selected-content.tmp"
+            val suffix = displayName.substringAfterLast(".", "")
+                .takeIf { it.length in 1..12 && it.all(Char::isLetterOrDigit) }
+                ?.let { ".$it" } ?: ".tmp"
+
+            val temp = File.createTempFile("droid-content-", suffix, context.cacheDir)
+            try {
+                resolver.query(
+                    uri,
+                    arrayOf(android.provider.OpenableColumns.SIZE),
+                    null,
+                    null,
+                    null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst() && !cursor.isNull(0)) {
+                        val declared = cursor.getLong(0)
+                        if (declared > MAX_STAGED_CONTENT_BYTES) {
+                            throw IOException("Selected content exceeds the 1 GiB safety limit")
+                        }
                     }
                 }
-                Kind.WORLD -> MinecraftContentManager.importArchive(context, MinecraftContentManager.Kind.WORLD, source)
-                Kind.MOD, Kind.SHADER, Kind.RESOURCE_PACK ->
-                    MinecraftContentManager.importFile(context, MinecraftContentManager.Kind.valueOf(kind.name), source)
-                Kind.MINECRAFT_VERSION -> error("Use installMinecraft for versions")
+                resolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(temp, false).use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        var total = 0L
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            if (count == 0) continue
+                            total += count
+                            if (total > MAX_STAGED_CONTENT_BYTES) {
+                                throw IOException("Selected content exceeds the 1 GiB safety limit")
+                            }
+                            output.write(buffer, 0, count)
+                        }
+                        output.fd.sync()
+                    }
+                } ?: throw IOException("Could not open selected content")
+                performContentImport(context, kind, temp)
+            } finally {
+                if (temp.exists() && !temp.delete()) temp.deleteOnExit()
             }
+        }
+    }
+
+    private fun performContentImport(context: Context, kind: Kind, source: File) {
+        when (kind) {
+            Kind.MODPACK -> {
+                if (source.extension.equals("mrpack", true)) {
+                    MinecraftModpackManager.install(context, source)
+                } else {
+                    MinecraftContentManager.importArchive(context, MinecraftContentManager.Kind.MODPACK, source)
+                }
+            }
+            Kind.WORLD -> MinecraftContentManager.importArchive(context, MinecraftContentManager.Kind.WORLD, source)
+            Kind.MOD, Kind.SHADER, Kind.RESOURCE_PACK ->
+                MinecraftContentManager.importFile(context, MinecraftContentManager.Kind.valueOf(kind.name), source)
+            Kind.MINECRAFT_VERSION -> error("Use installMinecraft for versions")
         }
     }
 
