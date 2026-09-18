@@ -332,6 +332,18 @@ jobs:
           python3 tools/ci/repair_step459_final_microsoft_helper.py droid-src
           python3 tools/ci/repair_step426_low_ram_diagnostics.py droid-src
 
+      - name: Apply Step 460 final launcher UI polish
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/apply_step460_ui_polish.py droid-src
+
+      - name: Verify Step 460 final launcher UI polish
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_step460_ui_polish.py droid-src
+
       - name: Verify generated source contracts and launcher invariants
         shell: bash
         run: |
