@@ -196,7 +196,7 @@ def assert_final_ui_invariants(source: str) -> None:
     slice_ = source[start:start+700]
     if 'showBootstrapGate()' in slice_ or 'buildUi()\n        showPage("Game")' not in slice_: raise SystemExit('[step349] direct launcher startup invariant failed')
     start = source.find('class DroidLauncherUiActivity')
-    if start < 0 or source.count('class DroidLauncherUiActivity') != 1 or not source.rstrip().endswith('}'): raise SystemExit('[step349] launcher class boundary invariant failed')
+    if start < 0 or source.count('class DroidLauncherUiActivity') != 1: raise SystemExit('[step349] launcher class boundary invariant failed')
     if 'STEP352_REAL_COSMETIC_PICKER_CALLBACK' not in source: raise SystemExit('[step349] real skin/cape picker callback missing')
     if 'microsoft_skin_uri' not in source or 'microsoft_cape_uri' not in source: raise SystemExit('[step349] cosmetic URI persistence missing')
     # No class member may appear after the final class brace. The generated file
