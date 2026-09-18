@@ -102,6 +102,7 @@ HELPERS = r'''
         }.getOrDefault(true)
     }
     private var step376BgThread: Thread? = null
+    private var step376FirstRunThread: Thread? = null
     private var step376Glow: android.animation.ValueAnimator? = null
 
     private fun step376PrepareFirstRun(onResult: (Boolean, String) -> Unit) {
@@ -220,6 +221,8 @@ HELPERS = r'''
         step375Track = null
         try { step376BgThread?.interrupt() } catch (_: Throwable) {}
         step376BgThread = null
+        try { step376FirstRunThread?.interrupt() } catch (_: Throwable) {}
+        step376FirstRunThread = null
     }
 '''
 
