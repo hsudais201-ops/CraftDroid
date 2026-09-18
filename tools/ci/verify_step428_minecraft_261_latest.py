@@ -29,6 +29,7 @@ def main() -> int:
         ("Mojang cached latest in UI", "MinecraftLatestVersionManager.getCached(this)", ut),
         ("automatic refresh", "refreshLatestMinecraftVersion()", ut),
         ("automatic selection", 'putString("selected_minecraft_version", id)', ut),
+        ("26.3 known release", '"26.3"', st),
         ("26.2 known release", '"26.2"', st),
         ("26.1 known release", '"26.1"', st),
         ("Java AUTO", 'getString("selected_java_runtime", "auto")', ut),
@@ -38,7 +39,7 @@ def main() -> int:
         if needle not in text:
             raise SystemExit(f"[step428] missing {name} contract: {needle}")
 
-    print("[step428] Minecraft 26.1+ -> Java 25 mapping: PASS")
+    print("[step428] Minecraft 26.3/26.2/26.1.2/26.1.1/26.1 release choices + Java 25 mapping: PASS")
     print("[step428] Mojang latest-release resolver: PASS")
     print("[step428] launcher auto-promotes newly detected latest release when no explicit version is selected: PASS")
     print("[step428] Java AUTO + Internal-25 runtime choices: PASS")
