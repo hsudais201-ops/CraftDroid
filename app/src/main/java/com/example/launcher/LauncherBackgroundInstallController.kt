@@ -23,7 +23,13 @@ object LauncherBackgroundInstallController {
 
     private const val LATEST = "latest"
     private const val LATEST_TIMEOUT_SECONDS = 30L
-    private val executor = Executors.newFixedThreadPool(2)
+    private const val COMPLETED_STATE_RETENTION_MS = 10 * 60 * 1000L
+    private val executor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "DroidLauncher-BackgroundInstall").apply {
+            isDaemon = true
+            priority = Thread.NORM_PRIORITY - 1
+        }
+    }
     private val mainHandler = Handler(Looper.getMainLooper())
     private val active = ConcurrentHashMap<String, TaskState>()
 
@@ -90,12 +96,17 @@ object LauncherBackgroundInstallController {
         if (active.putIfAbsent(key, queued) != null) return
         publish(queued, listener)
         executor.execute {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
             publish(TaskState(key, kind, State.RUNNING, "Working"), listener)
             try {
                 action()
-                publish(TaskState(key, kind, State.SUCCESS, "Completed"), listener)
+                val finished = TaskState(key, kind, State.SUCCESS, "Completed")
+                publish(finished, listener)
+                scheduleStateCleanup(finished)
             } catch (t: Throwable) {
-                publish(TaskState(key, kind, State.FAILED, t.message ?: t.javaClass.simpleName), listener)
+                val failed = TaskState(key, kind, State.FAILED, t.message ?: t.javaClass.simpleName)
+                publish(failed, listener)
+                scheduleStateCleanup(failed)
             }
         }
     }
@@ -103,5 +114,9 @@ object LauncherBackgroundInstallController {
     private fun publish(state: TaskState, listener: (TaskState) -> Unit) {
         active[state.key] = state
         mainHandler.post { listener(state) }
+    }
+
+    private fun scheduleStateCleanup(state: TaskState) {
+        mainHandler.postDelayed({ active.remove(state.key, state) }, COMPLETED_STATE_RETENTION_MS)
     }
 }
