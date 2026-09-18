@@ -24,6 +24,7 @@ class MinecraftProcessMonitor(
     data class Event(val type: EventType, val message: String, val timestampMs: Long = System.currentTimeMillis())
 
     private var job: Job? = null
+    private var lastLogChangeEventAt = 0L
 
     fun start(scope: CoroutineScope = CoroutineScope(Dispatchers.IO)) {
         stop()
@@ -51,10 +52,14 @@ class MinecraftProcessMonitor(
 
         while (kotlinx.coroutines.currentCoroutineContext().isActive) {
             val now = System.currentTimeMillis()
+            if (logFile.isFile && logFile.length() < offset) offset = 0L
             readNewLogLines(offset) { chunk, newOffset ->
                 offset = newOffset
                 if (chunk.isBlank()) return@readNewLogLines
-                emit(EventType.LOG_CHANGED, "${chunk.length} bytes of Minecraft output captured")
+                if (now - lastLogChangeEventAt >= 1000L) {
+                    emit(EventType.LOG_CHANGED, "${chunk.length} bytes of Minecraft output captured")
+                    lastLogChangeEventAt = now
+                }
                 val lower = chunk.lowercase()
                 classifyFailure(lower)?.let { emit(it.first, it.second) }
                 if (!lwjglReady && (("lwjgl" in lower && ("initialized" in lower || "version" in lower)) || "opengl version" in lower)) {
