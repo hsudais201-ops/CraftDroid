@@ -19,9 +19,9 @@ data class PerformanceProfile(
 
     companion object {
         fun forTier(tier: Tier): PerformanceProfile = when (tier) {
-            Tier.LOW -> PerformanceProfile(Tier.LOW, 768, 1024, 30, 0.70f, true)
-            Tier.BALANCED -> PerformanceProfile(Tier.BALANCED, 1536, 3072, 60, 0.85f, false)
-            Tier.HIGH -> PerformanceProfile(Tier.HIGH, 3072, 6144, 90, 1.0f, false)
+            Tier.LOW -> PerformanceProfile(Tier.LOW, 640, 1024, 30, 0.70f, true)
+            Tier.BALANCED -> PerformanceProfile(Tier.BALANCED, 1280, 2048, 60, 0.85f, false)
+            Tier.HIGH -> PerformanceProfile(Tier.HIGH, 2048, 4096, 90, 1.0f, false)
         }
 
         fun detect(context: Context): PerformanceProfile {
@@ -46,6 +46,58 @@ data class PerformanceProfile(
         val minimum = if (tier == Tier.LOW) 512 else 768
         val availableCap = (availableMb - safety).coerceAtLeast(minimum)
         return requestedMb.coerceIn(minimum, minOf(maxRamMb, availableCap))
+    }
+
+
+
+    fun totalRamMb(context: Context): Int {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            ?: return 4096
+        val info = ActivityManager.MemoryInfo()
+        am.getMemoryInfo(info)
+        return (info.totalMem / (1024L * 1024L)).toInt().coerceAtLeast(768)
+    }
+
+    fun availableRamMb(context: Context): Int {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            ?: return 0
+        val info = ActivityManager.MemoryInfo()
+        am.getMemoryInfo(info)
+        return (info.availMem / (1024L * 1024L)).toInt().coerceAtLeast(0)
+    }
+
+    /**
+     * Produces a launch-time heap cap using both the device profile and current
+     * available memory. The cap always leaves an Android-side reserve.
+     */
+    fun safeRamMb(context: Context, requestedMb: Int): Int {
+        val profile = detect(context)
+        val minimum = when (profile.tier) {
+            Tier.LOW -> 640
+            Tier.BALANCED -> 768
+            Tier.HIGH -> 1024
+        }
+        val reserve = when (profile.tier) {
+            Tier.LOW -> 512
+            Tier.BALANCED -> 768
+            Tier.HIGH -> 1024
+        }
+        val dynamicCap = (availableRamMb(context) - reserve).coerceAtLeast(minimum)
+        return requestedMb.coerceIn(
+            minimum,
+            minOf(profile.maxRamMb, dynamicCap)
+        )
+    }
+
+    fun recommendedRamMb(context: Context): Int =
+        safeRamMb(context, detect(context).recommendedRamMb)
+
+    fun defaultJvmArgs(heapMb: Int): String {
+        val safeHeap = heapMb.coerceAtLeast(128)
+        return buildString {
+            append("-Xms128m -Xmx").append(safeHeap).append("m ")
+            append(defaultJvmArgs())
+        }
     }
 
     fun defaultJvmArgs(): String = buildString {
