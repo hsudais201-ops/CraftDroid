@@ -125,6 +125,14 @@ def main() -> int:
         if not low_ram_launch.is_file():
             raise SystemExit('[step419] low-RAM launch heap repair is missing')
         subprocess.run([sys.executable, str(low_ram_launch), str(generated)], cwd=root, check=True)
+
+        # Absolute final UI boundary: late generators above can legally replace
+        # methods but must not leave direct calls without their browser helper.
+        final_microsoft = root / 'tools/ci/repair_step459_final_microsoft_helper.py'
+        if not final_microsoft.is_file():
+            raise SystemExit('[step459] final Microsoft helper repair is missing')
+        subprocess.run([sys.executable, str(final_microsoft), str(generated)], cwd=root, check=True)
+
         subprocess.run([sys.executable, str(coverage), str(generated)], cwd=root, check=True)
     else:
         print('[step350] generated source tree is unavailable; feature coverage will run in the workflow after generation')
@@ -137,6 +145,7 @@ def main() -> int:
         'tools/ci/apply_step382_settings_cleanup.py': ('step375Settings()', 'PerformanceProfile.detect', 'Resolution Scale', 'Game Fullscreen'),
         'tools/ci/apply_step391_final_content_picker.py': ('step391StartContentImport', 'CONTENT_PICKER_REQUEST = 341', 'STEP391_FINAL_CONTENT_PICKER'),
         'tools/ci/apply_step395_low_ram_memory_settings.py': ('getSafeRamMb', 'getRecommendedRamMb', 'RAM_MB'),
+        'tools/ci/repair_step459_final_microsoft_helper.py': ('openMicrosoftLoginWebsite()', 'android.content.Intent.ACTION_VIEW', 'https://login.live.com/'),
     }
     for rel, markers in verifier_requirements.items():
         path = root / rel
