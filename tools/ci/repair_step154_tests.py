@@ -187,6 +187,50 @@ class TouchControlsContractTest {
 ''',
         encoding="utf-8",
     )
+
+    performance = test_src / "com/example/renderer/PerformanceProfileTest.kt"
+    performance.parent.mkdir(parents=True, exist_ok=True)
+    performance.write_text(
+        '''package com.example.renderer
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class PerformanceProfileTest {
+
+    @Test
+    fun lowRamProfileKeepsHeapCeilingConservative() {
+        val profile = PerformanceProfile.forTier(PerformanceProfile.Tier.LOW)
+        assertEquals(640, profile.recommendedRamMb)
+        assertEquals(1024, profile.maxRamMb)
+        assertTrue(profile.renderScale <= 0.70f)
+        assertTrue(profile.aggressiveGc)
+        assertEquals(640, profile.clampRam(2048, 900))
+        assertEquals(1024, profile.clampRam(4096, 2048))
+    }
+
+    @Test
+    fun balancedProfileDoesNotUseTheOldThreeGigabyteCap() {
+        val profile = PerformanceProfile.forTier(PerformanceProfile.Tier.BALANCED)
+        assertEquals(1280, profile.recommendedRamMb)
+        assertEquals(2048, profile.maxRamMb)
+        assertEquals(1476, profile.clampRam(4096, 2500))
+    }
+
+    @Test
+    fun highProfileStillLeavesARealisticProcessReserve() {
+        val profile = PerformanceProfile.forTier(PerformanceProfile.Tier.HIGH)
+        assertEquals(2048, profile.recommendedRamMb)
+        assertEquals(4096, profile.maxRamMb)
+        assertEquals("-Xms128m -Xmx2048m -XX:+UseG1GC -XX:MaxGCPauseMillis=80 -XX:+UseStringDeduplication", profile.defaultJvmArgs(2048))
+    }
+}
+''',
+        encoding="utf-8",
+    )
+    print("[repair] add low-RAM performance tier and JVM argument contract tests")
+
     print("[repair] add touch-control serialization, bounds, duplication, ordering and snap contract tests")
 
 
