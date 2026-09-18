@@ -16,6 +16,9 @@ object LaunchArgumentsValidator {
         val managed = arguments.filter { value -> managedJvmPrefixes.any { prefix -> value == prefix || value.startsWith(prefix) } }
         require(managed.count { it.startsWith("-Xmx") } <= 1) { "Conflicting -Xmx arguments" }
         require(managed.count { it.startsWith("-Xms") } <= 1) { "Conflicting -Xms arguments" }
+        require(managed.count { it.startsWith("-Djava.home=") } <= 1) { "Conflicting java.home arguments" }
+        require(managed.count { it.startsWith("-Djava.library.path=") } <= 1) { "Conflicting java.library.path arguments" }
+        require(managed.count { it.startsWith("-Dorg.lwjgl.librarypath=") } <= 1) { "Conflicting org.lwjgl.librarypath arguments" }
     }
 
     fun validateGameArguments(arguments: List<String>) {
