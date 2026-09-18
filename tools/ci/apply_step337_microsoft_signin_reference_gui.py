@@ -116,10 +116,8 @@ def main() -> int:
     path = find_ui(root)
     source = path.read_text(encoding="utf-8")
 
-    # Modern generated variants may no longer contain the old account-info helper.
-    # In that case insert the complete real Microsoft page directly before the
-    # activity class closing brace. This makes the repair independent of an older
-    # generator shape.
+    # Repair each helper independently. A prior generator may already provide
+    # showMicrosoftSignInPage() while omitting the browser/picker helpers.
     if "private fun showMicrosoftSignInPage()" not in source:
         old = "    private fun showMicrosoftAccountInfo()"
         if old in source:
@@ -127,6 +125,42 @@ def main() -> int:
             source = source[:start] + PAGE + source[end:]
         else:
             source = insert_before_class_end(source, PAGE)
+
+    if "private fun openMicrosoftLoginWebsite()" not in source:
+        marker = "    private fun showMicrosoftSignInPage()"
+        helper = """    private fun openMicrosoftLoginWebsite() {
+        val configured = getSharedPreferences("droid_launcher_accounts", MODE_PRIVATE)
+            .getString("microsoft_login_url", "")?.trim().orEmpty()
+        val url = configured.ifBlank { "https://login.live.com/" }
+        try {
+            startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+        } catch (_: Throwable) {
+            android.widget.Toast.makeText(this, "Unable to open Microsoft sign-in.", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+"""
+        if marker not in source:
+            raise SystemExit("[step337] sign-in page anchor missing while restoring login helper")
+        source = source.replace(marker, helper + marker, 1)
+
+    if "private fun openCosmeticImagePicker(requestCode: Int)" not in source:
+        marker = "    private fun showMicrosoftSignInPage()"
+        helper = """    private fun openCosmeticImagePicker(requestCode: Int) {
+        require(requestCode == 3371 || requestCode == 3372)
+        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            type = "image/*"
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        try { startActivityForResult(intent, requestCode) }
+        catch (_: Throwable) { android.widget.Toast.makeText(this, "No image picker is available on this device.", android.widget.Toast.LENGTH_LONG).show() }
+    }
+
+"""
+        if marker not in source:
+            raise SystemExit("[step337] sign-in page anchor missing while restoring picker helper")
+        source = source.replace(marker, helper + marker, 1)
 
     source = source.replace('ms.setOnClickListener { showMicrosoftAccountInfo() }', 'ms.setOnClickListener { showMicrosoftSignInPage() }', 1)
     path.write_text(source, encoding="utf-8")
