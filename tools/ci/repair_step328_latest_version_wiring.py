@@ -70,12 +70,20 @@ def main() -> int:
         source = replace_function(source, selected_sig, selected)
 
     refresh = '''    private fun refreshLatestMinecraftVersion() {
+        val prefs = getSharedPreferences("droid_launcher", MODE_PRIVATE)
+        val explicitlySelected = prefs.contains("selected_minecraft_version")
         MinecraftLatestVersionManager.refresh(this) { latest ->
             val id = latest?.id?.trim().orEmpty()
             if (id.isNotEmpty()) {
-                getSharedPreferences("droid_launcher", MODE_PRIVATE).edit()
+                val editor = getSharedPreferences("droid_launcher", MODE_PRIVATE).edit()
                     .putString("latest_minecraft_version", id)
-                    .apply()
+                if (!explicitlySelected) {
+                    editor.putString("selected_minecraft_version", id)
+                }
+                editor.apply()
+                if (!explicitlySelected && currentPage == "Game") {
+                    showPage("Game")
+                }
             }
         }
     }
