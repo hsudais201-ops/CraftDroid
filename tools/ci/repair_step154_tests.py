@@ -206,8 +206,9 @@ class PerformanceProfileTest {
         assertEquals(1024, profile.maxRamMb)
         assertTrue(profile.renderScale <= 0.70f)
         assertTrue(profile.aggressiveGc)
-        assertEquals(640, profile.clampRam(2048, 900))
+        assertEquals(388, profile.clampRam(2048, 900))
         assertEquals(1024, profile.clampRam(4096, 2048))
+        assertEquals(384, profile.clampRam(2048, 256))
     }
 
     @Test
@@ -216,6 +217,7 @@ class PerformanceProfileTest {
         assertEquals(1280, profile.recommendedRamMb)
         assertEquals(2048, profile.maxRamMb)
         assertEquals(1476, profile.clampRam(4096, 2500))
+        assertEquals(384, profile.clampRam(4096, 800))
     }
 
     @Test
