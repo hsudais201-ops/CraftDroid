@@ -96,14 +96,10 @@ def replace_method(src: str, sig: str, replacement: str) -> str:
 
 HELPERS = r'''
     private val step376LowRam: Boolean by lazy {
-        val manager = getSystemService(android.content.Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
-        if (manager == null) {
-            false
-        } else {
-            val info = android.app.ActivityManager.MemoryInfo()
-            manager.getMemoryInfo(info)
-            manager.isLowRamDevice || info.totalMem <= 1536L * 1024L * 1024L
-        }
+        runCatching {
+            com.example.renderer.PerformanceProfile.detect(this).tier ==
+                com.example.renderer.PerformanceProfile.Tier.LOW
+        }.getOrDefault(true)
     }
     private var step376BgThread: Thread? = null
     private var step376Glow: android.animation.ValueAnimator? = null
@@ -140,7 +136,7 @@ HELPERS = r'''
             val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
             android.graphics.BitmapFactory.decodeFile(path.absolutePath, bounds)
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-            val maxDimension = if (step376LowRam) 640 else 960
+            val maxDimension = if (step376LowRam) 480 else 960
             var sample = 1
             while (bounds.outWidth / sample > maxDimension || bounds.outHeight / sample > maxDimension) sample *= 2
             val opts = android.graphics.BitmapFactory.Options().apply {
@@ -152,6 +148,7 @@ HELPERS = r'''
         step376BgThread = Thread {
             try {
                 var bitmap = decode(cache)
+                if (bitmap == null && step376LowRam) return@Thread
                 if (bitmap == null) {
                     val temp = java.io.File(cacheDir, "droid-launcher-background.tmp")
                     val c = java.net.URL("''' + REMOTE_BG + '''").openConnection() as java.net.HttpURLConnection
@@ -364,7 +361,7 @@ def main() -> int:
         "readiness.txt",
         "droid-launcher-background.jpg",
         "inPreferredConfig = android.graphics.Bitmap.Config.RGB_565",
-        "manager.isLowRamDevice || info.totalMem <= 1536L * 1024L * 1024L",
+        "com.example.renderer.PerformanceProfile.detect(this).tier",
         "step376StartGlow",
         "step376ReleaseEffects",
     )
