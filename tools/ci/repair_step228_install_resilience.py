@@ -117,7 +117,7 @@ def patch_installer(root: Path) -> None:
         helper = '''    fun cancel(context: Context, version: String) {\n        cancellations.add(version)\n        setState(context, version, State.FAILED, "Installation cancelled")\n    }\n\n    fun isCancellationRequested(version: String): Boolean =\n        cancellations.contains(version)\n\n'''
         text = text[:match.start()] + helper + text[match.start():]
     if "cancellations.remove(version)\n        executor.execute" not in text:
-        marker = "        executor.execute {\n            try:"
+        marker = "        executor.execute {\n            try {"
         if marker not in text: raise SystemExit("[step228] install executor anchor missing")
         text = text.replace(marker, "        cancellations.remove(version)\n        executor.execute {\n            try:", 1)
 
