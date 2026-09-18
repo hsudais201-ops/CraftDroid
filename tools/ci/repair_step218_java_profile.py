@@ -54,7 +54,7 @@ JAVA_PAGE = '''    private fun javaPage() {
         autoLine.addView(autoButton)
         autoCard.addView(autoLine)
         pageArea.addView(autoCard)
-        val examples = listOf("1.16.5", "1.18.2", "1.20.4", "1.20.6", "1.21.1", "1.21.11", "25.1")
+        val examples = listOf("1.16.5", "1.18.2", "1.20.4", "1.20.6", "1.21.1", "1.21.11", "26.1")
         examples.forEach { version ->
             val recommended = resolveJavaForVersion(version)
             val c = cardView(12)
