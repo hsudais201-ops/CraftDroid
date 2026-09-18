@@ -17,26 +17,130 @@ RECOVERY_REL = Path("app/src/main/java/com/example/logs/LaunchRecoveryPolicy.kt"
 
 def patch_monitor(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
+    changed = False
+
     malformed = """                lastKnownLogLength = currentLogLength
             }
 
             val state = NativeGameBridge.javaState()
 """
-    corrected = """                lastKnownLogLength = currentLogLength
-            }
+    corrected = """                }
+                lastKnownLogLength = currentLogLength
             }
 
             val state = NativeGameBridge.javaState()
 """
     if malformed in text:
         text = text.replace(malformed, corrected, 1)
-        path.write_text(text, encoding="utf-8")
+        changed = True
         print("[step426] repaired missing closing brace in MinecraftProcessMonitor")
-    elif corrected in text:
-        print("[step426] MinecraftProcessMonitor brace repair already present")
-    else:
-        raise SystemExit("[step426] MinecraftProcessMonitor expected block anchor not found")
 
+    if "currentLogLength != lastKnownLogLength || currentLogLength < 0L" in text:
+        text = text.replace(
+            "currentLogLength != lastKnownLogLength || currentLogLength < 0L",
+            "currentLogLength != lastKnownLogLength",
+            1,
+        )
+        changed = True
+        print("[step426] stopped polling a nonexistent Minecraft log every cycle")
+
+    callback_assignment = """                lastKnownLogLength = currentLogLength
+            }
+            }
+"""
+    corrected_assignment = """                }
+            }
+            lastKnownLogLength = currentLogLength
+"""
+    if callback_assignment in text:
+        text = text.replace(callback_assignment, corrected_assignment, 1)
+        changed = True
+        print("[step426] moved log-length state update outside the read callback")
+
+    if "const val MAX_EVENT_LOG_BYTES" not in text:
+        text = text.replace(
+            "    private var lastLogChangeEventAt = 0L",
+            "    private var lastLogChangeEventAt = 0L\\n\\n    private companion object {\\n        const val MAX_EVENT_LOG_BYTES = 64 * 1024L\\n        const val EVENT_LOG_TAIL_BYTES = 48 * 1024L\\n    }",
+            1,
+        )
+        changed = True
+        print("[step426] event-log size bounds installed")
+
+    if "import java.io.FileOutputStream" not in text:
+        text = text.replace(
+            "import java.io.File",
+            "import java.io.File\\nimport java.io.FileOutputStream",
+            1,
+        )
+        changed = True
+
+    old_emit = """    private fun emit(type: EventType, message: String) {
+        val event = Event(type, message)
+        onEvent(event)
+        runCatching {
+            diagnosticsDir.mkdirs()
+            File(diagnosticsDir, "step165-events.log").appendText(\"${event.timestampMs} [${event.type}] ${event.message}\\n\")
+        }
+        when (type) {
+"""
+    new_emit = """    private fun emit(type: EventType, message: String) {
+        val event = Event(type, message)
+        runCatching { onEvent(event) }
+            .onFailure { LauncherLogger.warn("Minecraft monitor listener failed: ${it.message}") }
+        runCatching {
+            diagnosticsDir.mkdirs()
+            appendBoundedEventLog(
+                File(diagnosticsDir, "step165-events.log"),
+                "${event.timestampMs} [${event.type}] ${event.message}\\n"
+            )
+        }
+        when (type) {
+"""
+    if old_emit in text:
+        text = text.replace(old_emit, new_emit, 1)
+        changed = True
+        print("[step426] monitor listener and bounded event logging installed")
+
+    if "private fun appendBoundedEventLog(file: File, line: String)" not in text:
+        helper = """    private fun appendBoundedEventLog(file: File, line: String) {
+        FileOutputStream(file, true).use { output ->
+            output.write(line.toByteArray(Charsets.UTF_8))
+        }
+        if (file.length() <= MAX_EVENT_LOG_BYTES) return
+
+        val tail = runCatching {
+            file.inputStream().use { input ->
+                val length = file.length()
+                var remaining = (length - EVENT_LOG_TAIL_BYTES).coerceAtLeast(0L)
+                while (remaining > 0L) {
+                    val skipped = input.skip(minOf(remaining, 64L * 1024L))
+                    if (skipped <= 0L) break
+                    remaining -= skipped
+                }
+                val buffer = ByteArray(minOf(EVENT_LOG_TAIL_BYTES, length).toInt())
+                val read = input.read(buffer)
+                if (read <= 0) "" else String(buffer, 0, read, Charsets.UTF_8)
+            }
+        }.getOrDefault("")
+
+        if (tail.isNotEmpty()) {
+            file.outputStream().use { it.write(tail.toByteArray(Charsets.UTF_8)) }
+        } else {
+            file.delete()
+        }
+    }
+
+"""
+        anchor = "    private fun emit(type: EventType, message: String) {"
+        pos = text.find(anchor)
+        if pos < 0:
+            raise SystemExit("[step426] emit anchor missing")
+        text = text[:pos] + helper + text[pos:]
+        changed = True
+
+    if changed:
+        path.write_text(text, encoding="utf-8")
+    print("[step426] Minecraft monitor low-RAM hardening checked")
 
 def patch_crash_diagnostics(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
@@ -145,6 +249,12 @@ def main() -> int:
         raise SystemExit("[step426] bounded HotSpot candidate directories missing")
     if monitor_text.count("val state = NativeGameBridge.javaState()") != 1:
         raise SystemExit("[step426] unexpected monitor state anchor count")
+    if "if (currentLogLength != lastKnownLogLength)" not in monitor_text:
+        raise SystemExit("[step426] change-detection poll guard missing")
+    if "appendBoundedEventLog(" not in monitor_text:
+        raise SystemExit("[step426] bounded event log helper missing")
+    if "MAX_EVENT_LOG_BYTES" not in monitor_text:
+        raise SystemExit("[step426] event-log bound constant missing")
 
     print("[step426] low-RAM diagnostics hardening contract verified")
     return 0
