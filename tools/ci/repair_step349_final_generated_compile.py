@@ -154,6 +154,28 @@ def repair_progress_context(text: str) -> str:
     raise SystemExit('[step349] cannot locate installer class field insertion point')
 
 
+def ensure_microsoft_browser_helper(text: str) -> str:
+    if 'private fun openMicrosoftLoginWebsite()' in text:
+        return text
+    marker = '    private fun showMicrosoftSignInPage()'
+    helper = '''    private fun openMicrosoftLoginWebsite() {
+        val configured = getSharedPreferences("droid_launcher_accounts", MODE_PRIVATE)
+            .getString("microsoft_login_url", "")?.trim().orEmpty()
+        val url = configured.ifBlank { "https://login.live.com/" }
+        try {
+            startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+            android.widget.Toast.makeText(this, "Microsoft sign-in opened in your browser.", android.widget.Toast.LENGTH_SHORT).show()
+        } catch (_: Throwable) {
+            android.widget.Toast.makeText(this, "Unable to open Microsoft sign-in.", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+'''
+    if marker not in text:
+        raise SystemExit('[step349] Microsoft sign-in page anchor missing while restoring browser helper')
+    return text.replace(marker, helper + marker, 1)
+
+
 def repair_real_cosmetic_picker(text: str, root: Path) -> str:
     """Ensure the real Microsoft page and lifecycle-safe picker callback survive final UI rewrites."""
     repo_root = Path.cwd().resolve()
@@ -178,8 +200,11 @@ def repair_real_cosmetic_picker(text: str, root: Path) -> str:
     if not content_patch.is_file():
         raise SystemExit('[step349] Step391 content picker patch is missing')
     subprocess.run([sys.executable, str(content_patch), str(root)], cwd=repo_root, check=True)
+    updated_path = root / 'app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt'
+    updated_source = ensure_microsoft_browser_helper(updated_path.read_text(encoding='utf-8'))
+    updated_path.write_text(updated_source, encoding='utf-8')
 
-    updated = (root / 'app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt').read_text(encoding='utf-8')
+    updated = updated_source
     if 'showMicrosoftSignInPage()' not in updated or 'openMicrosoftLoginWebsite()' not in updated:
         raise SystemExit('[step349] real Microsoft sign-in helpers missing after final repair')
     if 'STEP352_REAL_COSMETIC_PICKER_CALLBACK' not in updated or 'STEP391_FINAL_CONTENT_PICKER' not in updated:
@@ -212,6 +237,7 @@ def assert_final_ui_invariants(source: str) -> None:
     start = source.find('class DroidLauncherUiActivity')
     if start < 0 or source.count('class DroidLauncherUiActivity') != 1: raise SystemExit('[step349] launcher class boundary invariant failed')
     if 'STEP352_REAL_COSMETIC_PICKER_CALLBACK' not in source: raise SystemExit('[step349] real skin/cape picker callback missing')
+    if 'private fun openMicrosoftLoginWebsite()' not in source: raise SystemExit('[step349] Microsoft browser helper missing')
     if 'STEP391_FINAL_CONTENT_PICKER' not in source: raise SystemExit('[step349] final content picker marker missing')
     if 'requestCode == CONTENT_PICKER_REQUEST' not in source: raise SystemExit('[step349] content picker callback missing')
     if 'microsoft_skin_uri' not in source or 'microsoft_cape_uri' not in source: raise SystemExit('[step349] cosmetic URI persistence missing')
@@ -267,6 +293,7 @@ def main() -> int:
     source = normalize_on_create(source)
     ui.write_text(source, encoding='utf-8')
     source = repair_real_cosmetic_picker(source, root)
+    source = ensure_microsoft_browser_helper(source)
     source = normalize_edit_text(source)
     source = repair_truncated_server_helpers(source)
     source = dedupe_methods(source, ('featuresPage','featureToggle','rendererPage','javaPage','controlsPage','libraryPage','aboutPage','serverPrefs','getSavedServers','getServerName','getServerStatus','selectServer','deleteServer','showServerDialog','refreshServerStatus','resolveJavaForVersion','getResolvedJavaForLaunch','showMicrosoftSignInPage'))
