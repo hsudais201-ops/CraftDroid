@@ -51,7 +51,7 @@ def canonical_java_helpers(s: str) -> str:
     import re
     s = re.sub(r'(?ms)^    private fun recommendedJavaForVersion\(version: String\): Int \{.*?^    \}\n\n', '', s, count=1)
     s = re.sub(r'(?ms)^    private fun storedJavaOverride\(\): Int\? \{.*?^    \}\n\n', '', s, count=1)
-    s = re.sub(r'(?m)^    private fun resolveJavaForVersion\(version: String\): Int =[^\n]*\n', '', s, count=1)
+    s = re.sub(r'(?ms)^    private fun resolveJavaForVersion\(version: String\): Int =\n\s*storedJavaOverride\(\) \?: recommendedJavaForVersion\(version\)\n', '', s, count=1)
     s = re.sub(r'(?ms)^    private fun saveJavaOverride\(value: String\) \{.*?^    \}\n\n', '', s, count=1)
     s = re.sub(r'(?m)^    private fun getResolvedJavaForLaunch\(version: String\): Int =[^\n]*\n', '', s, count=1)
     anchor = s.find('    private fun rendererPage() {')
