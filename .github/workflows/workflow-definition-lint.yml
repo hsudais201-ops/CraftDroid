@@ -31,3 +31,15 @@ jobs:
         run: |
           set -euo pipefail
           ./actionlint -no-color .github/workflows/step406-resilient-build.yml
+
+      - name: Inspect archived JVM launch bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/craftdroid-archive
+          mkdir -p /tmp/craftdroid-archive
+          unzip -q CraftDroid_Launcher_2.4_GitHubActions_Step153.zip -d /tmp/craftdroid-archive
+          echo '--- NativeGameBridge launch declarations ---'
+          grep -RIn --include='*.kt' --include='*.java' 'fun launchJava\|launchJava(' /tmp/craftdroid-archive/app/src/main 2>/dev/null | head -80 || true
+          echo '--- JVM argument references ---'
+          grep -RIn --include='*.kt' --include='*.java' 'Xmx\|Xms\|jvmArgs\|javaArgs\|runtimeArgs' /tmp/craftdroid-archive/app/src/main 2>/dev/null | head -120 || true
