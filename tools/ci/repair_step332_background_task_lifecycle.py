@@ -16,6 +16,25 @@ def main() -> int:
     path = one(root / "app/src/main/java", "LauncherBackgroundInstallController.kt")
     s = path.read_text(encoding="utf-8")
 
+    # Step 400+ already provides a bounded lifecycle with active-state expiry.
+    # Preserve it instead of adding the old unbounded lastStates map.
+    modern_contract = (
+        "COMPLETED_STATE_RETENTION_MS" in s
+        and "scheduleStateCleanup(state: TaskState)" in s
+        and "active.remove(state.key, state)" in s
+    )
+    if modern_contract:
+        for marker in (
+            "private val active = ConcurrentHashMap<String, TaskState>()",
+            "Executors.newSingleThreadExecutor",
+            "COMPLETED_STATE_RETENTION_MS",
+            "private fun scheduleStateCleanup(state: TaskState)",
+        ):
+            if marker not in s:
+                raise SystemExit("[step332] modern lifecycle marker missing: " + marker)
+        print("[step332] bounded modern lifecycle already installed; legacy lastStates map not applied")
+        return 0
+
     if "private val lastStates = ConcurrentHashMap<String, TaskState>()" not in s:
         anchor = "    private val active = ConcurrentHashMap<String, TaskState>()\n"
         if anchor not in s:
