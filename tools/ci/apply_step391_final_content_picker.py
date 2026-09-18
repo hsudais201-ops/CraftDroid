@@ -129,71 +129,49 @@ def main() -> int:
         if anchor < 0:
             raise SystemExit("[step391] companion object anchor missing for request constant")
         brace = source.find("{", anchor)
-        source = source[:brace + 1] + '\n        private const val CONTENT_PICKER_REQUEST = 341' + source[brace + 1:]
+        source = source[:brace + 1] + "\n        private const val CONTENT_PICKER_REQUEST = 341" + source[brace + 1:]
 
     callback = "    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?)"
     start, end = method_span(source, callback)
     body = source[start:end]
 
-    if "step391PendingContentPage" not in body:
-        insert = '''        if (requestCode == CONTENT_PICKER_REQUEST && resultCode == android.app.Activity.RESULT_OK) {
+    if "requestCode == CONTENT_PICKER_REQUEST" not in body:
+        insert = """        if (requestCode == CONTENT_PICKER_REQUEST && resultCode == android.app.Activity.RESULT_OK) {
             val uri = data?.data ?: return
             val pageName = step391PendingContentPage ?: return
-            try {
-                val originalName = contentResolver.query(
-                    uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null
-                )?.use { cursor ->
-                    if (cursor.moveToFirst()) cursor.getString(0) else null
-                } ?: "selected-content"
-                val safeSuffix = originalName.substringAfterLast(".", "").takeIf { it.length in 1..12 }?.let { "." + it } ?: ".tmp"
-                val temp = java.io.File.createTempFile("droid-content-", safeSuffix, cacheDir)
-                contentResolver.openInputStream(uri)?.use { input ->
-                    java.io.FileOutputStream(temp).use { output ->
-                        val buffer = ByteArray(64 * 1024)
-                        while (true) {
-                            val n = input.read(buffer)
-                            if (n < 0) break
-                            if (n > 0) output.write(buffer, 0, n)
-                        }
+            val kind = when (pageName) {
+                "Modpack" -> MinecraftContentManager.Kind.MODPACK
+                "Mod" -> MinecraftContentManager.Kind.MOD
+                "Shader Pack" -> MinecraftContentManager.Kind.SHADER
+                "Resource Pack" -> MinecraftContentManager.Kind.RESOURCE_PACK
+                "World" -> MinecraftContentManager.Kind.WORLD
+                else -> throw java.io.IOException("Unsupported content type: $pageName")
+            }
+            step391PendingContentPage = null
+            LauncherBackgroundInstallController.importContentUri(this, kind, uri) { state ->
+                when (state.state) {
+                    LauncherBackgroundInstallController.State.QUEUED,
+                    LauncherBackgroundInstallController.State.RUNNING -> {
+                        setTitle("${kind.name.replace("_", " ")} · ${state.message}")
                     }
-                } ?: throw java.io.IOException("Could not open selected file")
-
-                val kind = when (pageName) {
-                    "Modpack" -> MinecraftContentManager.Kind.MODPACK
-                    "Mod" -> MinecraftContentManager.Kind.MOD
-                    "Shader Pack" -> MinecraftContentManager.Kind.SHADER
-                    "Resource Pack" -> MinecraftContentManager.Kind.RESOURCE_PACK
-                    "World" -> MinecraftContentManager.Kind.WORLD
-                    else -> throw java.io.IOException("Unsupported content type: $pageName")
+                    LauncherBackgroundInstallController.State.SUCCESS -> {
+                        android.widget.Toast.makeText(this, "Content installed", android.widget.Toast.LENGTH_LONG).show()
+                        showPage(pageName)
+                    }
+                    LauncherBackgroundInstallController.State.FAILED -> {
+                        android.widget.Toast.makeText(this, "Install failed: ${state.message}", android.widget.Toast.LENGTH_LONG).show()
+                        showPage(pageName)
+                    }
                 }
-
-                val installed = if (kind == MinecraftContentManager.Kind.MODPACK) {
-                    if (temp.extension.equals("mrpack", true)) MinecraftModpackManager.install(this, temp)
-                    else MinecraftContentManager.importArchive(this, kind, temp)
-                } else {
-                    MinecraftContentManager.importFile(this, kind, temp)
-                }
-
-                val installedName = when (installed) {
-                    is java.io.File -> installed.name
-                    is MinecraftModpackManager.Result -> installed.name
-                    else -> "content"
-                }
-                android.widget.Toast.makeText(this, "Installed " + installedName, android.widget.Toast.LENGTH_LONG).show()
-            } catch (t: Throwable) {
-                android.widget.Toast.makeText(this, "Install failed: " + (t.message ?: "unknown error"), android.widget.Toast.LENGTH_LONG).show()
-            } finally {
-                step391PendingContentPage = null
             }
             return
         }
-'''
+"""
         marker = "        super.onActivityResult(requestCode, resultCode, data)\n"
         if marker not in body:
             raise SystemExit("[step391] existing ActivityResult callback shape changed")
         body = body.replace(marker, marker + insert, 1)
         source = source[:start] + body + source[end:]
-
     # Stable marker for later audits.
     if MARKER not in source:
         callback_pos = source.find(callback)
