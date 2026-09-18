@@ -50,10 +50,14 @@ class MinecraftProcessMonitor(
         val startedAt = System.currentTimeMillis()
         emit(EventType.JVM_STARTING, "Embedded Minecraft JVM monitor started")
 
+        var lastKnownLogLength = -1L
+
         while (kotlinx.coroutines.currentCoroutineContext().isActive) {
             val now = System.currentTimeMillis()
-            if (logFile.isFile && logFile.length() < offset) offset = 0L
-            readNewLogLines(offset) { chunk, newOffset ->
+            val currentLogLength = if (logFile.isFile) logFile.length() else -1L
+            if (currentLogLength >= 0L && currentLogLength < offset) offset = 0L
+            if (currentLogLength != lastKnownLogLength || currentLogLength < 0L) {
+                readNewLogLines(offset) { chunk, newOffset ->
                 offset = newOffset
                 if (chunk.isBlank()) return@readNewLogLines
                 if (now - lastLogChangeEventAt >= 1000L) {
@@ -80,6 +84,7 @@ class MinecraftProcessMonitor(
                         emit(EventType.IN_GAME, "Minecraft world/in-game state detected")
                     }
                 }
+                lastKnownLogLength = currentLogLength
             }
 
             val state = NativeGameBridge.javaState()
@@ -108,7 +113,7 @@ class MinecraftProcessMonitor(
                 emit(EventType.MONITOR_TIMEOUT, "Minecraft monitor reached its 120-second observation window")
                 return
             }
-            delay(250L)
+            delay(400L)
         }
     }
 
