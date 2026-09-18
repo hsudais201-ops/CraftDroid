@@ -391,7 +391,7 @@ jobs:
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           test -x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          required=("platform-tools" "platforms;android-36.1" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1")
+          required=("platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1")
           installed="$($SDKMANAGER --list_installed 2>/dev/null || true)"
           missing=()
           for pkg in "${required[@]}"; do
