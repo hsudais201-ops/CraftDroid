@@ -118,7 +118,7 @@ METHODS = r'''    // STEP343_ONE_CLICK_DOWNLOAD_REQUIRED_WORLD
                     }
                 }
                 runOnUiThread {
-                    val message = if (names.isEmpty()) "No required dependency entries were published for this version." else names.joinToString("\n") { "• $it" }
+                    val message = if (names.isEmpty()) "No required dependency entries were published for this version." else names.joinToString("\\n") { "• $it" }
                     android.app.AlertDialog.Builder(this)
                         .setTitle("Required mods · $projectName")
                         .setMessage(message)
