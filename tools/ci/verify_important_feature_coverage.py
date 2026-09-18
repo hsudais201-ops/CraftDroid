@@ -99,8 +99,9 @@ def main() -> int:
             'STEP352_REAL_COSMETIC_PICKER_CALLBACK', 'microsoft_skin_uri',
             'microsoft_cape_uri', 'contentResolver.takePersistableUriPermission',
             'requestCode == 3371 || requestCode == 3372',
-            'step375Title("DroidLauncher", "First launch only until INSTALL completes.")',
-            'step375Button("INSTALL", true)',
+            'val launch = button(if (installed) "▶  PLAY" else "↓  INSTALL", true)',
+            'if (MinecraftVersionInstallManager.isInstalled(this, version))',
+            'installMinecraftVersion(version)',
         )
         for needle in ui_checks:
             if needle not in ui:
