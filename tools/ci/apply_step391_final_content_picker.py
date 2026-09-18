@@ -199,6 +199,13 @@ def main() -> int:
     }
 """
     source = source[:start] + canonical_callback + source[end:]
+
+    if MARKER not in source:
+        callback_pos = source.find(callback)
+        if callback_pos < 0:
+            raise SystemExit("[step391] canonical callback insertion failed")
+        source = source[:callback_pos] + "    " + MARKER + "\n" + source[callback_pos:]
+
     # Exactly one callback is non-negotiable: cosmetic + content picker share it.
     if source.count("override fun onActivityResult(") != 1:
         raise SystemExit("[step391] ActivityResult callback count is not exactly one")
