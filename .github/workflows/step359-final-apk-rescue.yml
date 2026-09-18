@@ -2,7 +2,7 @@ name: Step 359 - Final APK rescue build
 
 on:
   workflow_run:
-    workflows: ["Step 200 - Droid Launcher authoritative build"]
+    workflows: ["Step 200 - Droid Launcher authoritative build", "Step 257 - Droid Launcher resilient authoritative build"]
     types: [completed]
 
 permissions:
@@ -18,22 +18,33 @@ jobs:
       - name: Checkout repair scripts
         uses: actions/checkout@v4
 
-      - name: Download generated-source diagnostics from failed authoritative build
+      - name: Download Step 200 generated-source diagnostics
+        if: ${{ github.event.workflow_run.name == 'Step 200 - Droid Launcher authoritative build' }}
         uses: actions/download-artifact@v4
         with:
           name: Droid-Launcher-Step253-diagnostics
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
-          path: upstream-diagnostics
+          path: upstream-diagnostics/step200
+
+      - name: Download Step 257 generated-source diagnostics
+        if: ${{ github.event.workflow_run.name == 'Step 257 - Droid Launcher resilient authoritative build' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: Droid-Launcher-Step257-diagnostics
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: upstream-diagnostics/step257
 
       - name: Restore generated launcher source
         shell: bash
         run: |
           set -euo pipefail
-          test -s upstream-diagnostics/artifacts/build/generated-source.tgz
+          TGZ="$(find upstream-diagnostics -type f -name generated-source.tgz -print -quit)"
+          test -n "$TGZ"
           rm -rf droid-src artifacts
           mkdir -p artifacts/build artifacts/apk
-          tar -xzf upstream-diagnostics/artifacts/build/generated-source.tgz
+          tar -xzf "$TGZ"
           test -f droid-src/settings.gradle || test -f droid-src/settings.gradle.kts
           test -f droid-src/app/build.gradle || test -f droid-src/app/build.gradle.kts
 
