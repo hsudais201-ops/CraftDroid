@@ -59,7 +59,7 @@ def main() -> int:
             "Internal-16" to "Java 16 · legacy compatibility",
             "Internal-17" to "Java 17 · Minecraft 1.17+",
             "Internal-21" to "Java 21 · Minecraft 1.20.5+",
-            "Internal-25" to "Java 25 · Minecraft 25.1+"
+            "Internal-25" to "Java 25 · Minecraft 26.1+"
         ).forEach { runtime ->
             val c = cardView(12)
             val selectedNow = runtime.first == selected
