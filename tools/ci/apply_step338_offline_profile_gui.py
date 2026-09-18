@@ -101,7 +101,12 @@ def main() -> int:
             repeat(4) { idx ->
                 val slot = button("+")
                 val slotIndex = rowIndex * 4 + idx + 1
-                slot.setOnClickListener { android.widget.Toast.makeText(this@DroidLauncherUiActivity, "Cosmetic slot $slotIndex", android.widget.Toast.LENGTH_SHORT).show() }
+                slot.contentDescription = "Cosmetic slot $slotIndex"
+                slot.setOnClickListener {
+                    // Each visible slot opens a real persisted image picker: odd
+                    // slots select a Minecraft skin, even slots select a cape.
+                    openCosmeticImagePicker(if (slotIndex % 2 == 0) 3372 else 3371)
+                }
                 row.addView(slot, LinearLayout.LayoutParams(dp(150), dp(118)).apply { marginEnd = dp(14) })
             }
             cosmeticGrid.addView(row, LinearLayout.LayoutParams(-1, dp(126)))
