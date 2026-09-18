@@ -19,7 +19,7 @@ data class PerformanceProfile(
 
     companion object {
         fun forTier(tier: Tier): PerformanceProfile = when (tier) {
-            Tier.LOW -> PerformanceProfile(Tier.LOW, 1024, 1536, 30, 0.70f, true)
+            Tier.LOW -> PerformanceProfile(Tier.LOW, 768, 1024, 30, 0.70f, true)
             Tier.BALANCED -> PerformanceProfile(Tier.BALANCED, 1536, 3072, 60, 0.85f, false)
             Tier.HIGH -> PerformanceProfile(Tier.HIGH, 3072, 6144, 90, 1.0f, false)
         }
@@ -42,9 +42,10 @@ data class PerformanceProfile(
 
     /** Safely caps a user-selected heap without starving Minecraft on low-memory devices. */
     fun clampRam(requestedMb: Int, availableMb: Int): Int {
-        val safety = if (tier == Tier.LOW) 768 else 1024
-        val availableCap = (availableMb - safety).coerceAtLeast(768)
-        return requestedMb.coerceIn(768, minOf(maxRamMb, availableCap))
+        val safety = if (tier == Tier.LOW) 512 else 1024
+        val minimum = if (tier == Tier.LOW) 512 else 768
+        val availableCap = (availableMb - safety).coerceAtLeast(minimum)
+        return requestedMb.coerceIn(minimum, minOf(maxRamMb, availableCap))
     }
 
     fun defaultJvmArgs(): String = buildString {
