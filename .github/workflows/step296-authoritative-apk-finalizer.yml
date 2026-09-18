@@ -151,6 +151,11 @@ jobs:
           python3 tools/ci/repair_step236_download_trust.py droid-src
       - name: Repair final generated Kotlin regular strings
         run: python3 tools/ci/repair_step349_final_generated_compile.py droid-src
+
+      - name: Apply requested reference-driven launcher UI
+        run: python3 tools/ci/apply_step375_custom_ui.py droid-src
+      - name: Apply low-RAM UI hardening
+        run: python3 tools/ci/apply_step376_low_ram_ui.py droid-src
       - name: Deep source quality pass - 1000 content-dependent checks
         shell: bash
         run: |
@@ -165,6 +170,7 @@ jobs:
           python3 tools/ci/verify_step235_audit.py droid-src
           python3 tools/ci/verify_step236_download_trust.py droid-src
           python3 tools/ci/verify_step239_generated_kotlin.py droid-src
+          python3 tools/ci/verify_important_feature_coverage.py droid-src
           python3 tools/ci/verify_step287_first_run_components.py droid-src
       - name: Set up JDK 17
         uses: actions/setup-java@v5
