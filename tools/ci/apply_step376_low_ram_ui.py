@@ -169,10 +169,11 @@ HELPERS = r'''
                         if (temp.exists() && !cache.exists()) temp.delete()
                     }
                 }
-                if (bitmap != null && !isFinishing && !isDestroyed) {
+                if (bitmap != null) {
                     val finalBitmap = bitmap
                     runOnUiThread {
-                        if (!isFinishing && !isDestroyed) target.setImageBitmap(finalBitmap) else finalBitmap.recycle()
+                        if (!isFinishing && !isDestroyed) target.setImageBitmap(finalBitmap)
+                        else finalBitmap.recycle()
                     }
                 }
             } catch (_: Throwable) {
