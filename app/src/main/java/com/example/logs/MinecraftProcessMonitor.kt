@@ -86,6 +86,7 @@ class MinecraftProcessMonitor(
                 }
                 lastKnownLogLength = currentLogLength
             }
+            }
 
             val state = NativeGameBridge.javaState()
             if (state != lastObservedState) {
