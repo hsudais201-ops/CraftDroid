@@ -48,6 +48,9 @@ jobs:
           test -f droid-src/settings.gradle || test -f droid-src/settings.gradle.kts
           test -f droid-src/app/build.gradle || test -f droid-src/app/build.gradle.kts
 
+      - name: Harden generated low-RAM diagnostics
+        run: python3 tools/ci/repair_step426_low_ram_diagnostics.py droid-src
+
       - name: Apply final generated UI cleanup
         run: python3 tools/ci/repair_step359_final_ui_cleanup.py droid-src
 
