@@ -267,6 +267,7 @@ jobs:
           set -euo pipefail
           python3 tools/ci/verify_step337_microsoft_signin_gui.py droid-src
           python3 tools/ci/verify_important_feature_coverage.py droid-src
+          python3 tools/ci/verify_step428_minecraft_261_latest.py droid-src
 
       - name: Pin and verify TeamPojav native release source
         shell: bash
