@@ -121,8 +121,7 @@ def main() -> int:
         anchor = source.find("    companion object {")
         if anchor < 0:
             raise SystemExit("[step391] companion object anchor missing")
-        source = source[:anchor] + CONTENT_METHODS + "
-" + source[anchor:]
+        source = source[:anchor] + CONTENT_METHODS + "\n" + source[anchor:]
 
     # Guarantee one request code declaration.
     if "private const val CONTENT_PICKER_REQUEST" not in source:
@@ -130,8 +129,7 @@ def main() -> int:
         if anchor < 0:
             raise SystemExit("[step391] companion object anchor missing for request constant")
         brace = source.find("{", anchor)
-        source = source[:brace + 1] + '
-        private const val CONTENT_PICKER_REQUEST = 341' + source[brace + 1:]
+        source = source[:brace + 1] + '\n        private const val CONTENT_PICKER_REQUEST = 341' + source[brace + 1:]
 
     callback = "    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?)"
     start, end = method_span(source, callback)
@@ -179,8 +177,7 @@ def main() -> int:
             return
         }
 '''
-        marker = "        super.onActivityResult(requestCode, resultCode, data)
-"
+        marker = "        super.onActivityResult(requestCode, resultCode, data)\n"
         if marker not in body:
             raise SystemExit("[step391] existing ActivityResult callback shape changed")
         body = body.replace(marker, marker + insert, 1)
@@ -189,8 +186,7 @@ def main() -> int:
     # Stable marker for later audits.
     if MARKER not in source:
         callback_pos = source.find(callback)
-        source = source[:callback_pos] + "    " + MARKER + "
-" + source[callback_pos:]
+        source = source[:callback_pos] + "    " + MARKER + "\n" + source[callback_pos:]
 
     # Exactly one callback is non-negotiable: cosmetic + content picker share it.
     if source.count("override fun onActivityResult(") != 1:
