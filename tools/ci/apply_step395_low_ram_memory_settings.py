@@ -18,7 +18,7 @@ SETTINGS_METHOD = r'''
             total <= 4096 -> 1536
             else -> minOf(2048, (total * 0.50f).toInt())
         }
-        val minimum = 512
+        val minimum = 640
         return requestedMb.coerceIn(minimum, maxByDevice)
     }
 
@@ -69,14 +69,14 @@ def patch_screen(path: Path) -> None:
         s = s.replace(old, new, 1)
     # Avoid showing an impossible slider state when a previously saved value was too large.
     old = '    var ramSliderValue by remember(settings.ramMb) { mutableIntStateOf(settings.ramMb) }'
-    new = '    var ramSliderValue by remember(settings.ramMb, safeMaxRamMb) { mutableIntStateOf(settings.ramMb.coerceIn(512, safeMaxRamMb)) }'
+    new = '    var ramSliderValue by remember(settings.ramMb, safeMaxRamMb) { mutableIntStateOf(settings.ramMb.coerceIn(640, safeMaxRamMb)) }'
     if old in s:
         s = s.replace(old, new, 1)
     # 64-MB increments allow a conservative 640 MB recommendation on ~1 GB devices.
     s = s.replace('onValueChange = { ramSliderValue = (it / 128).toInt() * 128 }',
                   'onValueChange = { ramSliderValue = (it / 64).toInt() * 64 }', 1)
     s = re.sub(r'steps = \(\(safeMaxRamMb - 512\) / 128\)\.coerceAtLeast\(1\)',
-               'steps = ((safeMaxRamMb - 512) / 64).coerceAtLeast(1)', s, count=1)
+               'steps = ((safeMaxRamMb - 640) / 64).coerceAtLeast(1)', s, count=1)
     path.write_text(s, encoding="utf-8")
 
 

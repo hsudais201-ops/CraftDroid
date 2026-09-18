@@ -43,3 +43,9 @@ jobs:
           grep -RIn --include='*.kt' --include='*.java' 'fun launchJava\|launchJava(' /tmp/craftdroid-archive/app/src/main 2>/dev/null | head -80 || true
           echo '--- JVM argument references ---'
           grep -RIn --include='*.kt' --include='*.java' 'Xmx\|Xms\|jvmArgs\|javaArgs\|runtimeArgs' /tmp/craftdroid-archive/app/src/main 2>/dev/null | head -120 || true
+          echo '--- LaunchCommandBuilder.kt ---'
+          builder="$(find /tmp/craftdroid-archive/app/src/main -type f -name LaunchCommandBuilder.kt -print -quit)"
+          test -n "$builder"
+          sed -n '1,180p' "$builder"
+          echo '--- settings / RAM configuration declarations ---'
+          grep -RIn --include='*.kt' 'data class .*Settings\|data class .*Config\|ramMb\|minRamMb\|customJvmArgs' /tmp/craftdroid-archive/app/src/main/java 2>/dev/null | head -220 || true
