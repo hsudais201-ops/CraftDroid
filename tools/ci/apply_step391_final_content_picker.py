@@ -168,7 +168,12 @@ def main() -> int:
                     MinecraftContentManager.importFile(this, kind, temp)
                 }
 
-                android.widget.Toast.makeText(this, "Installed " + installed.name, android.widget.Toast.LENGTH_LONG).show()
+                val installedName = when (installed) {
+                    is java.io.File -> installed.name
+                    is MinecraftModpackManager.Result -> installed.name
+                    else -> "content"
+                }
+                android.widget.Toast.makeText(this, "Installed " + installedName, android.widget.Toast.LENGTH_LONG).show()
             } catch (t: Throwable) {
                 android.widget.Toast.makeText(this, "Install failed: " + (t.message ?: "unknown error"), android.widget.Toast.LENGTH_LONG).show()
             } finally {
