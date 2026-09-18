@@ -3,6 +3,7 @@ package com.example.launcher
 import android.content.Context
 import org.json.JSONObject
 import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -29,8 +30,15 @@ object MinecraftVersionInstallManager {
     private const val READ_TIMEOUT_MS = 60_000
     private const val BUFFER_SIZE = 64 * 1024
     private const val FINALIZE_ATTEMPTS = 3
+    private const val MAX_TEXT_RESPONSE_BYTES = 4L * 1024L * 1024L
+    private val VERSION_PATTERN = Regex("^[A-Za-z0-9._+\\-]{1,64}$")
 
-    private val executor = Executors.newCachedThreadPool()
+    private val executor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "DroidLauncher-MinecraftInstall").apply {
+            isDaemon = true
+            priority = Thread.NORM_PRIORITY - 1
+        }
+    }
     private val cancellations = ConcurrentHashMap.newKeySet<String>()
 
     enum class State { NOT_INSTALLED, DOWNLOADING, INSTALLED, FAILED }
@@ -50,51 +58,58 @@ object MinecraftVersionInstallManager {
     }
 
     fun state(context: Context, version: String): State {
+        val safeVersion = normalizeVersionId(version) ?: return State.NOT_INSTALLED
         return try {
-            State.valueOf(prefs(context).getString(stateKey(version), State.NOT_INSTALLED.name)!!)
+            State.valueOf(prefs(context).getString(stateKey(safeVersion), State.NOT_INSTALLED.name)!!)
         } catch (_: Throwable) {
             State.NOT_INSTALLED
         }
     }
 
     fun isInstalled(context: Context, version: String): Boolean {
-        if (state(context, version) != State.INSTALLED) return false
-        val root = versionRoot(context, version)
-        val client = File(root, "$version.jar")
-        return client.isFile && client.length() > 0L && File(root, "$version.json").isFile
+        val safeVersion = normalizeVersionId(version) ?: return false
+        if (state(context, safeVersion) != State.INSTALLED) return false
+        val root = versionRoot(context, safeVersion)
+        val client = File(root, "$safeVersion.jar")
+        return client.isFile && client.length() > 0L && File(root, "$safeVersion.json").isFile
     }
 
-    fun lastError(context: Context, version: String): String? =
-        prefs(context).getString(errorKey(version), null)
+    fun lastError(context: Context, version: String): String? {
+        val safeVersion = normalizeVersionId(version) ?: return null
+        return prefs(context).getString(errorKey(safeVersion), null)
+    }
 
     fun cancel(context: Context, version: String) {
-        cancellations.add(version)
-        setState(context, version, State.FAILED, "Installation cancelled")
+        val safeVersion = normalizeVersionId(version) ?: return
+        cancellations.add(safeVersion)
+        setState(context, safeVersion, State.FAILED, "Installation cancelled")
     }
 
     fun isCancellationRequested(version: String): Boolean =
-        cancellations.contains(version)
+        normalizeVersionId(version)?.let(cancellations::contains) == true
 
     fun install(context: Context, version: String, listener: Listener? = null) {
-        if (version.isBlank()) {
-            listener?.onError(version, IllegalArgumentException("Minecraft version is empty"))
+        val safeVersion = normalizeVersionId(version)
+        if (safeVersion == null) {
+            listener?.onError(version, IllegalArgumentException("Invalid Minecraft version id"))
             return
         }
-        if (isInstalled(context, version)) {
-            listener?.onComplete(version)
+        if (isInstalled(context, safeVersion)) {
+            listener?.onComplete(safeVersion)
             return
         }
-        cancellations.remove(version)
+        cancellations.remove(safeVersion)
         executor.execute {
             try {
-                setState(context, version, State.DOWNLOADING, null)
-                installInternal(context, version, listener)
-                setState(context, version, State.INSTALLED, null)
-                cancellations.remove(version)
-                listener?.onComplete(version)
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+                setState(context, safeVersion, State.DOWNLOADING, null)
+                installInternal(context, safeVersion, listener)
+                setState(context, safeVersion, State.INSTALLED, null)
+                cancellations.remove(safeVersion)
+                listener?.onComplete(safeVersion)
             } catch (t: Throwable) {
-                setState(context, version, State.FAILED, t.message ?: t.javaClass.simpleName)
-                listener?.onError(version, t)
+                setState(context, safeVersion, State.FAILED, t.message ?: t.javaClass.simpleName)
+                listener?.onError(safeVersion, t)
             }
         }
     }
@@ -427,7 +442,21 @@ object MinecraftVersionInstallManager {
         return try {
             val code = connection.responseCode
             if (code !in 200..299) throw IOException("HTTP $code for $url")
-            BufferedInputStream(connection.inputStream, BUFFER_SIZE).use { it.readBytes().toString(Charsets.UTF_8) }
+            BufferedInputStream(connection.inputStream, BUFFER_SIZE).use { input ->
+                val output = ByteArrayOutputStream()
+                val buffer = ByteArray(BUFFER_SIZE)
+                var total = 0L
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    total += count
+                    if (total > MAX_TEXT_RESPONSE_BYTES) {
+                        throw IOException("HTTP response exceeds safety limit")
+                    }
+                    output.write(buffer, 0, count)
+                }
+                output.toByteArray().toString(Charsets.UTF_8)
+            }
         } finally {
             connection.disconnect()
         }
@@ -443,7 +472,16 @@ object MinecraftVersionInstallManager {
     }
 
     private fun minecraftRoot(context: Context): File = File(context.filesDir, "minecraft").apply { mkdirs() }
-    private fun versionRoot(context: Context, version: String): File = File(minecraftRoot(context), "versions/$version").apply { mkdirs() }
+    private fun versionRoot(context: Context, version: String): File {
+        val safeVersion = requireVersionId(version)
+        return File(minecraftRoot(context), "versions/$safeVersion").apply { mkdirs() }
+    }
+
+    private fun normalizeVersionId(raw: String): String? =
+        raw.trim().takeIf { VERSION_PATTERN.matches(it) }
+
+    private fun requireVersionId(raw: String): String =
+        normalizeVersionId(raw) ?: throw IllegalArgumentException("Invalid Minecraft version id")
     private fun fileLength(file: File): Long = if (file.isFile) file.length() else 0L
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private fun stateKey(version: String) = "mc_install_${version}_state"
@@ -457,8 +495,15 @@ object MinecraftVersionInstallManager {
         listener?.onProgress(Progress(version, downloaded, total, stage, State.DOWNLOADING))
     }
     fun savedProgress(context: Context, version: String): Progress {
+        val safeVersion = normalizeVersionId(version) ?: version.trim()
         val p = prefs(context)
-        return Progress(version, p.getLong(progressKey(version), 0L), p.getLong(totalKey(version), 0L), p.getString(stageKey(version), "Ready") ?: "Ready", state(context, version))
+        return Progress(
+            safeVersion,
+            p.getLong(progressKey(safeVersion), 0L),
+            p.getLong(totalKey(safeVersion), 0L),
+            p.getString(stageKey(safeVersion), "Ready") ?: "Ready",
+            state(context, safeVersion)
+        )
     }
 
     private fun progressKey(version: String) = "mc_install_${version}_downloaded"
