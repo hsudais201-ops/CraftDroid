@@ -173,7 +173,7 @@ def main() -> int:
                         showPage(pageName)
                     }
                     LauncherBackgroundInstallController.State.FAILED -> {
-                        android.widget.Toast.makeText(this, "Install failed: \${state.message}", android.widget.Toast.LENGTH_LONG).show()
+                        android.widget.Toast.makeText(this, "Install failed: ${state.message}", android.widget.Toast.LENGTH_LONG).show()
                         showPage(pageName)
                     }
                 }
