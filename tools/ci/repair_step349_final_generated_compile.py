@@ -227,7 +227,10 @@ def assert_final_ui_invariants(source: str) -> None:
                 class_end = i
                 break
         i += 1
-    if class_end is None or source[class_end + 1:].strip():
+    trailing = '' if class_end is None else source[class_end + 1:]
+    trailing = re.sub(r'(?ms)^\s*//.*?(?=\n|$)', '', trailing)
+    trailing = re.sub(r'(?s)/\*.*?\*/', '', trailing)
+    if class_end is None or trailing.strip():
         raise SystemExit('[step349] class boundary contains trailing Kotlin declarations')
 
 
