@@ -144,7 +144,7 @@ def remove_all_helpers(source: str) -> str:
     for signature in (BROWSER_SIGNATURE, PICKER_SIGNATURE):
         declaration = signature.strip()
         source = re.sub(
-            r"(?m)^[ \\t]*" + re.escape(declaration) + r"(?=\\s*\\{)",
+            r"(?m)^[ \t]*" + re.escape(declaration) + r"(?=\s*\{)",
             signature,
             source,
         )
