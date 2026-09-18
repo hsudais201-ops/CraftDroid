@@ -166,7 +166,7 @@ def main() -> int:
                 when (state.state) {
                     LauncherBackgroundInstallController.State.QUEUED,
                     LauncherBackgroundInstallController.State.RUNNING -> {
-                        title.text = "\${kind.name.replace("_", " ")} · \${state.message}"
+                        title.text = "${kind.name.replace("_", " ")} · ${state.message}"
                     }
                     LauncherBackgroundInstallController.State.SUCCESS -> {
                         android.widget.Toast.makeText(this, "Content installed", android.widget.Toast.LENGTH_LONG).show()
