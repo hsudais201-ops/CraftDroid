@@ -22,14 +22,6 @@ def main() -> int:
         'apksigner verify --verbose',
         'zipalign -c -P 16 -v 4',
         'Droid-Launcher-Step257-debug',
-        'Executors.newSingleThreadExecutor',
-        'THREAD_PRIORITY_BACKGROUND',
-        'COMPLETED_STATE_RETENTION_MS',
-        'MAX_TEXT_RESPONSE_BYTES',
-        'VERSION_PATTERN = Regex',
-        'Invalid Minecraft version id',
-        'PerformanceProfile.detect(this).tier',
-        'if (bitmap == null && step376LowRam) return@Thread',
         'Upload APK',
         'Verify Step349 regression harness',
         'repair_step297_android_edittext_properties.py',
@@ -69,6 +61,16 @@ def main() -> int:
         ):
             if marker not in controller_text:
                 raise SystemExit(f'[step400] generated controller contract missing: {marker}')
+        generated_ui = generated / 'app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt'
+        if not generated_ui.is_file():
+            raise SystemExit('[step400] generated UI source missing')
+        generated_ui_text = generated_ui.read_text(encoding='utf-8', errors='replace')
+        for marker in (
+            'PerformanceProfile.detect(this).tier',
+            'if (bitmap == null && step376LowRam) return@Thread',
+        ):
+            if marker not in generated_ui_text:
+                raise SystemExit(f'[step400] generated low-RAM UI contract missing: {marker}')
         for marker in (
             'VERSION_PATTERN = Regex',
             'MAX_TEXT_RESPONSE_BYTES',
