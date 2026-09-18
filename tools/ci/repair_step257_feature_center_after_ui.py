@@ -109,10 +109,15 @@ def patch_show_page(source: str) -> str:
 
 
 def patch_nav(source: str) -> str:
-    if '"✦" to "Features"' in source:
+    if '"✦" to "Features"' in source or 'contentDescription = "Features - Feature Center"' in source:
         return source
     match = re.search(r'(?m)^(\s*)(.*"⌕"\s+to\s+"Search by ID",)(.*)$', source)
     if not match:
+        # Later UI generators may already provide the real Features button as a
+        # standalone View rather than the historical icon/page tuple. That is a
+        # valid equivalent and must not be treated as corruption.
+        if 'setOnClickListener { showPage("Features") }' in source and 'Features - Feature Center' in source:
+            return source
         raise SystemExit("[step257] navigation Search by ID anchor not found")
     replacement = f'{match.group(1)}{match.group(2)} "✦" to "Features",{match.group(3)}'
     return source[:match.start()] + replacement + source[match.end():]
@@ -138,8 +143,10 @@ def main() -> int:
     source = patch_nav(source)
     source = patch_method(source)
     ui.write_text(source, encoding="utf-8")
-    if '"Features" -> featuresPage()' not in source or '"✦" to "Features"' not in source or 'private fun featuresPage()' not in source:
+    if '"Features" -> featuresPage()' not in source or 'private fun featuresPage()' not in source:
         raise SystemExit("[step257] Feature Center integrity verification failed")
+    if '"✦" to "Features"' not in source and not ('Features - Feature Center' in source and 'setOnClickListener { showPage("Features") }' in source):
+        raise SystemExit("[step257] Feature Center navigation handler missing")
     print(f"[step257] Feature Center restored and verified: {ui}")
     return 0
 
