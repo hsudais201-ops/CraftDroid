@@ -172,6 +172,17 @@ jobs:
         run: python3 tools/ci/apply_step395_low_ram_memory_settings.py droid-src
       - name: Enforce low-RAM launch heap boundary
         run: python3 tools/ci/repair_step419_low_ram_launch_command.py droid-src
+
+      - name: Final generated-source repair after all late UI generators
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step227_library_rules.py droid-src
+          python3 tools/ci/repair_step230_complete_launch_preflight.py droid-src
+          python3 tools/ci/repair_step349_final_generated_compile.py droid-src
+          python3 tools/ci/apply_step391_final_content_picker.py droid-src
+          python3 tools/ci/repair_step349_final_generated_compile.py droid-src
+
       - name: Verify all hardened contracts
         shell: bash
         run: |
