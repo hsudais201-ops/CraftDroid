@@ -157,7 +157,8 @@ def patch_ui_logo(source: str) -> str:
     replacement = r'''    // STEP461_REAL_LOGO_AND_MEMORY
     private fun step460LogoBadge(labelText: String = "CD", size: Int = 46): android.widget.ImageView =
         android.widget.ImageView(this).apply {
-            setImageResource(R.drawable.craftdroid_logo)
+            val logoId = resources.getIdentifier("craftdroid_logo", "drawable", packageName)
+            if (logoId != 0) setImageResource(logoId)
             contentDescription = "CraftDroid logo"
             scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
             setPadding(dp(5), dp(5), dp(5), dp(5))
@@ -194,7 +195,7 @@ def validate(root: Path, source: str) -> None:
             raise SystemExit("[step461] manifest logo binding missing: " + needle)
     for needle in (
         MARKER,
-        "R.drawable.craftdroid_logo",
+        'resources.getIdentifier("craftdroid_logo", "drawable", packageName)',
         'contentDescription = "CraftDroid logo"',
         "step376LowRam",
     ):
