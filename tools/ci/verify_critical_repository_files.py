@@ -13,7 +13,7 @@ import zipfile
 
 ROOT_FILES = (
     "CraftDroid_Launcher_2.4_GitHubActions_Step153.zip",
-    ".github/workflows/step257-resilient-build.yml",
+    ".github/workflows/step406-resilient-build.yml",
     "tools/ci/repair_step349_final_generated_compile.py",
     "tools/ci/repair_step352_real_cosmetic_picker_callback.py",
     "tools/ci/repair_step357_final_scope_compile.py",
@@ -94,7 +94,7 @@ def main() -> int:
             except (OSError, zipfile.BadZipFile) as exc:
                 bad.append(f"source archive cannot be read as ZIP: {exc}")
 
-    workflow = root / ".github/workflows/step257-resilient-build.yml"
+    workflow = root / ".github/workflows/step406-resilient-build.yml"
     if workflow.is_file():
         workflow_text = workflow.read_text(encoding="utf-8", errors="replace")
         required_markers = (

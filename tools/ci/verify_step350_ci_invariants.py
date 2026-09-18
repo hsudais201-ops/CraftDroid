@@ -8,7 +8,7 @@ import sys
 
 def main() -> int:
     root = Path(__file__).resolve().parents[2]
-    workflow = root / '.github/workflows/step257-resilient-build.yml'
+    workflow = root / '.github/workflows/step406-resilient-build.yml'
     if not workflow.is_file():
         raise SystemExit('[step350] authoritative workflow missing')
     text = workflow.read_text(encoding='utf-8')
