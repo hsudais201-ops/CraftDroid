@@ -34,7 +34,7 @@ jobs:
           mkdir -p droid-src artifacts/build artifacts/apk
           unzip -q CraftDroid_Launcher_2.4_GitHubActions_Step153.zip -d droid-src
           if [ ! -f droid-src/gradlew ]; then
-            ROOT="$(find droid-src -type f -name gradlew -print -quit | xargs -r dirname)"
+            ROOT="$(find droid-src -type f -name gradlew -print0 -quit | xargs -0 -r dirname)"
             test -n "$ROOT"
             shopt -s dotglob
             mv "$ROOT"/* droid-src/
