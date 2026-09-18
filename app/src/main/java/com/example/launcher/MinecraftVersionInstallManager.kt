@@ -77,6 +77,102 @@ object MinecraftVersionInstallManager {
         return client.isFile && client.length() > 0L && File(root, "$safeVersion.json").isFile
     }
 
+    /** Full pre-launch validation matching the installer selection rules. */
+    fun isLaunchReady(context: Context, version: String): Boolean {
+        if (!isInstalled(context, version)) return false
+        return try {
+            val root = minecraftRoot(context)
+            val versionDir = versionRoot(context, version)
+            val metadataFile = File(versionDir, "$version.json")
+            val metadata = JSONObject(metadataFile.readText(Charsets.UTF_8))
+            val client = metadata.optJSONObject("downloads")?.optJSONObject("client") ?: return false
+            if (!isArtifactHealthy(File(versionDir, "$version.jar"), client.optString("sha1"), client.optLong("size", -1L))) return false
+
+            val libraries = metadata.optJSONArray("libraries")
+            if (libraries != null) {
+                for (i in 0 until libraries.length()) {
+                    val library = libraries.optJSONObject(i) ?: continue
+                    if (!libraryAllowed(library)) continue
+                    val downloads = library.optJSONObject("downloads") ?: continue
+                    val artifact = downloads.optJSONObject("artifact")
+                    if (artifact != null) {
+                        val path = artifact.optString("path")
+                        if (path.isNotBlank() && !isArtifactHealthy(
+                                File(root, "libraries/$path"),
+                                artifact.optString("sha1"),
+                                artifact.optLong("size", -1L)
+                            )
+                        ) return false
+                    }
+                    val classifier = preferredNativeClassifier(library)
+                    if (!classifier.isNullOrBlank()) {
+                        val entry = downloads.optJSONObject("classifiers")?.optJSONObject(classifier)
+                        if (entry != null) {
+                            val path = entry.optString("path")
+                            if (path.isNotBlank() && !isArtifactHealthy(
+                                    File(root, "libraries/$path"),
+                                    entry.optString("sha1"),
+                                    entry.optLong("size", -1L)
+                                )
+                            ) return false
+                        }
+                    }
+                }
+            }
+
+            val assetIndex = metadata.optJSONObject("assetIndex")
+            if (assetIndex != null) {
+                val id = assetIndex.optString("id")
+                val sha1 = assetIndex.optString("sha1")
+                if (id.isBlank()) return false
+                val indexFile = File(root, "assets/indexes/$id.json")
+                if (!isArtifactHealthy(indexFile, sha1, assetIndex.optLong("size", -1L))) return false
+
+                val objects = JSONObject(indexFile.readText(Charsets.UTF_8)).optJSONObject("objects")
+                if (objects != null) {
+                    val keys = objects.keys()
+                    while (keys.hasNext()) {
+                        val obj = objects.optJSONObject(keys.next()) ?: continue
+                        val hash = obj.optString("hash")
+                        if (!hash.matches(Regex("^[a-fA-F0-9]{40}$"))) return false
+                        val target = File(root, "assets/objects/${hash.substring(0, 2)}/$hash")
+                        if (!isArtifactHealthy(target, hash, obj.optLong("size", -1L))) return false
+                    }
+                }
+            }
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun libraryAllowed(lib: JSONObject): Boolean {
+        val rules = lib.optJSONArray("rules") ?: return true
+        var allowed = false
+        for (i in 0 until rules.length()) {
+            val rule = rules.optJSONObject(i) ?: continue
+            val action = rule.optString("action", "allow").equals("allow", ignoreCase = true)
+            val os = rule.optJSONObject("os")
+            val osName = os?.optString("name")?.trim().orEmpty()
+            val arch = os?.optString("arch")?.trim().orEmpty()
+            val currentArch = System.getProperty("os.arch", "").lowercase()
+            val osMatches = osName.isBlank() || osName.equals("linux", ignoreCase = true)
+            val archMatches = arch.isBlank() || currentArch.contains(arch.lowercase())
+            if (osMatches && archMatches) allowed = action
+        }
+        return allowed
+    }
+
+    private fun preferredNativeClassifier(lib: JSONObject): String? {
+        val classifiers = lib.optJSONObject("downloads")?.optJSONObject("classifiers") ?: return null
+        val names = classifiers.keys().asSequence().toList()
+        return when {
+            names.contains("natives-linux") -> "natives-linux"
+            names.any { it.startsWith("natives-linux-") } -> names.firstOrNull { it.startsWith("natives-linux-") }
+            else -> null
+        }
+    }
+
     fun lastError(context: Context, version: String): String? {
         val safeVersion = normalizeVersionId(version) ?: return null
         return prefs(context).getString(errorKey(safeVersion), null)
@@ -322,6 +418,7 @@ object MinecraftVersionInstallManager {
                 finalizeVerifiedFile(part, task.target, task.label, task.sha1, task.size)
                 return
             } catch (t: Throwable) {
+                if (isCancellationRequested(version)) throw t
                 lastError = t
                 if (attempt + 1 < 4) Thread.sleep(500L * (attempt + 1))
             } finally {
