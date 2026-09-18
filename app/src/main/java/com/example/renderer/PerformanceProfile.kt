@@ -43,9 +43,17 @@ data class PerformanceProfile(
     /** Safely caps a user-selected heap without starving Minecraft on low-memory devices. */
     fun clampRam(requestedMb: Int, availableMb: Int): Int {
         val safety = if (tier == Tier.LOW) 512 else 1024
-        val minimum = if (tier == Tier.LOW) 640 else 768
-        val availableCap = (availableMb - safety).coerceAtLeast(minimum)
-        return requestedMb.coerceIn(minimum, minOf(maxRamMb, availableCap))
+        val preferredMinimum = if (tier == Tier.LOW) 640 else 768
+        val emergencyMinimum = 384
+        val availableAfterReserve = availableMb - safety
+
+        // Never produce an invalid range when Android reports very little free
+        // memory. Prefer a conservative emergency cap rather than silently
+        // increasing the requested heap above what the device can currently spare.
+        if (availableAfterReserve < emergencyMinimum) return emergencyMinimum
+        val upper = minOf(maxRamMb, availableAfterReserve)
+        val lower = minOf(preferredMinimum, upper)
+        return requestedMb.coerceIn(lower, upper)
     }
 
 
