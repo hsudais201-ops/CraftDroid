@@ -108,25 +108,60 @@ def patch_installer(root: Path) -> None:
         if marker not in text: raise SystemExit("[step228] executor import anchor missing")
         text = text.replace(marker, marker + "import java.util.concurrent.ConcurrentHashMap\n", 1)
     if "private val cancellations = ConcurrentHashMap.newKeySet<String>()" not in text:
-        marker = "    private val executor = Executors.newCachedThreadPool()\n"
-        if marker not in text: raise SystemExit("[step228] executor declaration anchor missing")
-        text = text.replace(marker, marker + "    private val cancellations = ConcurrentHashMap.newKeySet<String>()\n", 1)
+        executor_markers = (
+            "    private val executor = Executors.newCachedThreadPool()\n",
+            "    private val executor = Executors.newSingleThreadExecutor { runnable ->",
+        )
+        marker = next((x for x in executor_markers if x in text), None)
+        if marker is None: raise SystemExit("[step228] executor declaration anchor missing")
+        if marker.endswith("()\n"):
+            text = text.replace(marker, marker + "    private val cancellations = ConcurrentHashMap.newKeySet<String>()\n", 1)
+        else:
+            # Hardened executor already has an explicit cancellation set elsewhere;
+            # only the truly missing field needs insertion before the main handler.
+            anchor = "    private val mainHandler = Handler(Looper.getMainLooper())\n"
+            if anchor in text:
+                text = text.replace(anchor, "    private val cancellations = ConcurrentHashMap.newKeySet<String>()\n" + anchor, 1)
+            else:
+                raise SystemExit("[step228] hardened executor cancellation insertion anchor missing")
     if "fun cancel(context: Context, version: String)" not in text:
         match = re.search(r"^    fun install\(context: Context, version: String[^\n]*\) \{", text, re.MULTILINE)
         if not match: raise SystemExit("[step228] install(context, version) anchor missing")
         helper = '''    fun cancel(context: Context, version: String) {\n        cancellations.add(version)\n        setState(context, version, State.FAILED, "Installation cancelled")\n    }\n\n    fun isCancellationRequested(version: String): Boolean =\n        cancellations.contains(version)\n\n'''
         text = text[:match.start()] + helper + text[match.start():]
-    if "cancellations.remove(version)\n        executor.execute" not in text:
+    # Be idempotent across the legacy installer (version) and the hardened
+    # installer (safeVersion). Do not inject a duplicate or mixed-key cancellation.
+    has_modern_cancel = "        cancellations.remove(safeVersion)\n        executor.execute {" in text
+    has_legacy_cancel = "        cancellations.remove(version)\n        executor.execute {" in text
+    if not has_modern_cancel and not has_legacy_cancel:
         marker = "        executor.execute {\n            try {"
         if marker not in text: raise SystemExit("[step228] install executor anchor missing")
         text = text.replace(marker, "        cancellations.remove(version)\n        executor.execute {\n            try {", 1)
 
     text = patch_download_retry(text)
 
-    if "cancellations.remove(version)\n                listener?.onComplete(version)" not in text:
-        marker = "                setState(context, version, State.INSTALLED, null)\n                listener?.onComplete(version)"
-        if marker not in text: raise SystemExit("[step228] install completion anchor missing")
-        text = text.replace(marker, "                setState(context, version, State.INSTALLED, null)\n                cancellations.remove(version)\n                listener?.onComplete(version)", 1)
+    if "cancellations.remove(safeVersion)\n                listener?.onComplete(safeVersion)" not in text and \
+       "cancellations.remove(version)\n                listener?.onComplete(version)" not in text:
+        modern_marker = "                setState(context, safeVersion, State.INSTALLED, null)\n                listener?.onComplete(safeVersion)"
+        legacy_marker = "                setState(context, version, State.INSTALLED, null)\n                listener?.onComplete(version)"
+        if modern_marker in text:
+            text = text.replace(
+                modern_marker,
+                "                setState(context, safeVersion, State.INSTALLED, null)\n"
+                "                cancellations.remove(safeVersion)\n"
+                "                listener?.onComplete(safeVersion)",
+                1,
+            )
+        elif legacy_marker in text:
+            text = text.replace(
+                legacy_marker,
+                "                setState(context, version, State.INSTALLED, null)\n"
+                "                cancellations.remove(version)\n"
+                "                listener?.onComplete(version)",
+                1,
+            )
+        else:
+            raise SystemExit("[step228] install completion anchor missing for legacy or hardened installer")
     if "private fun progressKey(version: String)" not in text:
         pos = text.rfind("\n}")
         if pos < 0: raise SystemExit("[step228] object closing brace not found")
