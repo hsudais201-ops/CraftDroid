@@ -277,6 +277,18 @@ def main() -> int:
         raise SystemExit('[step349] Java runtime resolver repair script is missing')
     subprocess.run([sys.executable, str(java_repair), str(root)], cwd=repo_root, check=True)
     source = ui.read_text(encoding='utf-8')
+    source = dedupe_methods(
+        source,
+        (
+            'recommendedJavaForVersion',
+            'storedJavaOverride',
+            'resolveJavaForVersion',
+            'saveJavaOverride',
+            'getResolvedJavaForLaunch',
+        ),
+    )
+    ui.write_text(source, encoding='utf-8')
+    source = ui.read_text(encoding='utf-8')
     assert_final_ui_invariants(source)
     for sig in (
         'private fun minecraftRoot(context: Context): File',
