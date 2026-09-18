@@ -169,9 +169,23 @@ def repair_real_cosmetic_picker(text: str, root: Path) -> str:
     if not callback_patch.is_file():
         raise SystemExit('[step349] Step352 cosmetic picker patch is missing')
     subprocess.run([sys.executable, str(callback_patch), str(root)], cwd=repo_root, check=True)
+
+    # Step391 must run at the same final boundary. Earlier Step342 content-picker
+    # code can leave a second request handler inside the ActivityResult method;
+    # Step391 canonicalizes the entire callback so content + cosmetic imports share
+    # one lifecycle-safe implementation.
+    content_patch = repo_root / 'tools/ci/apply_step391_final_content_picker.py'
+    if not content_patch.is_file():
+        raise SystemExit('[step349] Step391 content picker patch is missing')
+    subprocess.run([sys.executable, str(content_patch), str(root)], cwd=repo_root, check=True)
+
     updated = (root / 'app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt').read_text(encoding='utf-8')
-    if 'showMicrosoftSignInPage()' not in updated or 'STEP352_REAL_COSMETIC_PICKER_CALLBACK' not in updated:
-        raise SystemExit('[step349] real Microsoft/cosmetic picker contracts missing after final repair')
+    if 'showMicrosoftSignInPage()' not in updated or 'openMicrosoftLoginWebsite()' not in updated:
+        raise SystemExit('[step349] real Microsoft sign-in helpers missing after final repair')
+    if 'STEP352_REAL_COSMETIC_PICKER_CALLBACK' not in updated or 'STEP391_FINAL_CONTENT_PICKER' not in updated:
+        raise SystemExit('[step349] final picker contracts missing after final repair')
+    if updated.count('override fun onActivityResult(') != 1:
+        raise SystemExit('[step349] final ActivityResult callback count is not exactly one')
     return updated
 
 
@@ -198,6 +212,8 @@ def assert_final_ui_invariants(source: str) -> None:
     start = source.find('class DroidLauncherUiActivity')
     if start < 0 or source.count('class DroidLauncherUiActivity') != 1: raise SystemExit('[step349] launcher class boundary invariant failed')
     if 'STEP352_REAL_COSMETIC_PICKER_CALLBACK' not in source: raise SystemExit('[step349] real skin/cape picker callback missing')
+    if 'STEP391_FINAL_CONTENT_PICKER' not in source: raise SystemExit('[step349] final content picker marker missing')
+    if 'requestCode == CONTENT_PICKER_REQUEST' not in source: raise SystemExit('[step349] content picker callback missing')
     if 'microsoft_skin_uri' not in source or 'microsoft_cape_uri' not in source: raise SystemExit('[step349] cosmetic URI persistence missing')
     # No class member may appear after the final class brace. The generated file
     # has one activity class; every private function declaration must be inside it.
