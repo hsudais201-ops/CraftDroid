@@ -58,6 +58,8 @@ def main() -> int:
             'Executors.newSingleThreadExecutor',
             'THREAD_PRIORITY_BACKGROUND',
             'COMPLETED_STATE_RETENTION_MS',
+            'importContentUri(',
+            'MAX_STAGED_CONTENT_BYTES',
         ):
             if marker not in controller_text:
                 raise SystemExit(f'[step400] generated controller contract missing: {marker}')
@@ -68,6 +70,7 @@ def main() -> int:
         for marker in (
             'PerformanceProfile.detect(this).tier',
             'if (bitmap == null && step376LowRam) return@Thread',
+            'LauncherBackgroundInstallController.importContentUri(this, kind, uri)',
         ):
             if marker not in generated_ui_text:
                 raise SystemExit(f'[step400] generated low-RAM UI contract missing: {marker}')
