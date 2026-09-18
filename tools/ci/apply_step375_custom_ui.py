@@ -116,7 +116,7 @@ FIELD_HELP = '''
     private fun step375LegacyNames() = arrayOf("Game", "Accounts", "Features", "Servers", "Settings")
 '''
 
-PAGES = '''
+PAGES = r'''
     private fun step375FirstRun() {
         pageArea.addView(step375Title("Prepare Droid Launcher", "First launch only until INSTALL completes."))
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
