@@ -2,14 +2,15 @@
 """Step 459: restore the Microsoft browser helper at the absolute final source boundary.
 
 The generated launcher UI is rewritten by several late CI stages. This small,
-idempotent repair runs after those mutations and guarantees that every direct
-call to openMicrosoftLoginWebsite() has exactly one real implementation.
+idempotent repair runs after those mutations and guarantees that both Microsoft
+browser/cosmetic picker calls have exactly one real implementation.
 """
 from pathlib import Path
 import sys
 
 UI_REL = Path("app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt")
-SIGNATURE = "    private fun openMicrosoftLoginWebsite()"
+BROWSER_SIGNATURE = "    private fun openMicrosoftLoginWebsite()"
+PICKER_SIGNATURE = "    private fun openCosmeticImagePicker(requestCode: Int)"
 ANCHOR = "    private fun showMicrosoftSignInPage()"
 
 HELPER = '''    private fun openMicrosoftLoginWebsite() {
@@ -32,6 +33,27 @@ HELPER = '''    private fun openMicrosoftLoginWebsite() {
             android.widget.Toast.makeText(
                 this,
                 "Unable to open Microsoft sign-in.",
+                android.widget.Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun openCosmeticImagePicker(requestCode: Int) {
+        require(requestCode == 3371 || requestCode == 3372)
+        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            type = "image/*"
+            addFlags(
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+            )
+        }
+        try {
+            startActivityForResult(intent, requestCode)
+        } catch (_: Throwable) {
+            android.widget.Toast.makeText(
+                this,
+                "No image picker is available on this device.",
                 android.widget.Toast.LENGTH_LONG
             ).show()
         }
@@ -136,15 +158,21 @@ def main() -> int:
     ui.write_text(source, encoding="utf-8")
 
     verify = ui.read_text(encoding="utf-8")
-    if verify.count(SIGNATURE) != 1:
-        raise SystemExit(f"[step459] browser helper declaration count is {verify.count(SIGNATURE)}, expected 1")
+    if verify.count(BROWSER_SIGNATURE) != 1:
+        raise SystemExit(f"[step459] browser helper declaration count is {verify.count(BROWSER_SIGNATURE)}, expected 1")
+    if verify.count(PICKER_SIGNATURE) != 1:
+        raise SystemExit(f"[step459] cosmetic picker declaration count is {verify.count(PICKER_SIGNATURE)}, expected 1")
     if "android.content.Intent.ACTION_VIEW" not in verify:
         raise SystemExit("[step459] browser helper ACTION_VIEW contract missing")
+    if "android.content.Intent.ACTION_OPEN_DOCUMENT" not in verify:
+        raise SystemExit("[step459] cosmetic picker ACTION_OPEN_DOCUMENT contract missing")
     if 'https://login.live.com/' not in verify:
         raise SystemExit("[step459] default Microsoft login URL missing")
     if "openMicrosoftLoginWebsite()" not in verify:
         raise SystemExit("[step459] browser helper implementation missing")
-    print("[step459] final Microsoft browser helper restored exactly once")
+    if "openCosmeticImagePicker(requestCode: Int)" not in verify:
+        raise SystemExit("[step459] cosmetic picker implementation missing")
+    print("[step459] final Microsoft browser and cosmetic picker helpers restored exactly once")
     return 0
 
 
