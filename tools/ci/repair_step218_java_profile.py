@@ -98,7 +98,7 @@ def main() -> int:
     for signature in [
         r'    private fun recommendedJavaForVersion\(version: String\): Int \{[\s\S]*?^    \}\n\n',
         r'    private fun storedJavaOverride\(\): Int\? \{[\s\S]*?^    \}\n\n',
-        r'    private fun resolveJavaForVersion\(version: String\): Int =[^\n]*\n',
+        r'(?ms)^    private fun resolveJavaForVersion\(version: String\): Int =\n\s*storedJavaOverride\(\) \?: recommendedJavaForVersion\(version\)\n',
         r'    private fun saveJavaOverride\(value: String\) \{[\s\S]*?^    \}\n\n',
         r'    private fun getResolvedJavaForLaunch\(version: String\): Int =[^\n]*\n',
     ]:
