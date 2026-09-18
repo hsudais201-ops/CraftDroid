@@ -119,7 +119,7 @@ def patch_installer(root: Path) -> None:
     if "cancellations.remove(version)\n        executor.execute" not in text:
         marker = "        executor.execute {\n            try {"
         if marker not in text: raise SystemExit("[step228] install executor anchor missing")
-        text = text.replace(marker, "        cancellations.remove(version)\n        executor.execute {\n            try:", 1)
+        text = text.replace(marker, "        cancellations.remove(version)\n        executor.execute {\n            try {", 1)
 
     text = patch_download_retry(text)
 
