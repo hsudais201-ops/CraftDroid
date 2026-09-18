@@ -145,7 +145,13 @@ def main() -> int:
         'tools/ci/apply_step382_settings_cleanup.py': ('step375Settings()', 'PerformanceProfile.detect', 'Resolution Scale', 'Game Fullscreen'),
         'tools/ci/apply_step391_final_content_picker.py': ('step391StartContentImport', 'CONTENT_PICKER_REQUEST = 341', 'STEP391_FINAL_CONTENT_PICKER'),
         'tools/ci/apply_step395_low_ram_memory_settings.py': ('getSafeRamMb', 'getRecommendedRamMb', 'RAM_MB'),
-        'tools/ci/repair_step459_final_microsoft_helper.py': ('openMicrosoftLoginWebsite()', 'android.content.Intent.ACTION_VIEW', 'https://login.live.com/'),
+        'tools/ci/repair_step459_final_microsoft_helper.py': (
+            'openMicrosoftLoginWebsite()',
+            'openCosmeticImagePicker(requestCode: Int)',
+            'android.content.Intent.ACTION_VIEW',
+            'android.content.Intent.ACTION_OPEN_DOCUMENT',
+            'https://login.live.com/',
+        ),
     }
     for rel, markers in verifier_requirements.items():
         path = root / rel
