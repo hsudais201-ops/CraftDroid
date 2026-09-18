@@ -318,6 +318,12 @@ jobs:
           set -euo pipefail
           python3 tools/ci/deep_quality_pass_1000.py droid-src
 
+      - name: Absolute final generated UI helper repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_step459_final_microsoft_helper.py droid-src
+
       - name: Verify generated source contracts and launcher invariants
         shell: bash
         run: |
