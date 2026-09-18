@@ -82,7 +82,7 @@ def make_checks() -> list[Check]:
         Check("ui-server-refresh", "private fun refreshServerStatus(host: String, port: Int)"),
         Check("ui-server-delete", "private fun deleteServer(index: Int)"),
         Check("ui-server-select", "private fun selectServer(host: String, port: Int)"),
-        Check("ui-edittext-single-line", "setSingleLine(true)"),
+        Check("ui-edittext-single-line", "isSingleLine = true"),
         Check("launch-java", "launchJava"),
         Check("launch-handoff", "MinecraftLaunchHandoff"),
         Check("launch-validator", "MinecraftLaunchHandoffValidator"),
