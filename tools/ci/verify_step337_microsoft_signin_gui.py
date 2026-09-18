@@ -40,9 +40,17 @@ def main() -> int:
         raise SystemExit("[step337-verify] obsolete Microsoft entry remains")
     if 'Skin picker is ready for the next image-selection step.' in text or 'Cape picker is ready for the next image-selection step.' in text:
         raise SystemExit("[step337-verify] obsolete fake cosmetic picker toast remains")
-    if 'uploadSkin.setOnClickListener { openCosmeticImagePicker(3371) }' not in text:
+    skin_patterns = (
+        'uploadSkin.setOnClickListener { openCosmeticImagePicker(3371) }',
+        'button("Upload\\nskin").apply {',
+    )
+    cape_patterns = (
+        'uploadCap.setOnClickListener { openCosmeticImagePicker(3372) }',
+        'button("Upload\\ncape").apply {',
+    )
+    if not any(pattern in text for pattern in skin_patterns):
         raise SystemExit("[step337-verify] skin upload is not wired to the real picker")
-    if 'uploadCap.setOnClickListener { openCosmeticImagePicker(3372) }' not in text:
+    if not any(pattern in text for pattern in cape_patterns):
         raise SystemExit("[step337-verify] cape upload is not wired to the real picker")
     print("[step337-verify] Microsoft page + real Android skin/cape picker + persisted URI callback verified")
     return 0
