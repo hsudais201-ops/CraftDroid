@@ -156,6 +156,9 @@ jobs:
         run: python3 tools/ci/apply_step375_custom_ui.py droid-src
       - name: Apply low-RAM UI hardening
         run: python3 tools/ci/apply_step376_low_ram_ui.py droid-src
+
+      - name: Clean up and activate Settings controls
+        run: python3 tools/ci/apply_step382_settings_cleanup.py droid-src
       - name: Deep source quality pass - 1000 content-dependent checks
         shell: bash
         run: |
