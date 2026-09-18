@@ -365,7 +365,7 @@ def main() -> int:
     missing = [x for x in required if x not in source]
     if missing:
         raise SystemExit("[step376] missing final UI contract(s): " + ", ".join(missing))
-    if "writeText("installed")" in source or "writeText('installed')" in source:
+    if 'writeText("installed")' in source or "writeText('installed')" in source:
         raise SystemExit("[step376] fake first-run completion marker remains")
     ui.write_text(source, encoding="utf-8")
 
