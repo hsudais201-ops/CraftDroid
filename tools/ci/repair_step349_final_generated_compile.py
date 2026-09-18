@@ -335,6 +335,10 @@ def main() -> int:
     )
     ui.write_text(source, encoding='utf-8')
     source = ui.read_text(encoding='utf-8')
+    # Last boundary: no subsequent generator is allowed to erase this helper.
+    source = ensure_microsoft_browser_helper(source)
+    ui.write_text(source, encoding='utf-8')
+    source = ui.read_text(encoding='utf-8')
     assert_final_ui_invariants(source)
     for sig in (
         'private fun minecraftRoot(context: Context): File',
