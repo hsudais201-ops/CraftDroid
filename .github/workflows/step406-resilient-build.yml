@@ -380,6 +380,18 @@ jobs:
           set -euo pipefail
           python3 tools/ci/verify_step463_persistent_loader.py droid-src
 
+      - name: Apply Step 468 optimized Droid Launcher logo
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/apply_step468_logo_wiring.py droid-src
+
+      - name: Verify Step 468 optimized Droid Launcher logo
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_step468_logo_wiring.py droid-src
+
       - name: Verify generated source contracts and launcher invariants
         shell: bash
         run: |
