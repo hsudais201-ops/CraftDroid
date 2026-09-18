@@ -49,9 +49,9 @@ def patch_settings(path: Path) -> None:
     if old in s:
         s = s.replace(old, new, 1)
 
-    old = '    suspend fun updateRam(ramMb: Int) {
+    old = '''    suspend fun updateRam(ramMb: Int) {
         context.dataStore.edit { it[Keys.RAM_MB] = ramMb }
-    }'
+    }'''
     new = '''    suspend fun updateRam(ramMb: Int) {
         context.dataStore.edit { it[Keys.RAM_MB] = getSafeRamMb(ramMb) }
     }'''
