@@ -156,6 +156,11 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/ci/repair_step361_touch_control_jvm_tests.py droid-src
+
+      - name: Apply requested reference-driven launcher UI
+        run: python3 tools/ci/apply_step375_custom_ui.py droid-src
+      - name: Apply low-RAM UI hardening
+        run: python3 tools/ci/apply_step376_low_ram_ui.py droid-src
       - name: Verify all hardened contracts
         shell: bash
         run: |
@@ -165,6 +170,7 @@ jobs:
           python3 tools/ci/verify_step235_audit.py droid-src
           python3 tools/ci/verify_step236_download_trust.py droid-src
           python3 tools/ci/verify_step239_generated_kotlin.py droid-src
+          python3 tools/ci/verify_important_feature_coverage.py droid-src
           if grep -RInE 'TODO|FIXME|NotImplementedException' droid-src/app/src/main/java; then
             echo 'Unfinished implementation marker found in generated launcher source.' >&2
             exit 1
