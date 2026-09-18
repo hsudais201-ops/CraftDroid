@@ -93,7 +93,13 @@ def repair_component_preparation_order(root: Path) -> bool:
     source = ui.read_text(encoding="utf-8")
     gate = source.find("private fun extractBootstrapComponents")
     if gate < 0:
-        raise SystemExit("[step351] extractBootstrapComponents() not found")
+        # Step 287 intentionally removes the old fake bootstrap gate. In that
+        # production path there is nothing to reorder; keep later manager/source
+        # hardening active instead of resurrecting the obsolete state machine.
+        if "showPage(" in source:
+            print("[step351] obsolete fake bootstrap gate already removed; no state-machine repair needed")
+            return False
+        raise SystemExit("[step351] extractBootstrapComponents() not found and no valid generated UI marker")
     verify = '                if (!bootstrapComplete()) throw java.io.IOException("Component preparation verification failed")'
     persist = '                bootstrapPrefs().edit().putBoolean("components_extracted", true).apply()'
     verify_pos = source.find(verify, gate)
