@@ -23,7 +23,7 @@ def main() -> int:
 
     required = (
         "// STEP461_REAL_LOGO_AND_MEMORY",
-        "R.drawable.craftdroid_logo",
+        'resources.getIdentifier("craftdroid_logo", "drawable", packageName)',
         'android:icon="@drawable/craftdroid_logo"',
         'android:roundIcon="@drawable/craftdroid_logo"',
         "<vector",
