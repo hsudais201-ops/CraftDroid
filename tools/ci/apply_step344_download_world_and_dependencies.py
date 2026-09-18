@@ -88,7 +88,7 @@ METHODS = r'''    // STEP344_DOWNLOAD_WORLD_AND_DEPENDENCIES
                     if (d.optString("dependency_type") == "required") names.add(d.optString("file_name").ifBlank { d.optString("project_id") })
                 }
                 runOnUiThread {
-                    val text = if (names.isEmpty()) "No required dependency entries published for this version." else names.joinToString("\n") { "• $it" }
+                    val text = if (names.isEmpty()) "No required dependency entries published for this version." else names.joinToString("\\n") { "• $it" }
                     android.app.AlertDialog.Builder(this).setTitle("Required mods · $projectName").setMessage(text).setPositiveButton("OK", null).show()
                 }
             } catch (e: Exception) {
