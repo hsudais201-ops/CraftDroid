@@ -118,7 +118,7 @@ FIELD_HELP = '''
 
 PAGES = r'''
     private fun step375FirstRun() {
-        pageArea.addView(step375Title("Prepare Droid Launcher", "First launch only until INSTALL completes."))
+        pageArea.addView(step375Title("DroidLauncher", "First launch only until INSTALL completes."))
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val left = step375Panel()
         left.addView(step375Text("FIRST-LAUNCH COMPONENTS", 16f, true))
