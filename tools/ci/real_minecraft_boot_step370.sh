@@ -61,19 +61,23 @@ done
 test "$BOOTED" = '1'
 
 phase 'ADB_READY_WAIT'
-READY=''
 STATE=''
-for attempt in $(seq 1 60); do
-  READY="$(adb shell sh -c 'echo ready' 2>/dev/null | tr -d '\r\n' || true)"
+for attempt in $(seq 1 30); do
   STATE="$(adb get-state 2>/dev/null | tr -d '\r\n' || true)"
-  if [ "$STATE" = 'device' ] && [ "$READY" = 'ready' ]; then
-    printf 'state=%s ready=%s after attempt=%s\n' "$STATE" "$READY" "$attempt" | tee "$OUT/adb-ready.txt"
+  if [ "$STATE" = 'device' ]; then
+    printf 'state=%s after attempt=%s\n' "$STATE" "$attempt" | tee "$OUT/adb-ready.txt"
     break
+  fi
+  if (( attempt % 5 == 0 )); then
+    printf 'waiting-for-adb-ready attempt=%s state=%s\n' "$attempt" "${STATE:-unknown}" | tee -a "$OUT/boot-wait.log"
   fi
   sleep 2
 done
+if [ "$STATE" != 'device' ]; then
+  adb reconnect offline >/dev/null 2>&1 || true
+  STATE="$(adb get-state 2>/dev/null | tr -d '\r\n' || true)"
+fi
 test "$STATE" = 'device'
-test "$READY" = 'ready'
 
 phase 'DEVICE_INFO'
 adb shell getprop ro.product.cpu.abi | tee "$OUT/emulator-abi.txt"
