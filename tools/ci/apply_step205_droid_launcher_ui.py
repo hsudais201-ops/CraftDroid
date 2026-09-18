@@ -149,7 +149,7 @@ class DroidLauncherUiActivity : Activity() {
 
     private fun javaPage() {
         pageArea.addView(section("Java", "Runtime environments used by Minecraft versions"))
-        listOf("Internal-8" to "Java 8 · legacy Minecraft 1.16 and below", "Internal-17" to "Java 17 · Minecraft 1.17+", "Internal-21" to "Java 21 · Minecraft 1.20.5+", "Internal-25" to "Java 25 · Minecraft 26.1+").forEach {
+        listOf("Internal-8" to "Java 8 · legacy Minecraft 1.16 and below", "Internal-17" to "Java 17 · Minecraft 1.17+", "Internal-21" to "Java 21 · Minecraft 1.20.5+", "Internal-25" to "Java 25 · Minecraft 25.1+").forEach {
             val c = cardView(12)
             c.addView(label(it.first, 16f, true))
             c.addView(label(it.second, 13f))
