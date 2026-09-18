@@ -269,6 +269,13 @@ def main() -> int:
     source = repair_truncated_server_helpers(source)
     source = dedupe_methods(source, ('featuresPage','featureToggle','rendererPage','javaPage','controlsPage','libraryPage','aboutPage','serverPrefs','getSavedServers','getServerName','getServerStatus','selectServer','deleteServer','showServerDialog','refreshServerStatus','resolveJavaForVersion','getResolvedJavaForLaunch','showMicrosoftSignInPage'))
     ui.write_text(source, encoding='utf-8')
+    # Late UI generators can erase the Java resolver while preserving the
+    # visible Java page. Restore the canonical version->runtime resolver here,
+    # immediately before the final structural assertion and compile boundary.
+    java_repair = repo_root / 'tools/ci/repair_step218_java_profile.py'
+    if not java_repair.is_file():
+        raise SystemExit('[step349] Java runtime resolver repair script is missing')
+    subprocess.run([sys.executable, str(java_repair), str(root)], cwd=repo_root, check=True)
     source = ui.read_text(encoding='utf-8')
     assert_final_ui_invariants(source)
     for sig in (
