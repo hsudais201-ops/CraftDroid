@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import sys
 
-FALLBACK = "1.21.11"
+FALLBACK = "26.1"
 
 
 def find_one(root: Path, name: str) -> Path:
@@ -63,7 +63,7 @@ def main() -> int:
         val prefs = getSharedPreferences("droid_launcher", MODE_PRIVATE)
         return prefs.getString("selected_minecraft_version", null)?.trim()?.takeIf { it.isNotBlank() }
             ?: MinecraftLatestVersionManager.getCached(this)
-            ?: "1.21.11"
+            ?: "26.1"
     }
 '''
     if selected_sig in source:
@@ -101,9 +101,22 @@ def main() -> int:
             source = source[:insert_at] + "        refreshLatestMinecraftVersion()\n" + source[insert_at:]
 
     # Replace common hard-coded version list with a cached-latest-first helper.
-    helper = '''    private fun minecraftVersionChoices(): List<String> {
+    helper = '''    private fun selectLatestMinecraftVersion() {
+        val latest = MinecraftLatestVersionManager.getCached(this)?.trim().orEmpty()
+        if (latest.isNotEmpty()) {
+            getSharedPreferences("droid_launcher", MODE_PRIVATE).edit()
+                .putString("selected_minecraft_version", latest)
+                .apply()
+            showPage("Game")
+        } else {
+            refreshLatestMinecraftVersion()
+            android.widget.Toast.makeText(this, "Checking Mojang for the latest release…", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun minecraftVersionChoices(): List<String> {
         val cached = MinecraftLatestVersionManager.getCached(this)
-        val known = listOf("1.21.11", "1.21.10", "1.21.9", "1.20.6", "1.20.4", "1.18.2", "1.16.5")
+        val known = listOf("26.2", "26.1.2", "26.1.1", "26.1", "1.21.11", "1.21.10", "1.21.9", "1.20.6", "1.20.4", "1.18.2", "1.16.5")
         return (listOfNotNull(cached) + known).distinct()
     }
 
