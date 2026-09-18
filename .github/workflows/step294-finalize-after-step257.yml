@@ -52,6 +52,11 @@ jobs:
         run: python3 tools/ci/repair_step295_final_navigation.py droid-src
       - name: Repair Android EditText property mappings
         run: python3 tools/ci/repair_step297_android_edittext_properties.py droid-src
+
+      - name: Apply requested reference-driven launcher UI
+        run: python3 tools/ci/apply_step375_custom_ui.py droid-src
+      - name: Apply low-RAM UI hardening
+        run: python3 tools/ci/apply_step376_low_ram_ui.py droid-src
       - name: Verify generated source contracts
         shell: bash
         run: |
@@ -61,14 +66,10 @@ jobs:
           python3 tools/ci/verify_step235_audit.py droid-src
           python3 tools/ci/verify_step236_download_trust.py droid-src
           python3 tools/ci/verify_step239_generated_kotlin.py droid-src
-          python3 tools/ci/verify_step287_first_run_components.py droid-src
-          grep -F 'private fun showBootstrapGate()' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
-          grep -F 'private fun showServerDialog(index: Int)' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
-          grep -F 'private fun getSavedServers(): List<Pair<String, Int>>' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
-          grep -F 'private fun featuresPage()' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
-          grep -F 'setOnClickListener { showPage("Features") }' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
-          grep -F 'isSingleLine = true' droid-src/app/src/main/java/com/example/launcher/DroidLauncherUiActivity.kt
-          if grep -RInE 'TODO|FIXME|NotImplementedException' droid-src/app/src/main/java; then exit 1; fi
+          python3 tools/ci/verify_important_feature_coverage.py droid-src
+          if grep -RInE 'TODO|FIXME|NotImplementedException' droid-src/app/src/main/java; then
+            exit 1
+          fi
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
