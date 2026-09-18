@@ -146,9 +146,15 @@ def main() -> int:
         text = read_text(path)
         digest = normalized_hash(text)
         fingerprints.add(digest)
-        present = check.needle in text
+        if check.name == "ui-edittext-single-line":
+            present = "isSingleLine = true" in text or "setSingleLine(true)" in text
+        else:
+            present = check.needle in text
         if not present:
-            owner = next((p for p in source_pool if check.needle in read_text(p)), None)
+            if check.name == "ui-edittext-single-line":
+                owner = next((p for p in source_pool if "isSingleLine = true" in read_text(p) or "setSingleLine(true)" in read_text(p)), None)
+            else:
+                owner = next((p for p in source_pool if check.needle in read_text(p)), None)
             present = owner is not None
             if owner is not None:
                 path = owner
