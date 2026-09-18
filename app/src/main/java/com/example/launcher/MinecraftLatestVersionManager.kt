@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -15,6 +16,7 @@ object MinecraftLatestVersionManager {
     private const val PREFS = "droid_launcher"
     private const val PREF_LATEST = "latest_minecraft_release"
     private const val TIMEOUT = 20_000
+    private const val MAX_MANIFEST_BYTES = 8L * 1024L * 1024L
     private val executor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -38,7 +40,7 @@ object MinecraftLatestVersionManager {
         val conn = openHttps(MANIFEST_URL)
         try {
             if (conn.responseCode !in 200..299) throw IOException("HTTP ${conn.responseCode}")
-            val json = JSONObject(conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() })
+            val json = JSONObject(readManifestText(conn))
             val latest = json.optJSONObject("latest") ?: throw IOException("No latest release")
             val id = latest.optString("release").trim()
             require(id.isNotBlank()) { "Latest release id is empty" }
@@ -55,6 +57,28 @@ object MinecraftLatestVersionManager {
         } finally {
             conn.disconnect()
         }
+    }
+
+    private fun readManifestText(conn: HttpURLConnection): String {
+        if (conn.contentLengthLong > MAX_MANIFEST_BYTES) {
+            throw IOException("Mojang version manifest exceeds safety limit")
+        }
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(64 * 1024)
+        conn.inputStream.use { input ->
+            var total = 0L
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                if (count == 0) continue
+                total += count
+                if (total > MAX_MANIFEST_BYTES) {
+                    throw IOException("Mojang version manifest exceeds safety limit")
+                }
+                output.write(buffer, 0, count)
+            }
+        }
+        return output.toByteArray().toString(Charsets.UTF_8)
     }
 
     private fun openHttps(rawUrl: String): HttpURLConnection {
