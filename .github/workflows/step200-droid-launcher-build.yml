@@ -196,6 +196,7 @@ jobs:
           python3 tools/ci/verify_step239_generated_kotlin.py droid-src
           python3 tools/ci/repair_step459_final_microsoft_helper.py droid-src
           python3 tools/ci/verify_important_feature_coverage.py droid-src
+          python3 tools/ci/verify_step428_minecraft_261_latest.py droid-src
           if grep -RInE 'TODO|FIXME|NotImplementedException' droid-src/app/src/main/java; then
             echo 'Unfinished implementation marker found in generated launcher source.' >&2
             exit 1
