@@ -126,13 +126,28 @@ printf '%s\n' "$ROOTS" > "$OUT/discovered-roots.txt"
 phase 'STAGE_FIXTURE'
 ASSET_INDEX_NAME="$(find "$FIXTURE/assets/indexes" -type f -name '*.json' -print -quit | xargs -r basename)"
 test -n "$ASSET_INDEX_NAME"
-STAGE="/data/local/tmp/craftdroid-step370-$RANDOM"
-adb shell rm -rf "$STAGE"
-adb shell mkdir -p "$STAGE"
-adb push "$FIXTURE/." "$STAGE/" > "$OUT/fixture-push.txt"
-adb shell run-as "$PACKAGE" sh -c "rm -rf '$ROOT_REL/versions/1.21.1' '$ROOT_REL/libraries' '$ROOT_REL/assets'; mkdir -p '$ROOT_REL'; cp -R '$STAGE/versions' '$ROOT_REL/'; cp -R '$STAGE/libraries' '$ROOT_REL/'; cp -R '$STAGE/assets' '$ROOT_REL/'"
-adb shell rm -rf "$STAGE"
-adb shell run-as "$PACKAGE" sh -c "test -s '$ROOT_REL/versions/1.21.1/1.21.1.jar' && test -s '$ROOT_REL/versions/1.21.1/1.21.1.json' && find '$ROOT_REL/libraries' -type f | grep -q . && test -s '$ROOT_REL/assets/indexes/$ASSET_INDEX_NAME'" > "$OUT/staged-fixture-check.txt"
+ARCHIVE="$OUT/minecraft-fixture.tar"
+STAGE_MARKER="$OUT/staging.log"
+rm -f "$ARCHIVE" "$STAGE_MARKER"
+phase 'STAGE_FIXTURE_ARCHIVE'
+if ! tar -C "$FIXTURE" -cf "$ARCHIVE" versions libraries assets > "$OUT/fixture-tar-create.txt" 2>&1; then
+  cat "$OUT/fixture-tar-create.txt" >&2 || true
+  phase 'STAGE_FIXTURE_ARCHIVE_CREATE_FAILED'
+  exit 1
+fi
+ls -lh "$ARCHIVE" | tee "$OUT/fixture-archive-size.txt"
+adb shell run-as "$PACKAGE" sh -c "rm -rf '$ROOT_REL/versions/1.21.1' '$ROOT_REL/libraries' '$ROOT_REL/assets'; mkdir -p '$ROOT_REL'"
+if ! timeout 900 sh -c "cat '$ARCHIVE' | '$ADB_BIN' -s '${ADB_SERIAL:-emulator-5554}' shell run-as '$PACKAGE' sh -c 'toybox tar -xpf - -C \"$ROOT_REL\"'" > "$STAGE_MARKER" 2>&1; then
+  cat "$STAGE_MARKER" >&2 || true
+  phase 'STAGE_FIXTURE_EXTRACT_FAILED'
+  exit 1
+fi
+if ! adb shell run-as "$PACKAGE" sh -c "test -s '$ROOT_REL/versions/1.21.1/1.21.1.jar' && test -s '$ROOT_REL/versions/1.21.1/1.21.1.json' && find '$ROOT_REL/libraries' -type f | grep -q . && test -s '$ROOT_REL/assets/indexes/$ASSET_INDEX_NAME'" > "$OUT/staged-fixture-check.txt" 2>&1; then
+  cat "$OUT/staged-fixture-check.txt" >&2 || true
+  phase 'STAGED_FIXTURE_CHECK_FAILED'
+  exit 1
+fi
+rm -f "$ARCHIVE"
 
 phase 'APP_START'
 adb logcat -c
