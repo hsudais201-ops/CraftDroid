@@ -78,6 +78,18 @@ data class PerformanceProfile(
      * Produces a launch-time heap cap using both the device profile and current
      * available memory. The cap always leaves an Android-side reserve.
      */
+    private fun deviceHeapCeilingMb(context: Context, profile: PerformanceProfile): Int {
+        val total = totalRamMb(context)
+        val deviceCap = when {
+            total <= 2048 -> 768
+            total <= 3072 -> 1024
+            total <= 4096 -> 1536
+            total <= 6144 -> 1792
+            else -> profile.maxRamMb
+        }
+        return minOf(profile.maxRamMb, deviceCap)
+    }
+
     fun safeRamMb(context: Context, requestedMb: Int): Int {
         val profile = detect(context)
         val minimum = when (profile.tier) {
@@ -91,10 +103,9 @@ data class PerformanceProfile(
             Tier.HIGH -> 1024
         }
         val dynamicCap = (availableRamMb(context) - reserve).coerceAtLeast(minimum)
-        return requestedMb.coerceIn(
-            minimum,
-            minOf(profile.maxRamMb, dynamicCap)
-        )
+        val deviceCap = deviceHeapCeilingMb(context, profile)
+        val upper = minOf(deviceCap, dynamicCap.coerceAtLeast(minimum))
+        return requestedMb.coerceIn(minimum, upper)
     }
 
     fun recommendedRamMb(context: Context): Int =
