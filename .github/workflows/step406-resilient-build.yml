@@ -344,6 +344,30 @@ jobs:
           set -euo pipefail
           python3 tools/ci/verify_step460_ui_polish.py droid-src
 
+      - name: Apply Step 461 real logo and memory hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/apply_step461_logo_memory.py droid-src
+
+      - name: Verify Step 461 real logo and memory hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_step461_logo_memory.py droid-src
+
+      - name: Apply Step 462 low-RAM touch policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/apply_step462_low_ram_touch_policy.py droid-src
+
+      - name: Verify Step 462 low-RAM touch policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_step462_low_ram_touch_policy.py droid-src
+
       - name: Verify generated source contracts and launcher invariants
         shell: bash
         run: |
