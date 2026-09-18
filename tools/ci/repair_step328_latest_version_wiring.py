@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import sys
 
-FALLBACK = "26.1"
+FALLBACK = "26.3"
 
 
 def find_one(root: Path, name: str) -> Path:
@@ -124,7 +124,7 @@ def main() -> int:
 
     private fun minecraftVersionChoices(): List<String> {
         val cached = MinecraftLatestVersionManager.getCached(this)
-        val known = listOf("26.2", "26.1.2", "26.1.1", "26.1", "1.21.11", "1.21.10", "1.21.9", "1.20.6", "1.20.4", "1.18.2", "1.16.5")
+        val known = listOf("26.3", "26.2", "26.1.2", "26.1.1", "26.1", "1.21.11", "1.21.10", "1.21.9", "1.20.6", "1.20.4", "1.18.2", "1.16.5")
         return (listOfNotNull(cached) + known).distinct()
     }
 
