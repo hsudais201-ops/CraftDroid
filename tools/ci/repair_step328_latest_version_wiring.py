@@ -63,7 +63,7 @@ def main() -> int:
         val prefs = getSharedPreferences("droid_launcher", MODE_PRIVATE)
         return prefs.getString("selected_minecraft_version", null)?.trim()?.takeIf { it.isNotBlank() }
             ?: MinecraftLatestVersionManager.getCached(this)
-            ?: FALLBACK
+            ?: "26.3"
     }
 '''
     if selected_sig in source:
