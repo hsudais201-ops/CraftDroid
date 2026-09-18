@@ -139,10 +139,10 @@ def main() -> int:
 
     callback = "    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?)"
     start, end = method_span(source, callback)
-    body = source[start:end]
+    canonical_callback = """    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
 
-    if "requestCode == CONTENT_PICKER_REQUEST" not in body:
-        insert = """        if (requestCode == CONTENT_PICKER_REQUEST && resultCode == android.app.Activity.RESULT_OK) {
+        if (requestCode == CONTENT_PICKER_REQUEST && resultCode == android.app.Activity.RESULT_OK) {
             val uri = data?.data ?: return
             val pageName = step391PendingContentPage ?: return
             val kind = when (pageName) {
@@ -151,38 +151,54 @@ def main() -> int:
                 "Shader Pack" -> MinecraftContentManager.Kind.SHADER
                 "Resource Pack" -> MinecraftContentManager.Kind.RESOURCE_PACK
                 "World" -> MinecraftContentManager.Kind.WORLD
-                else -> throw java.io.IOException("Unsupported content type: $pageName")
+                else -> {
+                    step391PendingContentPage = null
+                    android.widget.Toast.makeText(this, "Unsupported content type", android.widget.Toast.LENGTH_LONG).show()
+                    return
+                }
             }
             step391PendingContentPage = null
-            LauncherBackgroundInstallController.importContentUri(this, LauncherBackgroundInstallController.Kind.valueOf(kind.name), uri) { state ->
+            LauncherBackgroundInstallController.importContentUri(
+                this,
+                LauncherBackgroundInstallController.Kind.valueOf(kind.name),
+                uri
+            ) { state ->
                 when (state.state) {
                     LauncherBackgroundInstallController.State.QUEUED,
                     LauncherBackgroundInstallController.State.RUNNING -> {
-                        setTitle("${kind.name.replace("_", " ")} · ${state.message}")
+                        title.text = "\${kind.name.replace("_", " ")} · \${state.message}"
                     }
                     LauncherBackgroundInstallController.State.SUCCESS -> {
                         android.widget.Toast.makeText(this, "Content installed", android.widget.Toast.LENGTH_LONG).show()
                         showPage(pageName)
                     }
                     LauncherBackgroundInstallController.State.FAILED -> {
-                        android.widget.Toast.makeText(this, "Install failed: ${state.message}", android.widget.Toast.LENGTH_LONG).show()
+                        android.widget.Toast.makeText(this, "Install failed: \${state.message}", android.widget.Toast.LENGTH_LONG).show()
                         showPage(pageName)
                     }
                 }
             }
             return
         }
-"""
-        marker = "        super.onActivityResult(requestCode, resultCode, data)\n"
-        if marker not in body:
-            raise SystemExit("[step391] existing ActivityResult callback shape changed")
-        body = body.replace(marker, marker + insert, 1)
-        source = source[:start] + body + source[end:]
-    # Stable marker for later audits.
-    if MARKER not in source:
-        callback_pos = source.find(callback)
-        source = source[:callback_pos] + "    " + MARKER + "\n" + source[callback_pos:]
 
+        if (requestCode == 3371 || requestCode == 3372) {
+            if (resultCode != android.app.Activity.RESULT_OK) return
+            val uri = data?.data ?: return
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: Throwable) { }
+            val key = if (requestCode == 3371) "microsoft_skin_uri" else "microsoft_cape_uri"
+            getSharedPreferences("droid_launcher_accounts", android.content.Context.MODE_PRIVATE)
+                .edit().putString(key, uri.toString()).apply()
+            showMicrosoftSignInPage()
+            return
+        }
+    }
+"""
+    source = source[:start] + canonical_callback + source[end:]
     # Exactly one callback is non-negotiable: cosmetic + content picker share it.
     if source.count("override fun onActivityResult(") != 1:
         raise SystemExit("[step391] ActivityResult callback count is not exactly one")
