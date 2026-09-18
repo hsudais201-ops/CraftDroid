@@ -170,6 +170,8 @@ jobs:
 
       - name: Harden low-RAM memory settings
         run: python3 tools/ci/apply_step395_low_ram_memory_settings.py droid-src
+      - name: Enforce low-RAM launch heap boundary
+        run: python3 tools/ci/repair_step419_low_ram_launch_command.py droid-src
       - name: Verify all hardened contracts
         shell: bash
         run: |

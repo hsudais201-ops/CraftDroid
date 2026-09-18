@@ -113,6 +113,10 @@ def main() -> int:
         if not memory_settings.is_file():
             raise SystemExit('[step395] low-RAM memory settings script is missing')
         subprocess.run([sys.executable, str(memory_settings), str(generated)], cwd=root, check=True)
+        low_ram_launch = root / 'tools/ci/repair_step419_low_ram_launch_command.py'
+        if not low_ram_launch.is_file():
+            raise SystemExit('[step419] low-RAM launch heap repair is missing')
+        subprocess.run([sys.executable, str(low_ram_launch), str(generated)], cwd=root, check=True)
         subprocess.run([sys.executable, str(coverage), str(generated)], cwd=root, check=True)
     else:
         print('[step350] generated source tree is unavailable; feature coverage will run in the workflow after generation')
