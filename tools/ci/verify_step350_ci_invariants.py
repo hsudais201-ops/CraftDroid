@@ -22,6 +22,14 @@ def main() -> int:
         'apksigner verify --verbose',
         'zipalign -c -P 16 -v 4',
         'Droid-Launcher-Step257-debug',
+        'Executors.newSingleThreadExecutor',
+        'THREAD_PRIORITY_BACKGROUND',
+        'COMPLETED_STATE_RETENTION_MS',
+        'MAX_TEXT_RESPONSE_BYTES',
+        'VERSION_PATTERN = Regex',
+        'Invalid Minecraft version id',
+        'PerformanceProfile.detect(this).tier',
+        'if (bitmap == null && step376LowRam) return@Thread',
         'Upload APK',
         'Verify Step349 regression harness',
         'repair_step297_android_edittext_properties.py',
@@ -46,6 +54,31 @@ def main() -> int:
     generated = root / 'droid-src'
     if not coverage.is_file():
         raise SystemExit('[step350] important feature coverage verifier missing')
+
+    if generated.is_dir():
+        generated_controller = generated / 'app/src/main/java/com/example/launcher/LauncherBackgroundInstallController.kt'
+        generated_installer = generated / 'app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt'
+        if not generated_controller.is_file() or not generated_installer.is_file():
+            raise SystemExit('[step400] generated installer/controller sources missing')
+        controller_text = generated_controller.read_text(encoding='utf-8', errors='replace')
+        installer_text = generated_installer.read_text(encoding='utf-8', errors='replace')
+        for marker in (
+            'Executors.newSingleThreadExecutor',
+            'THREAD_PRIORITY_BACKGROUND',
+            'COMPLETED_STATE_RETENTION_MS',
+        ):
+            if marker not in controller_text:
+                raise SystemExit(f'[step400] generated controller contract missing: {marker}')
+        for marker in (
+            'VERSION_PATTERN = Regex',
+            'MAX_TEXT_RESPONSE_BYTES',
+            'Invalid Minecraft version id',
+            'Executors.newSingleThreadExecutor',
+            'THREAD_PRIORITY_BACKGROUND',
+        ):
+            if marker not in installer_text:
+                raise SystemExit(f'[step400] generated installer contract missing: {marker}')
+        print('[step400] generated low-RAM/background installer hardening contracts verified')
 
     # Step357 is an explicit final generated-source repair stage. The workflow
     # invokes Step349 first; this guard makes the final scope/API repair unavoidable
