@@ -139,7 +139,15 @@ def method_span(source: str, signature: str) -> tuple[int, int]:
 
 
 def remove_all_helpers(source: str) -> str:
+    # Some legacy generators emitted these declarations without indentation.
+    # Normalize the declaration line first so every duplicate is removed.
     for signature in (BROWSER_SIGNATURE, PICKER_SIGNATURE):
+        declaration = signature.strip()
+        source = re.sub(
+            r"(?m)^[ \\t]*" + re.escape(declaration) + r"(?=\\s*\\{)",
+            signature,
+            source,
+        )
         while signature in source:
             start, end = method_span(source, signature)
             source = source[:start] + source[end:]
