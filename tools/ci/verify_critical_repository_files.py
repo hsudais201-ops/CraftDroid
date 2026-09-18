@@ -20,6 +20,9 @@ ROOT_FILES = (
     "tools/ci/verify_step337_microsoft_signin_gui.py",
     "tools/ci/verify_important_feature_coverage.py",
     "tools/ci/verify_step350_ci_invariants.py",
+    "tools/ci/apply_step375_custom_ui.py",
+    "tools/ci/apply_step376_low_ram_ui.py",
+    "tools/ci/apply_step382_settings_cleanup.py",
     "tools/ci/verify_critical_repository_files.py",
 )
 
