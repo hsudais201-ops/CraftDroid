@@ -333,6 +333,7 @@ jobs:
           python3 tools/ci/verify_step235_audit.py droid-src
           python3 tools/ci/verify_step236_download_trust.py droid-src
           python3 tools/ci/verify_step239_generated_kotlin.py droid-src
+          python3 tools/ci/repair_step459_final_microsoft_helper.py droid-src
           python3 - <<'PY'
           from pathlib import Path
           import re
