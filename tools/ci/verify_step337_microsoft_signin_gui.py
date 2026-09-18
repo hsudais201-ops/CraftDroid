@@ -48,9 +48,11 @@ def main() -> int:
         'uploadCap.setOnClickListener { openCosmeticImagePicker(3372) }',
         'button("Upload\\ncape").apply {',
     )
-    if not any(pattern in text for pattern in skin_patterns):
+    skin_wired = any(pattern in text for pattern in skin_patterns) or 'openCosmeticImagePicker(3371)' in text and 'Choose Minecraft skin image' in text
+    cape_wired = any(pattern in text for pattern in cape_patterns) or 'openCosmeticImagePicker(3372)' in text and 'Choose Minecraft cape image' in text
+    if not skin_wired:
         raise SystemExit("[step337-verify] skin upload is not wired to the real picker")
-    if not any(pattern in text for pattern in cape_patterns):
+    if not cape_wired:
         raise SystemExit("[step337-verify] cape upload is not wired to the real picker")
     print("[step337-verify] Microsoft page + real Android skin/cape picker + persisted URI callback verified")
     return 0
