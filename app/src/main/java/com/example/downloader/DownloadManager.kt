@@ -90,7 +90,7 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
                     val body = response.body ?: throw IOException("Empty body")
 
                     body.byteStream().use { input ->
-                        FileOutputStream(tempFile).use { output ->
+                        FileOutputStream(tempFile, resumeBytes > 0L && response.code == 206).use { output ->
                             input.copyTo(output)
                         }
                     }
@@ -169,10 +169,12 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
                                 task.destination.parentFile?.mkdirs()
                                 val tempFile = File(task.destination.parentFile, "${task.destination.name}.tmp")
 
-                                val request = Request.Builder()
+                                val resumeBytes = if (tempFile.isFile) tempFile.length() else 0L
+                                val requestBuilder = Request.Builder()
                                     .url(task.url)
-                                    .header("User-Agent", "CraftDroid-Launcher/1.3")
-                                    .build()
+                                    .header("User-Agent", "CraftDroid-Launcher/1.4")
+                                if (resumeBytes > 0L) requestBuilder.header("Range", "bytes=$resumeBytes-")
+                                val request = requestBuilder.build()
 
                                 okHttpClient.newCall(request).execute().use { response ->
                                     if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
@@ -180,7 +182,7 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
 
                                     val buffer = ByteArray(8192)
                                     body.byteStream().use { input ->
-                                        FileOutputStream(tempFile).use { output ->
+                                        FileOutputStream(tempFile, resumeBytes > 0L && response.code == 206).use { output ->
                                             var bytesRead: Int
                                             while (input.read(buffer).also { bytesRead = it } != -1) {
                                                 if (isCancelled) throw IOException("Cancelled")
