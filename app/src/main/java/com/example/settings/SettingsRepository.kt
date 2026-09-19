@@ -21,6 +21,7 @@ data class LauncherSettings(
     val ramMb: Int = 2048,
     val renderer: RendererBackend = RendererBackend.AUTO,
     val customJvmArgs: String = "",
+    val javaRuntimeOverride: Int? = null,
     val fullScreen: Boolean = true,
     val maxFps: Int = 60,
     val touchOpacity: Float = 0.75f,
@@ -40,6 +41,7 @@ class SettingsRepository(private val context: Context) {
         val RAM_MB = intPreferencesKey("ram_mb")
         val RENDERER = stringPreferencesKey("renderer_backend")
         val JVM_ARGS = stringPreferencesKey("jvm_args")
+        val JAVA_RUNTIME = intPreferencesKey("java_runtime_override")
         val FULLSCREEN = booleanPreferencesKey("fullscreen")
         val MAX_FPS = intPreferencesKey("max_fps")
         val TOUCH_OPACITY = floatPreferencesKey("touch_opacity")
@@ -62,6 +64,7 @@ class SettingsRepository(private val context: Context) {
                 RendererBackend.AUTO
             },
             customJvmArgs = prefs[Keys.JVM_ARGS] ?: "",
+            javaRuntimeOverride = prefs[Keys.JAVA_RUNTIME],
             fullScreen = prefs[Keys.FULLSCREEN] ?: true,
             maxFps = prefs[Keys.MAX_FPS] ?: 60,
             touchOpacity = prefs[Keys.TOUCH_OPACITY] ?: 0.75f,
@@ -111,6 +114,21 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun updateJvmArgs(args: String) {
         context.dataStore.edit { it[Keys.JVM_ARGS] = args }
+    }
+
+    suspend fun updateJavaRuntimeOverride(major: Int?) {
+        context.dataStore.edit {
+            if (major == null) it.remove(Keys.JAVA_RUNTIME)
+            else it[Keys.JAVA_RUNTIME] = major
+        }
+    }
+
+    fun safeMemoryPlan(requestedMb: Int): Pair<Int, Int> {
+        val availableMb = getDeviceAvailableRamMb().coerceAtLeast(512)
+        val cap = (availableMb * 0.55f).toInt().coerceAtLeast(768).coerceAtMost(4096)
+        val maxRam = requestedMb.coerceIn(768, cap)
+        val minRam = (maxRam / 4).coerceIn(256, 768)
+        return maxRam to minRam
     }
 
     suspend fun updateControls(opacity: Float, scale: Float, sens: Float, invertY: Boolean, virtualMouse: Boolean) {
