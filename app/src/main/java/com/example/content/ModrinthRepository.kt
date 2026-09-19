@@ -22,6 +22,7 @@ class ModrinthRepository(private val context: Context) {
         query: String,
         gameVersion: String?,
         category: String?,
+        loader: String?,
         offset: Int,
         limit: Int = 20
     ): ContentPage {
@@ -30,6 +31,7 @@ class ModrinthRepository(private val context: Context) {
         val facets = mutableListOf(JSONArray().put("project_type:" + type.projectType))
         if (!gameVersion.isNullOrBlank()) facets += JSONArray().put("versions:" + gameVersion)
         if (!category.isNullOrBlank()) facets += JSONArray().put("categories:" + category)
+        if (!loader.isNullOrBlank()) facets += JSONArray().put("categories:" + loader)
         val url = "$base/search".toHttpUrl().newBuilder()
             .addQueryParameter("query", query)
             .addQueryParameter("index", "downloads")
@@ -55,7 +57,7 @@ class ModrinthRepository(private val context: Context) {
                     description = item.optString("description"),
                     iconUrl = item.optString("icon_url").ifBlank { null },
                     versions = jsonStringArray(item, "versions"),
-                    loaders = jsonStringArray(item, "categories"),
+                    loaders = jsonStringArray(item, "categories").filter { it.lowercase() in setOf("fabric", "forge", "neoforge", "quilt", "liteloader") },
                     categories = jsonStringArray(item, "categories"),
                     downloads = item.optLong("downloads", 0L)
                 ))
