@@ -257,9 +257,19 @@ class VersionJsonParser {
     }
 
     private fun inferJavaVersion(versionId: String): Int {
+        val normalized = versionId.trim().removePrefix("v")
+        val parts = normalized.split('.', '-', '+').mapNotNull { it.toIntOrNull() }
+        val first = parts.getOrNull(0) ?: 1
+        val second = parts.getOrNull(1) ?: 0
+        val patch = parts.getOrNull(2) ?: 0
+
+        if (first >= 26) return 25
+
         return when {
-            versionId.startsWith("1.21") || versionId.startsWith("1.20.5") || versionId.startsWith("1.20.6") -> 21
-            versionId.startsWith("1.17") || versionId.startsWith("1.18") || versionId.startsWith("1.19") || versionId.startsWith("1.20") -> 17
+            first == 1 && second >= 21 -> 21
+            first == 1 && second == 20 && patch >= 5 -> 21
+            first == 1 && second in 17..20 -> if (second == 17) 16 else 17
+            first == 1 && second <= 16 -> 8
             else -> 8
         }
     }
