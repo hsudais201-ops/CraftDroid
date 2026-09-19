@@ -36,6 +36,15 @@ object RendererCompatibilityPolicy {
         }
 
         return when (effectiveRequested) {
+            RendererBackend.NATIVE_VULKAN -> {
+                if (!gpu.vulkanDynamicRendering || !gpu.vulkanPushDescriptors || gpu.vulkanApiVersion == "0.0.0") {
+                    Decision(requested, RendererBackend.ZINK.takeIf { gpu.hasVulkan } ?: RendererBackend.GL4ES, true,
+                        "Native Vulkan capability check failed; falling back to a legacy path")
+                } else {
+                    Decision(requested, RendererBackend.NATIVE_VULKAN, true,
+                        "Physical Vulkan device passed API 1.2 + dynamic rendering + push descriptor checks")
+                }
+            }
             RendererBackend.ZINK -> {
                 if (!gpu.hasVulkan) {
                     Decision(requested, RendererBackend.GL4ES, true,
@@ -85,6 +94,11 @@ object RendererCompatibilityPolicy {
                 Decision(backend, backend, true, "GL4ES native backend is installed")
             } else {
                 Decision(backend, backend, false, "GL4ES native backend is missing")
+            }
+            RendererBackend.NATIVE_VULKAN -> if (stack.hasGlfw && stack.hasLwjgl && gpu.vulkanDynamicRendering && gpu.vulkanPushDescriptors) {
+                Decision(backend, backend, true, "Native Vulkan path passes physical-device capability checks and Android GLFW/LWJGL stack is installed")
+            } else {
+                fallback("Native Vulkan prerequisites are unavailable; using GL4ES")
             }
             RendererBackend.MOBILEGLUES -> if (stack.hasMobileGlues && (gpu.glEsVersion.substringBefore('.').toIntOrNull() ?: 2) >= 3) {
                 Decision(backend, backend, true, "MobileGlues native backend is installed and GLES3 is available")
