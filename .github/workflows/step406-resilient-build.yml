@@ -399,6 +399,7 @@ jobs:
           python3 tools/ci/repair_full_codebase_sweep.py droid-src
           python3 tools/ci/repair_full_sweep_live_paths.py droid-src
           python3 tools/ci/repair_full_sweep_second_pass.py droid-src
+          python3 tools/ci/verify_no_fake_implementations.py droid-src
 
       - name: Verify full codebase sweep repairs
         shell: bash
