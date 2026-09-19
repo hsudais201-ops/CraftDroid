@@ -392,6 +392,12 @@ jobs:
           set -euo pipefail
           python3 tools/ci/verify_step468_logo_wiring.py droid-src
 
+      - name: Verify Step 471 targeted native classifier downloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_step471_native_classifier_budget.py droid-src
+
       - name: Verify generated source contracts and launcher invariants
         shell: bash
         run: |
