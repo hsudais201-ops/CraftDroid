@@ -32,7 +32,7 @@ data class ContentUiState(
 )
 
 class ContentBrowserViewModel(private val container: LauncherContainer) : ViewModel() {
-    private val repository = ModrinthRepository(container.appContext)
+    private val repository = ModrinthRepository(container.context)
     private val _state = MutableStateFlow(ContentUiState())
     val state: StateFlow<ContentUiState> = _state.asStateFlow()
 
