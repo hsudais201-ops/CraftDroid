@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -149,9 +150,13 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
         }
     }
 
-    fun installSelectedVersion() {
+    fun refreshVersions() {
+        viewModelScope.launch { container.versionManager.fetchVersions() }
+    }
+
+    fun installSelectedVersion(versionId: String? = null) {
         val current = homeUiState.value
-        val vId = current.selectedVersionId
+        val vId = versionId?.takeIf { it.isNotBlank() } ?: current.selectedVersionId
         val summary = versions.value.find { it.id == vId }
         val url = summary?.url ?: "https://piston-meta.mojang.com/v1/packages/${vId}/${vId}.json"
 
@@ -164,6 +169,23 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
             )
             container.versionManager.fetchVersions()
         }
+    }
+
+    fun launchMinecraftToServer(host: String, port: Int) {
+        val current = homeUiState.value
+        val account = current.selectedAccount ?: run {
+            _currentScreen.value = LauncherScreen.ACCOUNTS
+            return
+        }
+        container.launchManager.launch(
+            versionId = current.selectedVersionId,
+            uuid = account.uuid,
+            ramMb = current.ramMb,
+            rendererBackend = current.rendererBackend,
+            customJvmArgs = settings.value.customJvmArgs,
+            serverHost = host,
+            serverPort = port
+        )
     }
 
     fun launchMinecraft() {
