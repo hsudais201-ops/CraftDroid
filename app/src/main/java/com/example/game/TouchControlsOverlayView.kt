@@ -342,7 +342,7 @@ class TouchControlsOverlayView(
             MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 val cancel = event.actionMasked == MotionEvent.ACTION_CANCEL
                 if (cancel) {
-                    releaseAllPointers()
+                    releaseAllTouches()
                 } else {
                     val index = event.actionIndex.coerceIn(0, event.pointerCount - 1)
                     val pointerId = event.getPointerId(index)
