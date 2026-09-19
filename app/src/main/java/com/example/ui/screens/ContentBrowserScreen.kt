@@ -69,6 +69,7 @@ fun ContentBrowserScreen(viewModel: LauncherViewModel) {
     val container = LauncherContainer.get(viewModel.container.context)
     val vm: ContentBrowserViewModel = viewModel(factory = ContentBrowserViewModel.Factory(container))
     val state by vm.state.collectAsState()
+    val launcherSettings by container.settingsRepository.settingsFlow.collectAsState(initial = com.example.settings.LauncherSettings())
     val listState = rememberLazyListState()
     val pullState = rememberPullRefreshState(state.refreshing, vm::refresh)
     var search by remember { mutableStateOf("") }
@@ -169,6 +170,18 @@ fun ContentBrowserScreen(viewModel: LauncherViewModel) {
                         label = { Text(loader.replaceFirstChar { it.uppercase() }) }
                     )
                 }
+            }
+        }
+
+        if (state.type == ContentType.SHADER) {
+            val effectiveRenderer = if (launcherSettings.renderer == com.example.renderer.RendererBackend.AUTO) {
+                container.rendererManager.gpuInfo.recommendedBackend
+            } else {
+                launcherSettings.renderer
+            }
+            container.rendererManager.shaderWarning(effectiveRenderer)?.let { warning ->
+                AssistChip(onClick = { }, label = { Text(warning) })
+                Spacer(Modifier.height(6.dp))
             }
         }
 
