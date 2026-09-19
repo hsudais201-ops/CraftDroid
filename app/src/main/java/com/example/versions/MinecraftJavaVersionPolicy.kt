@@ -11,12 +11,12 @@ object MinecraftJavaVersionPolicy {
     fun requiredMajor(versionId: String): Int {
         val id = versionId.trim().lowercase()
         return when {
-            Regex("""^26(?:\.|$)""").containsMatchIn(id) -> 25
-            Regex("""^1\.21(?:\.|$)""").containsMatchIn(id) -> 21
-            id == "1.20.5" || id == "1.20.6" || Regex("""^1\.2[01](?:\.|$)""").containsMatchIn(id) && id.startsWith("1.20.") && minorOf(id) >= 5 -> 21
-            Regex("""^1\.2[01](?:\.|$)""").containsMatchIn(id) && id.startsWith("1.20.") -> 17
-            Regex("""^1\.(18|19)(?:\.|$)""").containsMatchIn(id) -> 17
-            Regex("""^1\.17(?:\.|$)""").containsMatchIn(id) -> 16
+            id == "26" || id.startsWith("26.") -> 25
+            id == "1.21" || id.startsWith("1.21.") -> 21
+            id.startsWith("1.20.") && minorOf(id) >= 5 -> 21
+            id == "1.20" || id.startsWith("1.20.") -> 17
+            id == "1.18" || id.startsWith("1.18.") || id == "1.19" || id.startsWith("1.19.") -> 17
+            id == "1.17" || id.startsWith("1.17.") -> 16
             else -> 8
         }
     }
