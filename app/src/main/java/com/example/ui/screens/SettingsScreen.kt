@@ -88,6 +88,7 @@ fun SettingsScreen(
 
     var rendererDropdownExpanded by remember { mutableStateOf(false) }
     var javaOverrideDropdownExpanded by remember { mutableStateOf(false) }
+    var curseForgeProxy by remember(settings.curseForgeProxyUrl) { mutableStateOf(settings.curseForgeProxyUrl) }
 
     Column(modifier = modifier.fillMaxSize()) {
         TopAppBar(
@@ -282,6 +283,35 @@ fun SettingsScreen(
                             }
                         }
                     }
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "CONTENT SOURCES",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = curseForgeProxy,
+                        onValueChange = {
+                            curseForgeProxy = it
+                            viewModel.updateCurseForgeProxyUrl(it)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("CurseForge HTTPS proxy URL") },
+                        supportingText = {
+                            Text("Keep the CurseForge API key on your server; never put it in the APK.")
+                        },
+                        placeholder = { Text("https://your-domain.example/api/curseforge") }
+                    )
                 }
             }
 
