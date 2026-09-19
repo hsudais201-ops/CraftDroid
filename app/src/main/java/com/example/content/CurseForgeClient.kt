@@ -51,14 +51,15 @@ class CurseForgeClient(private val http: OkHttpClient, private val proxyBaseUrl:
         getJson(proxyBaseUrl + "/v1/categories?gameId=" + GAME_ID).optJSONArray("data") ?: JSONArray()
     }
 
-    suspend fun search(query: String = "", gameVersion: String? = null, loaderType: Int? = null, classId: Int? = null): List<CurseForgeSearchResult> =
+    suspend fun search(query: String = "", gameVersion: String? = null, loaderType: Int? = null, classId: Int? = null, categoryIds: List<Int> = emptyList(), index: Int = 0): List<CurseForgeSearchResult> =
         withContext(Dispatchers.IO) {
             requireProxy()
-            val params = mutableListOf("gameId=" + GAME_ID, "pageSize=20")
+            val params = mutableListOf("gameId=" + GAME_ID, "pageSize=20", "index=" + index.coerceAtLeast(0))
             if (query.isNotBlank()) params += "searchFilter=" + enc(query)
             gameVersion?.let { params += "gameVersion=" + enc(it) }
             loaderType?.let { params += "modLoaderType=" + it }
             classId?.let { params += "classId=" + it }
+            if (categoryIds.isNotEmpty()) params += "categoryIds=" + categoryIds.joinToString(",")
             val data = getJson(proxyBaseUrl + "/v1/mods/search?" + params.joinToString("&")).optJSONArray("data") ?: JSONArray()
             buildList {
                 for (i in 0 until data.length()) {
@@ -83,6 +84,27 @@ class CurseForgeClient(private val http: OkHttpClient, private val proxyBaseUrl:
         requireProxy()
         parseFile(getJson(proxyBaseUrl + "/v1/mods/" + modId + "/files/" + fileId).optJSONObject("data")
             ?: throw IOException("CurseForge returned no file metadata"))
+    }
+
+    suspend fun latestCompatibleFile(
+        modId: Long,
+        gameVersion: String,
+        loaderType: Int? = null
+    ): CurseForgeFile = withContext(Dispatchers.IO) {
+        requireProxy()
+        val params = mutableListOf(
+            "gameVersion=" + enc(gameVersion),
+            "pageSize=1",
+            "sortField=2",
+            "sortOrder=desc"
+        )
+        loaderType?.let { params += "modLoaderType=" + it }
+        val data = getJson(proxyBaseUrl + "/v1/mods/" + modId + "/files?" + params.joinToString("&"))
+            .optJSONArray("data") ?: JSONArray()
+        val item = data.optJSONObject(0) ?: throw IOException(
+            "CurseForge has no compatible file for project " + modId + " and Minecraft " + gameVersion
+        )
+        parseFile(item)
     }
 
     suspend fun getProject(modId: Long): CurseForgeSearchResult = withContext(Dispatchers.IO) {
