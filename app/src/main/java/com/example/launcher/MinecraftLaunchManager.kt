@@ -171,14 +171,24 @@ class MinecraftLaunchManager(
                 _state.value = LaunchState.Preparing(3, "Checking Java", "Detecting compatible OpenJDK runtime...")
                 LauncherLogger.info("Step 3/6: Checking Java requirement (${versionDetail.javaVersion.majorVersion})...")
                 val requiredJava = versionDetail.javaVersion.majorVersion
-                LauncherLogger.info("Minecraft ${versionDetail.id} declares Java $requiredJava")
-                if (requiredJava !in setOf(8, 16, 17, 21, 25)) {
+                val javaOverride = currentSettings.javaRuntimeOverride
+                val javaRequest = javaOverride ?: requiredJava
+                LauncherLogger.info(
+                    "Minecraft ${versionDetail.id} declares Java $requiredJava; runtime request=${javaOverride?.toString() ?: "auto"}"
+                )
+                if (!com.example.versions.MinecraftJavaRequirements.isSupportedRequest(requiredJava) ||
+                    !com.example.versions.MinecraftJavaRequirements.isSupportedRequest(javaRequest)
+                ) {
                     throw IllegalStateException(
-                        "Minecraft ${versionDetail.id} requires unsupported Java $requiredJava. " +
-                            "Install a compatible Android JRE before launching this version."
+                        "Minecraft ${versionDetail.id} requires Java $requiredJava, but runtime request $javaRequest is unsupported by this Android build."
                     )
                 }
-                val javaRuntime = javaManager.ensureRuntime(requiredJava) { status ->
+                if (javaOverride != null) {
+                    LauncherLogger.warn(
+                        "Advanced Java override selected: Java $javaOverride. Launch will still enforce bytecode/runtime compatibility before JVM startup."
+                    )
+                }
+                val javaRuntime = javaManager.ensureRuntime(javaRequest) { status ->
                     LauncherLogger.info("Java setup: $status")
                 }
 
@@ -267,10 +277,11 @@ class MinecraftLaunchManager(
                 if (detectedRuntimeMajor == null) {
                     throw IllegalStateException("Selected Java runtime could not report a valid major version")
                 }
-                val javaCompatible = when (requiredJava) {
-                    16 -> detectedRuntimeMajor == 17
-                    else -> detectedRuntimeMajor == requiredJava
-                }
+                val javaCompatible =
+                    com.example.versions.MinecraftJavaRequirements.isCompatibleRuntime(
+                        requiredJava,
+                        detectedRuntimeMajor
+                    )
                 if (!javaCompatible) {
                     throw IllegalStateException(
                         "Java runtime mismatch: Minecraft requires $requiredJava but selected runtime reports $detectedRuntimeMajor"
@@ -278,14 +289,20 @@ class MinecraftLaunchManager(
                 }
                 LauncherLogger.info("Java compatibility gate passed: requested=$requiredJava runtime=$detectedRuntimeMajor")
 
+                val (safeMaxRamMb, safeMinRamMb) = settingsRepository.safeMemoryPlan(ramMb)
+                val safeCustomJvmArgs = com.example.logs.LaunchRecoveryPolicy.stripUnsafeMemoryOverrides(customJvmArgs)
+                LauncherLogger.info(
+                    "Memory plan: requested=${ramMb}MB selected=${safeMaxRamMb}MB min=${safeMinRamMb}MB; user Xmx/Xms overrides removed for device safety."
+                )
                 val launchConfig = LaunchConfig(
                     versionDetail = versionDetail,
                     username = username,
                     uuid = uuid,
                     accessToken = accessToken,
                     isOfflineAccount = isOfflineAccount,
-                    ramMb = ramMb,
-                    customJvmArgs = customJvmArgs,
+                    ramMb = safeMaxRamMb,
+                    minRamMb = safeMinRamMb,
+                    customJvmArgs = safeCustomJvmArgs,
                     javaExecutable = javaRuntime.javaExecutable
                 )
 
