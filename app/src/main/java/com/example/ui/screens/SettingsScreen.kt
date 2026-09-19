@@ -172,7 +172,32 @@ fun SettingsScreen(
                 }
             }
 
-            // 2. Java Runtime Manager
+            // 2. Minecraft installation manager
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Minecraft Versions", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Install vanilla releases and manage installed game versions later.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Button(onClick = { viewModel.navigateTo(LauncherScreen.VERSIONS) }) {
+                        Text("Manage")
+                    }
+                }
+            }
+
+            // 3. Java Runtime Manager
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
