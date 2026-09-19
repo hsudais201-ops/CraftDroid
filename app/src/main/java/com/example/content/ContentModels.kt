@@ -16,6 +16,8 @@ enum class ContentType(
     WORLD("Worlds", null, MinecraftContentManager.Kind.WORLD)
 }
 
+data class ContentCategory(val id: String, val name: String)
+
 data class ContentItem(
     val id: String,
     val type: ContentType,
