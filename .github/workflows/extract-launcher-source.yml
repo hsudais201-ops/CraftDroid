@@ -48,6 +48,7 @@ jobs:
           python3 tools/ci/repair_full_codebase_sweep.py /tmp/extracted-project
           python3 tools/ci/repair_full_sweep_live_paths.py /tmp/extracted-project
           python3 tools/ci/repair_full_sweep_second_pass.py /tmp/extracted-project
+          python3 tools/ci/verify_no_fake_implementations.py /tmp/extracted-project
 
 
       - name: Publish complete Android source branch
