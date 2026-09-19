@@ -30,7 +30,8 @@ data class LauncherSettings(
     val virtualMouseEnabled: Boolean = false,
     val showSnapshots: Boolean = false,
     val customButtonLayout: String = "",
-    val enableLocalTestProfiles: Boolean = true
+    val enableLocalTestProfiles: Boolean = true,
+    val onboardingComplete: Boolean = false
 )
 
 class SettingsRepository(private val context: Context) {
@@ -50,6 +51,7 @@ class SettingsRepository(private val context: Context) {
         val SHOW_SNAPSHOTS = booleanPreferencesKey("show_snapshots")
         val CUSTOM_LAYOUT = stringPreferencesKey("custom_button_layout")
         val ENABLE_LOCAL_TEST_PROFILES = booleanPreferencesKey("enable_local_test_profiles")
+        val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
     }
 
     val settingsFlow: Flow<LauncherSettings> = context.dataStore.data.map { prefs ->
@@ -71,7 +73,8 @@ class SettingsRepository(private val context: Context) {
             virtualMouseEnabled = prefs[Keys.VIRTUAL_MOUSE] ?: false,
             showSnapshots = prefs[Keys.SHOW_SNAPSHOTS] ?: false,
             customButtonLayout = prefs[Keys.CUSTOM_LAYOUT] ?: "",
-            enableLocalTestProfiles = prefs[Keys.ENABLE_LOCAL_TEST_PROFILES] ?: true
+            enableLocalTestProfiles = prefs[Keys.ENABLE_LOCAL_TEST_PROFILES] ?: true,
+            onboardingComplete = prefs[Keys.ONBOARDING_COMPLETE] ?: false
         )
     }
 
@@ -133,5 +136,9 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun updateEnableLocalTestProfiles(enabled: Boolean) {
         context.dataStore.edit { it[Keys.ENABLE_LOCAL_TEST_PROFILES] = enabled }
+    }
+
+    suspend fun completeOnboarding() {
+        context.dataStore.edit { it[Keys.ONBOARDING_COMPLETE] = true }
     }
 }
