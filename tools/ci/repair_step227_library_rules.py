@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Step 227: make Mojang library downloads rule-aware and Android-native bounded."""
 from pathlib import Path
-import re
 import sys
 
 
@@ -37,8 +36,23 @@ def find_matching_brace(text: str, opening: int) -> int:
     return -1
 
 
-HELPERS = r'''
-    private fun libraryAllowed(lib: JSONObject): Boolean {
+def remove_method(text: str, signature: str) -> str:
+    start = text.find(signature)
+    if start < 0:
+        return text
+    opening = text.find("{", start)
+    if opening < 0:
+        raise SystemExit(f"[step227] method opening brace missing: {signature}")
+    end = find_matching_brace(text, opening)
+    if end < 0:
+        raise SystemExit(f"[step227] unbalanced method braces: {signature}")
+    end += 1
+    while end < len(text) and text[end] == "\n":
+        end += 1
+    return text[:start] + text[end:]
+
+
+HELPERS = '''    private fun libraryAllowed(lib: JSONObject): Boolean {
         val rules = lib.optJSONArray("rules") ?: return true
         var allowed = false
         for (i in 0 until rules.length()) {
@@ -66,6 +80,7 @@ HELPERS = r'''
             else -> null
         }
     }
+
 '''
 
 
@@ -79,14 +94,12 @@ def patch_installer(root: Path) -> None:
     if 'if (!libraryAllowed(lib)) continue' not in text:
         text = text.replace(
             lib_marker,
-            lib_marker + '\n                if (!libraryAllowed(lib)) continue',
+            lib_marker + "\n                if (!libraryAllowed(lib)) continue",
             1,
         )
 
-    # Replace the body of the first classifiers block inside the installer loop
-    # using brace matching rather than brittle whitespace-sensitive text.
     classifiers_start = text.find('                val classifiers = libDownloads.optJSONObject("classifiers")')
-    if classifiers_start >= 0:
+    if classifiers_start >= 0 and 'val classifier = preferredNativeClassifier(lib)' not in text[classifiers_start:classifiers_start + 2500]:
         if_start = text.find("if (classifiers != null)", classifiers_start)
         if if_start < 0:
             raise SystemExit("[step227] classifiers condition missing")
@@ -114,21 +127,14 @@ def patch_installer(root: Path) -> None:
                 }
 '''
         text = text[:classifiers_start] + targeted + text[end + 1:]
-    elif 'val nativeClassifier = preferredNativeClassifier(lib)' not in text:
+    elif classifiers_start < 0 and 'val classifier = preferredNativeClassifier(lib)' not in text:
         raise SystemExit("[step227] no classifier block found to constrain")
 
-    # Keep exactly one copy of the helper block.
-    for signature in (
-        r'(?ms)^    private fun libraryAllowed(lib: JSONObject): Boolean {.*?^    }
+    # Remove existing helper copies using balanced braces, then install one canonical copy.
+    text = remove_method(text, '    private fun libraryAllowed(lib: JSONObject): Boolean')
+    text = remove_method(text, '    private fun preferredNativeClassifier(lib: JSONObject): String?')
 
-',
-        r'(?ms)^    private fun preferredNativeClassifier(lib: JSONObject): String? {.*?^    }
-
-',
-    ):
-        text = re.sub(signature, '', text, count=1)
-
-    pos = text.rfind('\n}')
+    pos = text.rfind("\n}")
     if pos < 0:
         raise SystemExit("[step227] installer class closing brace not found")
     text = text[:pos] + HELPERS + text[pos:]
