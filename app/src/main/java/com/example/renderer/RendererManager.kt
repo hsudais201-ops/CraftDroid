@@ -10,6 +10,7 @@ import android.opengl.EGLDisplay
 import android.opengl.GLES20
 import android.os.Build
 import com.example.filesystem.MinecraftFileSystem
+import com.example.game.NativeGameBridge
 import com.example.logs.LauncherLogger
 import java.io.File
 
@@ -49,7 +50,7 @@ class RendererManager(private val context: Context, private val fileSystem: Mine
 
         val hasVulkan = context.packageManager.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_LEVEL)
         val vulkanProbe = NativeGameBridge.probeVulkan()
-        val vulkanApi = Regex("""(?:effective|device)=([0-9]+\\.[0-9]+\\.[0-9]+)""").find(vulkanProbe)?.groupValues?.getOrNull(1) ?: "0.0.0"
+        val vulkanApi = Regex("""(?:effective|device)=([0-9]+\.[0-9]+\.[0-9]+)""").find(vulkanProbe)?.groupValues?.getOrNull(1) ?: "0.0.0"
         val dynamicRendering = "dynamic=1" in vulkanProbe
         val pushDescriptors = "push=1" in vulkanProbe
         val nativeVulkanSupported = vulkanProbe.startsWith("SUPPORTED") &&
@@ -102,6 +103,7 @@ class RendererManager(private val context: Context, private val fileSystem: Mine
         val isSupported = sdk >= 24 && (abi.contains("arm64") || abi.contains("x86_64") || abi.contains("armeabi"))
         val glesMajor = glesVer.substringBefore(".").toIntOrNull() ?: 2
         val recommended = when {
+            nativeVulkanSupported && isSupported -> RendererBackend.NATIVE_VULKAN
             hasVulkan && glesMajor < 3 && isSupported -> RendererBackend.ZINK
             glesMajor >= 3 && isSupported -> RendererBackend.MOBILEGLUES
             isSupported -> RendererBackend.GL4ES
