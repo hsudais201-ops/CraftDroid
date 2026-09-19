@@ -65,75 +65,64 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
         maxRetries: Int = 3
     ): Boolean = withContext(Dispatchers.IO) {
         isCancelled = false
-        if (task.destination.exists() && task.destination.length() > 0) {
-            if (!verifyHash || HashVerifier.verifySha1(task.destination, task.expectedSha1)) {
-                return@withContext true
-            }
-        }
+        val existingValid = task.destination.exists() && task.destination.length() > 0 &&
+            (!verifyHash || HashVerifier.verifySha1(task.destination, task.expectedSha1))
+        if (existingValid) return@withContext true
 
         var attempt = 0
         while (attempt < maxRetries && !isCancelled) {
             attempt++
             try {
-                task.destination.parentFile?.mkdirs()
-                val tempFile = File(task.destination.parentFile, "${task.destination.name}.download")
-
-                val request = Request.Builder()
-                    .url(task.url)
-                    .header("User-Agent", "CraftDroid-Launcher/1.3")
-                    .build()
-
-                okHttpClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
-                    val body = response.body ?: throw IOException("Empty body")
-
-                    body.byteStream().use { input ->
-                        FileOutputStream(tempFile).use { output ->
-                            input.copyTo(output)
-                        }
-                    }
+                val ok = downloadResumable(task) { downloaded ->
+                    _progress.value = DownloadProgress(
+                        totalFiles = 1,
+                        completedFiles = 0,
+                        totalBytes = task.size,
+                        downloadedBytes = downloaded,
+                        currentFileName = task.name,
+                        isRunning = true,
+                        isIndeterminate = task.size <= 0
+                    )
                 }
-
-                if (verifyHash && !task.expectedSha1.isNullOrBlank()) {
-                    if (!HashVerifier.verifySha1(tempFile, task.expectedSha1)) {
-                        tempFile.delete()
-                        throw IOException("SHA-1 mismatch for ${task.name}")
-                    }
-                }
-
-                if (tempFile.renameTo(task.destination) || tempFile.copyTo(task.destination, overwrite = true).exists()) {
-                    tempFile.delete()
+                if (ok) {
+                    _progress.value = DownloadProgress(
+                        totalFiles = 1,
+                        completedFiles = 1,
+                        totalBytes = task.size,
+                        downloadedBytes = if (task.size > 0) task.size else task.destination.length(),
+                        currentFileName = task.name,
+                        isRunning = false
+                    )
                     return@withContext true
                 }
             } catch (e: Exception) {
                 LauncherLogger.warn("Attempt $attempt failed for ${task.name}: ${e.message}")
                 if (attempt >= maxRetries) {
+                    _progress.value = _progress.value.copy(isRunning = false, error = e.message ?: "Download failed")
                     LauncherLogger.error("Failed to download ${task.name} after $maxRetries attempts.")
                     return@withContext false
                 }
             }
         }
+        _progress.value = _progress.value.copy(isRunning = false, error = if (isCancelled) "Download cancelled" else "Download failed")
         false
     }
 
     suspend fun downloadQueue(
         tasks: List<DownloadTask>,
-        parallelism: Int = 4,
+        parallelism: Int = 1,
         onProgressUpdate: ((DownloadProgress) -> Unit)? = null
     ): Boolean = withContext(Dispatchers.IO) {
         isCancelled = false
+        if (tasks.isEmpty()) {
+            _progress.value = DownloadProgress()
+            return@withContext true
+        }
+
         val totalFiles = tasks.size
-        val totalBytes = tasks.sumOf { it.size }
-        val completedCount = AtomicInteger(0)
-        val downloadedBytesCounter = AtomicLong(0L)
-
-        val startTime = System.currentTimeMillis()
-        var lastSampleTime = startTime
-        var lastBytes = 0L
-        var currentSpeed = 0L
-
-        val semaphore = Semaphore(parallelism)
-        var hasFailures = false
+        val totalBytes = tasks.sumOf { it.size.coerceAtLeast(0L) }
+        var completedFiles = 0
+        var completedBytes = 0L
 
         _progress.value = DownloadProgress(
             totalFiles = totalFiles,
@@ -143,115 +132,135 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
             isRunning = true
         )
 
-        kotlinx.coroutines.coroutineScope {
-            val jobs = tasks.map { task ->
-                async {
-                    if (isCancelled) return@async false
-                    semaphore.withPermit {
-                        if (isCancelled) return@withPermit false
+        for (task in tasks) {
+            if (isCancelled) break
 
-                        // Check if already downloaded and valid
-                        if (task.destination.exists() && task.destination.length() > 0) {
-                            if (task.expectedSha1.isNullOrBlank() || HashVerifier.verifySha1(task.destination, task.expectedSha1)) {
-                                completedCount.incrementAndGet()
-                                downloadedBytesCounter.addAndGet(task.destination.length())
-                                return@withPermit true
-                            }
-                        }
-
-                        var success = false
-                        var attempts = 0
-                        while (attempts < 3 && !success && !isCancelled) {
-                            attempts++
-                            try {
-                                task.destination.parentFile?.mkdirs()
-                                val tempFile = File(task.destination.parentFile, "${task.destination.name}.tmp")
-
-                                val request = Request.Builder()
-                                    .url(task.url)
-                                    .header("User-Agent", "CraftDroid-Launcher/1.3")
-                                    .build()
-
-                                okHttpClient.newCall(request).execute().use { response ->
-                                    if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
-                                    val body = response.body ?: throw IOException("Empty body")
-
-                                    val buffer = ByteArray(8192)
-                                    body.byteStream().use { input ->
-                                        FileOutputStream(tempFile).use { output ->
-                                            var bytesRead: Int
-                                            while (input.read(buffer).also { bytesRead = it } != -1) {
-                                                if (isCancelled) throw IOException("Cancelled")
-                                                output.write(buffer, 0, bytesRead)
-                                                val currentTotal = downloadedBytesCounter.addAndGet(bytesRead.toLong())
-
-                                                // Update speed calculation every 500ms
-                                                val now = System.currentTimeMillis()
-                                                if (now - lastSampleTime > 500) {
-                                                    val deltaBytes = currentTotal - lastBytes
-                                                    val deltaTimeSec = (now - lastSampleTime).toDouble() / 1000.0
-                                                    if (deltaTimeSec > 0) {
-                                                        currentSpeed = (deltaBytes / deltaTimeSec).toLong()
-                                                    }
-                                                    lastBytes = currentTotal
-                                                    lastSampleTime = now
-
-                                                    val remainingBytes = (totalBytes - currentTotal).coerceAtLeast(0L)
-                                                    val eta = if (currentSpeed > 0) remainingBytes / currentSpeed else 0L
-
-                                                    val p = DownloadProgress(
-                                                        totalFiles = totalFiles,
-                                                        completedFiles = completedCount.get(),
-                                                        totalBytes = totalBytes,
-                                                        downloadedBytes = currentTotal,
-                                                        currentFileName = task.name,
-                                                        speedBytesPerSec = currentSpeed,
-                                                        etaSeconds = eta,
-                                                        isRunning = true
-                                                    )
-                                                    _progress.value = p
-                                                    onProgressUpdate?.invoke(p)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if (!task.expectedSha1.isNullOrBlank()) {
-                                    if (!HashVerifier.verifySha1(tempFile, task.expectedSha1)) {
-                                        tempFile.delete()
-                                        throw IOException("SHA-1 hash check failed")
-                                    }
-                                }
-
-                                if (tempFile.renameTo(task.destination) || tempFile.copyTo(task.destination, overwrite = true).exists()) {
-                                    tempFile.delete()
-                                    success = true
-                                    completedCount.incrementAndGet()
-                                }
-                            } catch (e: Exception) {
-                                if (isCancelled) return@withPermit false
-                                if (attempts >= 3) {
-                                    LauncherLogger.error("Failed to download ${task.name}: ${e.message}")
-                                }
-                            }
-                        }
-                        success
-                    }
+            val ok = try {
+                downloadResumable(task) { currentFileBytes ->
+                    val progress = DownloadProgress(
+                        totalFiles = totalFiles,
+                        completedFiles = completedFiles,
+                        totalBytes = totalBytes,
+                        downloadedBytes = (completedBytes + currentFileBytes).coerceAtMost(totalBytes.takeIf { it > 0 } ?: Long.MAX_VALUE),
+                        currentFileName = task.name,
+                        isRunning = true,
+                        isIndeterminate = totalBytes <= 0L
+                    )
+                    _progress.value = progress
+                    onProgressUpdate?.invoke(progress)
                 }
+            } catch (e: Exception) {
+                LauncherLogger.error("Failed to download ${task.name}: ${e.message}")
+                false
             }
 
-            for (job in jobs) {
-                val result = job.await()
-                if (!result) hasFailures = true
+            if (!ok) {
+                _progress.value = _progress.value.copy(
+                    isRunning = false,
+                    error = if (isCancelled) "Download cancelled" else "Failed to download ${task.name}"
+                )
+                return@withContext false
+            }
+
+            completedFiles++
+            completedBytes += if (task.size > 0) task.size else task.destination.length()
+            val progress = DownloadProgress(
+                totalFiles = totalFiles,
+                completedFiles = completedFiles,
+                totalBytes = totalBytes,
+                downloadedBytes = completedBytes.coerceAtMost(totalBytes.takeIf { it > 0 } ?: Long.MAX_VALUE),
+                currentFileName = task.name,
+                isRunning = completedFiles < totalFiles
+            )
+            _progress.value = progress
+            onProgressUpdate?.invoke(progress)
+        }
+
+        val success = completedFiles == totalFiles && !isCancelled
+        _progress.value = _progress.value.copy(
+            completedFiles = completedFiles,
+            downloadedBytes = completedBytes.coerceAtMost(totalBytes.takeIf { it > 0 } ?: Long.MAX_VALUE),
+            isRunning = false,
+            error = if (success) null else if (isCancelled) "Download cancelled" else "Some files failed to download"
+        )
+        success
+    }
+
+    private fun downloadResumable(
+        task: DownloadTask,
+        onBytes: (Long) -> Unit
+    ): Boolean {
+        val parent = task.destination.parentFile ?: throw IOException("Download destination has no parent directory")
+        val tempFile = File(parent, task.destination.name + ".part")
+        parent.mkdirs()
+
+        if (tempFile.exists() && task.size > 0 && tempFile.length() == task.size &&
+            (!task.expectedSha1.isNullOrBlank() && HashVerifier.verifySha1(tempFile, task.expectedSha1))
+        ) {
+            if (tempFile.renameTo(task.destination) || tempFile.copyTo(task.destination, overwrite = true).exists()) {
+                tempFile.delete()
+                onBytes(task.destination.length())
+                return true
             }
         }
 
-        _progress.value = _progress.value.copy(
-            completedFiles = completedCount.get(),
-            isRunning = false,
-            error = if (hasFailures) "Some files failed to download" else null
-        )
-        !hasFailures && !isCancelled
+        var attempt = 0
+        while (attempt < 3 && !isCancelled) {
+            attempt++
+            var resumeAt = if (tempFile.isFile) tempFile.length() else 0L
+            try {
+                val builder = Request.Builder()
+                    .url(task.url)
+                    .header("User-Agent", "CraftDroid-Launcher/1.3")
+                if (resumeAt > 0L) builder.header("Range", "bytes=$resumeAt-")
+
+                okHttpClient.newCall(builder.build()).execute().use { response ->
+                    if (!response.isSuccessful && response.code != 206) {
+                        throw IOException("HTTP ${response.code}")
+                    }
+                    val append = resumeAt > 0L && response.code == 206
+                    if (!append) {
+                        tempFile.delete()
+                        resumeAt = 0L
+                    }
+
+                    val body = response.body ?: throw IOException("Empty body")
+                    var downloaded = resumeAt
+                    body.byteStream().use { input ->
+                        FileOutputStream(tempFile, append).use { output ->
+                            val buffer = ByteArray(64 * 1024)
+                            while (true) {
+                                if (isCancelled) throw IOException("Cancelled")
+                                val read = input.read(buffer)
+                                if (read < 0) break
+                                output.write(buffer, 0, read)
+                                downloaded += read
+                                onBytes(downloaded)
+                            }
+                            output.fd.sync()
+                        }
+                    }
+                }
+
+                val actualSize = tempFile.length()
+                if (task.size > 0 && actualSize != task.size) {
+                    throw IOException("Size mismatch for ${task.name}: expected ${task.size}, got $actualSize")
+                }
+                if (!task.expectedSha1.isNullOrBlank() && !HashVerifier.verifySha1(tempFile, task.expectedSha1)) {
+                    throw IOException("SHA-1 mismatch for ${task.name}")
+                }
+
+                if (tempFile.renameTo(task.destination) || tempFile.copyTo(task.destination, overwrite = true).exists()) {
+                    tempFile.delete()
+                    onBytes(task.destination.length())
+                    return true
+                }
+                throw IOException("Unable to commit ${task.name}")
+            } catch (e: Exception) {
+                if (isCancelled) return false
+                LauncherLogger.warn("Resumable download attempt $attempt failed for ${task.name}: ${e.message}")
+            }
+        }
+        false
     }
 }
