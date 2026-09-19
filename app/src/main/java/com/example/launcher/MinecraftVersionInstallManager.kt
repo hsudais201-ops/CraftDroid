@@ -74,20 +74,85 @@ object MinecraftVersionInstallManager {
     fun isInstalled(context: Context, version: String): Boolean {
         val safeVersion = normalizeVersionId(version) ?: return false
         if (state(context, safeVersion) != State.INSTALLED) return false
+        return verifyInstalledArtifacts(context, safeVersion, includeAllAssets = true)
+    }
+
+    private fun verifyInstalledArtifacts(
+        context: Context,
+        version: String,
+        includeAllAssets: Boolean
+    ): Boolean {
         return try {
             val root = minecraftRoot(context)
-            val versionDir = versionRoot(context, safeVersion)
-            val metadata = JSONObject(File(versionDir, "$safeVersion.json").readText(Charsets.UTF_8))
+            val versionDir = versionRoot(context, version)
+            val metadataFile = File(versionDir, "$version.json")
+            if (!metadataFile.isFile) return false
+            val metadata = JSONObject(metadataFile.readText(Charsets.UTF_8))
+
             val client = metadata.optJSONObject("downloads")?.optJSONObject("client") ?: return false
-            if (!isArtifactHealthy(File(versionDir, "$safeVersion.jar"), client.optString("sha1"), client.optLong("size", -1L))) return false
+            if (!isArtifactHealthy(
+                    File(versionDir, "$version.jar"),
+                    client.optString("sha1"),
+                    client.optLong("size", -1L)
+                )
+            ) return false
+
+            val libraries = metadata.optJSONArray("libraries")
+            if (libraries != null) {
+                for (i in 0 until libraries.length()) {
+                    val library = libraries.optJSONObject(i) ?: continue
+                    if (!libraryAllowed(library)) continue
+                    val downloads = library.optJSONObject("downloads") ?: continue
+                    val artifact = downloads.optJSONObject("artifact")
+                    if (artifact != null) {
+                        val path = artifact.optString("path")
+                        if (path.isNotBlank() && !isArtifactHealthy(
+                                File(root, "libraries/$path"),
+                                artifact.optString("sha1"),
+                                artifact.optLong("size", -1L)
+                            )
+                        ) return false
+                    }
+                    val classifier = preferredNativeClassifier(library)
+                    if (!classifier.isNullOrBlank()) {
+                        val entry = downloads.optJSONObject("classifiers")?.optJSONObject(classifier)
+                        if (entry != null) {
+                            val path = entry.optString("path")
+                            if (path.isNotBlank() && !isArtifactHealthy(
+                                    File(root, "libraries/$path"),
+                                    entry.optString("sha1"),
+                                    entry.optLong("size", -1L)
+                                )
+                            ) return false
+                        }
+                    }
+                }
+            }
+
+            if (!includeAllAssets) return true
+
             val assetIndex = metadata.optJSONObject("assetIndex")
             if (assetIndex != null) {
                 val id = assetIndex.optString("id")
+                val sha1 = assetIndex.optString("sha1")
+                if (id.isBlank()) return false
                 val indexFile = File(root, "assets/indexes/$id.json")
-                if (id.isBlank() || !isArtifactHealthy(indexFile, assetIndex.optString("sha1"), assetIndex.optLong("size", -1L))) return false
+                if (!isArtifactHealthy(indexFile, sha1, assetIndex.optLong("size", -1L))) return false
+
+                val objects = JSONObject(indexFile.readText(Charsets.UTF_8)).optJSONObject("objects")
+                if (objects != null) {
+                    val keys = objects.keys()
+                    while (keys.hasNext()) {
+                        val obj = objects.optJSONObject(keys.next()) ?: continue
+                        val hash = obj.optString("hash")
+                        if (!hash.matches(Regex("^[a-fA-F0-9]{40}$"))) return false
+                        val target = File(root, "assets/objects/" + hash.substring(0, 2) + "/" + hash)
+                        if (!isArtifactHealthy(target, hash, obj.optLong("size", -1L))) return false
+                    }
+                }
             }
             true
-        } catch (e: Throwable) {
+        } catch (_: Throwable) {
             false
         }
     }
@@ -100,6 +165,7 @@ object MinecraftVersionInstallManager {
             val versionDir = versionRoot(context, version)
             val metadataFile = File(versionDir, "$version.json")
             val metadata = JSONObject(metadataFile.readText(Charsets.UTF_8))
+            if (!verifyInstalledArtifacts(context, version, includeAllAssets = true)) return false
             val client = metadata.optJSONObject("downloads")?.optJSONObject("client") ?: return false
             if (!isArtifactHealthy(File(versionDir, "$version.jar"), client.optString("sha1"), client.optLong("size", -1L))) return false
 
@@ -219,6 +285,9 @@ object MinecraftVersionInstallManager {
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
                 setState(context, safeVersion, State.DOWNLOADING, null)
                 installInternal(context, safeVersion, listener)
+                if (!verifyInstalledArtifacts(context, safeVersion, includeAllAssets = true)) {
+                    throw IOException("Minecraft installation completed downloads but final artifact verification failed")
+                }
                 setState(context, safeVersion, State.INSTALLED, null)
                 persistProgress(context, safeVersion, Long.MAX_VALUE, Long.MAX_VALUE, "Installed")
                 lastProgressPersisted.remove(safeVersion)
@@ -564,7 +633,7 @@ object MinecraftVersionInstallManager {
                 digest.update(buffer, 0, count)
             }
         }
-        return digest.digest().joinToString("") { "%02x".format(it) }
+        return digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
     }
 
     private fun sha1Bytes(bytes: ByteArray): String {
