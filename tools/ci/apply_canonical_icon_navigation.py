@@ -529,7 +529,7 @@ def ensure_extra_helpers(source: str) -> str:
         raise SystemExit("[canonical-nav] helper insertion anchor missing")
     extra = r'''
     private fun canonicalBrowsePage() {
-        pageArea.addView(step375Title("Browse", "Modrinth + CurseForge · content type · Minecraft version"))
+        pageArea.addView(step375Title("Browse", "Live Modrinth content · content type · Minecraft version"))
         val filters = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
         }
