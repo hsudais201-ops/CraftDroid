@@ -40,13 +40,22 @@ def remove_method(text: str, signature: str) -> str:
     start = text.find(signature)
     if start < 0:
         return text
-    opening = text.find("{", start)
+
+    # Support both block-bodied and expression-bodied Kotlin functions. The
+    # previous implementation searched for the next "{" globally, which could
+    # accidentally remove an unrelated method when the target used "=".
+    line_end = text.find("\n", start)
+    if line_end < 0:
+        line_end = len(text)
+    opening = text.find("{", start, line_end)
     if opening < 0:
-        raise SystemExit(f"[step227] method opening brace missing: {signature}")
-    end = find_matching_brace(text, opening)
-    if end < 0:
-        raise SystemExit(f"[step227] unbalanced method braces: {signature}")
-    end += 1
+        end = line_end
+    else:
+        end = find_matching_brace(text, opening)
+        if end < 0:
+            raise SystemExit(f"[step227] unbalanced method braces: {signature}")
+        end += 1
+
     while end < len(text) and text[end] == "\n":
         end += 1
     return text[:start] + text[end:]
