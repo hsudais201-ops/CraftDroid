@@ -182,6 +182,10 @@ def main() -> int:
     if not premium.is_file():
         raise SystemExit("[step479] premium UI script missing")
     subprocess.run([sys.executable, str(premium), str(root)], check=True)
+    verifier = Path.cwd() / "tools/ci/verify_step479_premium_ui.py"
+    if not verifier.is_file():
+        raise SystemExit("[step479] premium UI verifier missing")
+    subprocess.run([sys.executable, str(verifier), str(root)], check=True)
     print("[step463] loader cards now persist a real per-instance selection and reuse the existing selectedLoader state when available")
     return 0
 
