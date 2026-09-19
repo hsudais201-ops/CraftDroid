@@ -186,6 +186,18 @@ jobs:
           python3 tools/ci/repair_step459_final_microsoft_helper.py droid-src
           python3 tools/ci/repair_step426_low_ram_diagnostics.py droid-src
 
+      - name: Apply Step 460 final launcher UI polish
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/apply_step460_ui_polish.py droid-src
+
+      - name: Verify Step 460 final launcher UI polish
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_step460_ui_polish.py droid-src
+
       - name: Verify all hardened contracts
         shell: bash
         run: |
@@ -202,6 +214,18 @@ jobs:
             echo 'Unfinished implementation marker found in generated launcher source.' >&2
             exit 1
           fi
+
+      - name: Apply canonical icon and navigation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/apply_canonical_icon_navigation.py droid-src
+
+      - name: Verify canonical icon and navigation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_canonical_icon_navigation.py droid-src
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
