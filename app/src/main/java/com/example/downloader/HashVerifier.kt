@@ -19,14 +19,14 @@ object HashVerifier {
         val bytes = digest.digest()
         val sb = StringBuilder()
         for (b in bytes) {
-            sb.append(String.format("%02x", b))
+            sb.append(String.format("%02x", b.toInt() and 0xff))
         }
         return sb.toString()
     }
 
     fun verifySha1(file: File, expectedSha1: String?): Boolean {
         if (!file.exists()) return false
-        if (expectedSha1.isNullOrBlank()) return true // No hash provided, verify size > 0
+        if (expectedSha1.isNullOrBlank()) return true // No hash was provided; callers are responsible for size validation.
         val actual = computeSha1(file)
         return actual.equals(expectedSha1, ignoreCase = true)
     }
