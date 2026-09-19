@@ -30,6 +30,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -65,9 +66,12 @@ fun VersionsScreen(
     val versions by viewModel.versions.collectAsState()
     val isLoading by viewModel.isVersionsLoading.collectAsState()
     val homeState by viewModel.homeUiState.collectAsState()
+    val downloadProgress by viewModel.downloadProgress.collectAsState()
+    val downloadStatus by viewModel.downloadStatusText.collectAsState()
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
+    var loaderDialogVersion by remember { mutableStateOf<String?>(null) }
 
     val filteredVersions = remember(versions, selectedTabIndex, searchQuery) {
         versions.filter { v ->
@@ -91,7 +95,7 @@ fun VersionsScreen(
                 }
             },
             actions = {
-                IconButton(onClick = { viewModel.container.appScope.run { viewModel.container.versionManager.run { viewModel.installSelectedVersion() } } }) {
+                IconButton(onClick = { viewModel.refreshVersions() }) {
                     Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh Versions")
                 }
             },
@@ -129,6 +133,49 @@ fun VersionsScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         )
+
+        if (downloadProgress.error != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+            ) {
+                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(downloadProgress.error.orEmpty(), Modifier.weight(1f), color = MaterialTheme.colorScheme.onErrorContainer)
+                    OutlinedButton(onClick = { viewModel.installSelectedVersion(homeState.selectedVersionId) }) { Text("Retry") }
+                }
+            }
+        }
+
+        if (downloadProgress.isRunning) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f))
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Installing " + homeState.selectedVersionId, fontWeight = FontWeight.Bold)
+                        Text(downloadProgress.completedFiles.toString() + "/" + downloadProgress.totalFiles)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    if (downloadProgress.totalBytes > 0L) {
+                        LinearProgressIndicator(
+                            progress = { downloadProgress.progressFraction },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        CircularProgressIndicator(Modifier.size(22.dp))
+                    }
+                    Text(
+                        downloadProgress.currentFileName.ifBlank { downloadStatus },
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        OutlinedButton(onClick = viewModel::cancelDownload) { Text("Cancel") }
+                    }
+                }
+            }
+        }
 
         if (isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -183,6 +230,10 @@ fun VersionsScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (version.isInstalled) {
+                                    OutlinedButton(onClick = { loaderDialogVersion = version.id }) {
+                                        Text("Loader")
+                                    }
+                                    Spacer(Modifier.width(6.dp))
                                     IconButton(
                                         onClick = { viewModel.checkRepair(version.id) },
                                         modifier = Modifier.testTag("repair_version_${version.id}")
@@ -206,7 +257,7 @@ fun VersionsScreen(
                                         if (version.isInstalled) {
                                             viewModel.navigateTo(LauncherScreen.HOME)
                                         } else {
-                                            viewModel.installSelectedVersion()
+                                            viewModel.installSelectedVersion(version.id)
                                         }
                                     },
                                     colors = ButtonDefaults.buttonColors(
@@ -229,5 +280,13 @@ fun VersionsScreen(
                 }
             }
         }
+    }
+
+    loaderDialogVersion?.let { version ->
+        LoaderInstallDialog(
+            minecraftVersion = version,
+            onDismiss = { loaderDialogVersion = null },
+            onInstall = { loader, loaderVersion -> viewModel.installLoader(version, loader, loaderVersion) }
+        )
     }
 }
