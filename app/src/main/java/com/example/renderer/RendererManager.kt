@@ -18,6 +18,7 @@ enum class RendererBackend(val title: String, val description: String) {
     GL4ES("GL4ES (OpenGL 2.1)", "Fast OpenGL-to-OpenGLES translation layer for Adreno/Mali/PowerVR"),
     MOBILEGLUES("MobileGlues (OpenGL ES 3)", "Modern OpenGL compatibility layer on top of Android OpenGL ES 3.x"),
     ZINK("Zink (OpenGL via Vulkan)", "Translates modern OpenGL 3.3/4.6 calls through Vulkan drivers"),
+    NATIVE_VULKAN("Native Vulkan (Experimental)", "Experimental direct Vulkan path; enabled only when the physical driver passes capability checks"),
     COMPATIBILITY("Compatibility Mode", "Software/safe fallback mode for older devices and driver workarounds")
 }
 
@@ -27,6 +28,9 @@ data class DeviceGpuInfo(
     val glVendor: String,
     val glVersion: String,
     val hasVulkan: Boolean,
+    val vulkanApiVersion: String = "0.0.0",
+    val vulkanDynamicRendering: Boolean = false,
+    val vulkanPushDescriptors: Boolean = false,
     val cpuAbi: String,
     val androidVersion: Int,
     val isSupported: Boolean,
@@ -44,6 +48,14 @@ class RendererManager(private val context: Context, private val fileSystem: Mine
         val glesVer = am?.deviceConfigurationInfo?.glEsVersion ?: "Unknown"
 
         val hasVulkan = context.packageManager.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_LEVEL)
+        val vulkanProbe = NativeGameBridge.probeVulkan()
+        val vulkanApi = Regex("""(?:effective|device)=([0-9]+\\.[0-9]+\\.[0-9]+)""").find(vulkanProbe)?.groupValues?.getOrNull(1) ?: "0.0.0"
+        val dynamicRendering = "dynamic=1" in vulkanProbe
+        val pushDescriptors = "push=1" in vulkanProbe
+        val nativeVulkanSupported = vulkanProbe.startsWith("SUPPORTED") &&
+            dynamicRendering && pushDescriptors &&
+            vulkanApi.split('.').firstOrNull()?.toIntOrNull()?.let { it >= 1 } == true &&
+            vulkanApi.split('.').getOrNull(1)?.toIntOrNull()?.let { it >= 2 } == true
         val abi = Build.SUPPORTED_ABIS.firstOrNull() ?: "Unknown"
         val sdk = Build.VERSION.SDK_INT
 
@@ -102,11 +114,22 @@ class RendererManager(private val context: Context, private val fileSystem: Mine
             glVendor = probedVendor,
             glVersion = probedVersion,
             hasVulkan = hasVulkan,
+            vulkanApiVersion = vulkanApi,
+            vulkanDynamicRendering = dynamicRendering,
+            vulkanPushDescriptors = pushDescriptors,
             cpuAbi = abi,
             androidVersion = sdk,
             isSupported = isSupported,
             recommendedBackend = recommended
         )
+    }
+
+    fun shaderWarning(backend: RendererBackend): String? = when (backend) {
+        RendererBackend.COMPATIBILITY -> "Shaders are disabled in Compatibility Mode."
+        RendererBackend.GL4ES -> "Shader support varies under GL4ES; unsupported GLSL features may be rejected before launch."
+        RendererBackend.ZINK -> "Shaders depend on the Vulkan driver's GLSL/SPIR-V support; problematic packs may require GL4ES."
+        RendererBackend.NATIVE_VULKAN -> "Experimental native Vulkan shader path; only use shader packs verified with Minecraft's Vulkan renderer."
+        else -> null
     }
 
     suspend fun ensureNativeStack(requiredLwjglVersion: String? = null, onStatus: (String) -> Unit): NativeComponentManager.NativeStack {
@@ -123,6 +146,11 @@ class RendererManager(private val context: Context, private val fileSystem: Mine
         val effective = if (backend == RendererBackend.AUTO) gpuInfo.recommendedBackend else backend
 
         when (effective) {
+            RendererBackend.NATIVE_VULKAN -> {
+                env["CRAFTDROID_GRAPHICS_API"] = "vulkan"
+                env["POJAV_RENDERER"] = "vulkan_native"
+                env["CRAFTDROID_NATIVE_VULKAN_EXPERIMENTAL"] = "1"
+            }
             RendererBackend.GL4ES -> {
                 env["LIBGL_ES"] = "2"
                 env["LIBGL_GL"] = "21"
