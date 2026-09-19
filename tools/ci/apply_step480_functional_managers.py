@@ -85,7 +85,7 @@ HELPERS = r'''
             setPadding(dp(9), dp(8), dp(9), dp(8))
             background = step479Card("","", "CD") { }.background
             val image = android.widget.ImageView(this@DroidLauncherUiActivity).apply {
-                setImageResource(android.R.drawable.ic_menu_gallery)
+                setImageDrawable(null)
                 scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
             }
             addView(image, LinearLayout.LayoutParams(dp(64), dp(64)))
@@ -427,6 +427,9 @@ HELPERS = r'''
                 }
                 val downloadUrl = file.optString("url")
                 val fileName = file.optString("filename", projectId + ".bin")
+                val expectedSha1 = file.optJSONObject("hashes")?.optString("sha1").orEmpty()
+                val expectedSize = file.optLong("size", -1L)
+                if (downloadUrl.isBlank()) throw java.io.IOException("Modrinth file has no download URL")
                 if (!downloadUrl.startsWith("https://api.modrinth.com/") && !downloadUrl.startsWith("https://cdn.modrinth.com/")) {
                     throw java.io.IOException("Untrusted content download host")
                 }
@@ -451,15 +454,41 @@ HELPERS = r'''
                             if (n < 0) break
                             out.write(buffer, 0, n)
                             got += n
-                            if (total > 0L) runOnUiThread {
-                                if (!isFinishing) dialog.progress = ((got * 100L) / total).toInt().coerceIn(0, 100)
+                            runOnUiThread {
+                                if (!isFinishing) {
+                                    if (total > 0L) {
+                                        dialog.progress = ((got * 100L) / total).toInt().coerceIn(0, 100)
+                                    } else {
+                                        dialog.setMessage("Downloading " + fileName + " · " + got + " bytes")
+                                    }
+                                }
                             }
                         }
                     }
                 }
                 c.disconnect()
+                if (expectedSize > 0L && tmp.length() != expectedSize) {
+                    tmp.delete()
+                    throw java.io.IOException("Modrinth file size mismatch for " + fileName)
+                }
+                if (expectedSha1.isNotBlank()) {
+                    val digest = java.security.MessageDigest.getInstance("SHA-1")
+                    tmp.inputStream().use { input ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            val n = input.read(buffer)
+                            if (n < 0) break
+                            if (n > 0) digest.update(buffer, 0, n)
+                        }
+                    }
+                    val actualSha1 = digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+                    if (!actualSha1.equals(expectedSha1, ignoreCase = true)) {
+                        tmp.delete()
+                        throw java.io.IOException("Modrinth SHA-1 verification failed for " + fileName)
+                    }
+                }
                 MinecraftContentManager.importFile(this, kind, tmp, fileName)
-                tmp.delete()
+                if (!tmp.delete() && tmp.exists()) throw java.io.IOException("Temporary content file could not be removed")
                 runOnUiThread {
                     dialog.dismiss()
                     showPage(type)
