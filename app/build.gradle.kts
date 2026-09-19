@@ -20,8 +20,8 @@ android {
     versionCode = 10
     versionName = "2.4.0"
     val curseForgeProxy = providers.gradleProperty("curseforgeProxyBaseUrl").orElse("").get()
-    val escapedCurseForgeProxy = curseForgeProxy.replace("\\", "\\\\").replace(""", "\\"")
-    buildConfigField("String", "CURSEFORGE_PROXY_BASE_URL", "\"$escapedCurseForgeProxy\"")
+    require(curseForgeProxy.none { it == '"' || it == '\\' }) { "CurseForge proxy URL contains unsupported quote/backslash characters" }
+    buildConfigField("String", "CURSEFORGE_PROXY_BASE_URL", "\"" + curseForgeProxy + "\"")
 
     // CraftDroid's native bridge is intended to run on the common Android
     // ABIs used by phones, tablets and Chromebooks. Keep all four in the
