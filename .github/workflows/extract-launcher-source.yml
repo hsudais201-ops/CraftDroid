@@ -8,6 +8,10 @@ on:
       - '.github/workflows/extract-launcher-source.yml'
       - 'tools/ci/repair_full_codebase_sweep.py'
       - 'tools/ci/repair_full_sweep_live_paths.py'
+      - 'tools/ci/repair_full_sweep_second_pass.py'
+      - 'tools/ci/verify_no_fake_implementations.py'
+      - 'app/src/main/java/com/example/runtime/JavaRuntimeManager.kt'
+      - 'app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt'
 
 permissions:
   contents: write
