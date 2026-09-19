@@ -22,6 +22,9 @@ object CrashDiagnostics {
         return Bundle(crashReport, latestLog, hsErr, launcherLog)
     }
 
+    fun findLatestHotSpotError(rootDir: File): File? =
+        newest(rootDir, "hs_err_pid*.log")
+
     fun writeSummary(rootDir: File, exitCode: Int, bundle: Bundle): File? {
         return runCatching {
             val dir = rootDir.resolve("crash-diagnostics").apply { mkdirs() }
