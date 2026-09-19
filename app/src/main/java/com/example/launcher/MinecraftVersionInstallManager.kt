@@ -74,9 +74,22 @@ object MinecraftVersionInstallManager {
     fun isInstalled(context: Context, version: String): Boolean {
         val safeVersion = normalizeVersionId(version) ?: return false
         if (state(context, safeVersion) != State.INSTALLED) return false
-        val root = versionRoot(context, safeVersion)
-        val client = File(root, "$safeVersion.jar")
-        return client.isFile && client.length() > 0L && File(root, "$safeVersion.json").isFile
+        return try {
+            val root = minecraftRoot(context)
+            val versionDir = versionRoot(context, safeVersion)
+            val metadata = JSONObject(File(versionDir, "$safeVersion.json").readText(Charsets.UTF_8))
+            val client = metadata.optJSONObject("downloads")?.optJSONObject("client") ?: return false
+            if (!isArtifactHealthy(File(versionDir, "$safeVersion.jar"), client.optString("sha1"), client.optLong("size", -1L))) return false
+            val assetIndex = metadata.optJSONObject("assetIndex")
+            if (assetIndex != null) {
+                val id = assetIndex.optString("id")
+                val indexFile = File(root, "assets/indexes/$id.json")
+                if (id.isBlank() || !isArtifactHealthy(indexFile, assetIndex.optString("sha1"), assetIndex.optLong("size", -1L))) return false
+            }
+            true
+        } catch (e: Throwable) {
+            false
+        }
     }
 
     /** Full pre-launch validation matching the installer selection rules. */
