@@ -87,6 +87,7 @@ fun SettingsScreen(
     var showDevWarningDialog by remember { mutableStateOf(false) }
 
     var rendererDropdownExpanded by remember { mutableStateOf(false) }
+    var javaOverrideDropdownExpanded by remember { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxSize()) {
         TopAppBar(
@@ -210,6 +211,39 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.height(8.dp))
+
+                    ExposedDropdownMenuBox(
+                        expanded = javaOverrideDropdownExpanded,
+                        onExpandedChange = { javaOverrideDropdownExpanded = !javaOverrideDropdownExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = settings.javaMajorOverride?.let { "Java $it" } ?: "Automatic (recommended)",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Advanced Java Override") },
+                            supportingText = { Text("Auto follows the Minecraft version manifest. Java 16 uses the compatible Java 17 Android runtime.") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = javaOverrideDropdownExpanded) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                        )
+                        ExposedDropdownMenu(
+                            expanded = javaOverrideDropdownExpanded,
+                            onDismissRequest = { javaOverrideDropdownExpanded = false }
+                        ) {
+                            listOf<Int?>(null, 8, 16, 17, 21, 25).forEach { major ->
+                                DropdownMenuItem(
+                                    text = { Text(major?.let { "Java $it" } ?: "Automatic (recommended)") },
+                                    onClick = {
+                                        viewModel.updateJavaMajorOverride(major)
+                                        javaOverrideDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     runtimes.forEach { rt ->
                         Row(
