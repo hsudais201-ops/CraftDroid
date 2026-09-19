@@ -153,7 +153,6 @@ def main() -> int:
         'if (!libraryAllowed(lib)) continue',
         'private fun libraryAllowed(lib: JSONObject): Boolean',
         'private fun preferredNativeClassifier(lib: JSONObject): String?',
-        'val classifier = preferredNativeClassifier(lib)',
         'System.getProperty("os.arch", "")',
     ):
         if needle not in text:
@@ -161,8 +160,10 @@ def main() -> int:
     print('[step227] Mojang library rules are evaluated before download')
     if 'val classifier = preferredNativeClassifier(lib)' in text:
         print('[step227] native classifier selection is limited to the preferred Linux variant')
-    else:
+    elif classifiers_start < 0:
         print('[step227] native classifier selection will be enforced by the canonical installer restore')
+    else:
+        raise SystemExit('[step227] classifier block was present but targeted selection was not installed')
     print('[step227] structure-tolerant repair anchors applied')
     return 0
 
