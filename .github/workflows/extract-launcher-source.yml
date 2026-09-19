@@ -8,7 +8,7 @@ on:
       - '.github/workflows/extract-launcher-source.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   extract:
@@ -17,14 +17,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Extract Android project
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/launcher-unpack
-          mkdir -p /tmp/launcher-unpack
+          rm -rf /tmp/launcher-unpack /tmp/extracted-project
+          mkdir -p /tmp/launcher-unpack /tmp/extracted-project
           unzip -q "CraftDroid_Launcher_2.4_GitHubActions_Step153.zip" -d /tmp/launcher-unpack
           ROOT="$(dirname "$(find /tmp/launcher-unpack -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)")"
           if [ -z "$ROOT" ] || [ "$ROOT" = "." ]; then
@@ -32,25 +32,20 @@ jobs:
             find /tmp/launcher-unpack -maxdepth 4 -type f | head -200
             exit 1
           fi
-          rm -rf /tmp/extracted-project
-          mkdir -p /tmp/extracted-project
           cp -a "$ROOT"/. /tmp/extracted-project/
-          rm -rf extracted-source
-          mkdir extracted-source
-          cp -a /tmp/extracted-project/. extracted-source/
+          test -f /tmp/extracted-project/settings.gradle.kts
+          test -f /tmp/extracted-project/app/build.gradle.kts
+          test -f /tmp/extracted-project/app/src/main/AndroidManifest.xml
 
-      - name: Publish extracted source branch
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
+      - name: Package extracted source
         run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout --orphan source-extracted
-          git rm -rf . || true
-          cp -a extracted-source/. .
-          rm -rf extracted-source
-          git add -A
-          git commit -m "Extract Android launcher source from archive"
-          git push --force origin HEAD:source-extracted
+          cd /tmp
+          tar -czf craftdroid-source.tar.gz extracted-project
+
+      - name: Upload extracted source
+        uses: actions/upload-artifact@v4
+        with:
+          name: craftdroid-source
+          path: /tmp/craftdroid-source.tar.gz
+          if-no-files-found: error
+          retention-days: 7
