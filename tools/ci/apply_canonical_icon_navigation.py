@@ -245,11 +245,12 @@ def add_helpers(source: str) -> str:
 def patch_build_ui(source: str) -> str:
     start, end = method_span(source, "    private fun buildUi()")
     block = source[start:end]
-    old = '''        nav.addView(TextView(this).apply { text = "DROID LAUNCHER"; textSize = 20f; setTextColor(android.graphics.Color.WHITE); typeface = Typeface.DEFAULT_BOLD; letterSpacing = .07f }, LinearLayout.LayoutParams(0, dp(54), 1f))
+
+    old_step375 = '''        nav.addView(TextView(this).apply { text = "DROID LAUNCHER"; textSize = 20f; setTextColor(android.graphics.Color.WHITE); typeface = Typeface.DEFAULT_BOLD; letterSpacing = .07f }, LinearLayout.LayoutParams(0, dp(54), 1f))
         listOf("▣" to "Instances", "♟" to "Accounts", "⇩" to "Downloads", "⚙" to "Settings").forEach { (i, page) ->
             nav.addView(step375Nav(i) { showPage(page) })
         }'''
-    new = '''        nav.addView(step375Nav("←") { canonicalNavigateBack() })
+    new_step375 = '''        nav.addView(step375Nav("←") { canonicalNavigateBack() })
         nav.addView(TextView(this).apply {
             text = "CRAFTDROID"
             textSize = 20f
@@ -264,10 +265,44 @@ def patch_build_ui(source: str) -> str:
             "⇩" to { showPage("Content") },
             "⚙" to { showPage("Settings") }
         ).forEach { (i, action) -> nav.addView(step375Nav(i, action)) }'''
-    if old not in block:
-        raise SystemExit("[canonical-nav] expected Step375 top bar was not found")
-    block = block.replace(old, new, 1)
-    return source[:start] + block + source[end:]
+
+    if old_step375 in block:
+        block = block.replace(old_step375, new_step375, 1)
+        return source[:start] + block + source[end:]
+
+    old_step482 = '''        val destinations = listOf(
+            "⌂  Home" to "Home",
+            "▣  Instances" to "Instances",
+            "◈  Content" to "Content",
+            "◉  Servers" to "Servers",
+            "♟  Accounts" to "Accounts",
+            "J  Java" to "Java",
+            "⚙  Settings" to "Settings"
+        )
+        destinations.forEach { pair ->
+            rail.addView(step482NavItem(pair.first) { showPage(pair.second) },
+                LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(6) })
+        }'''
+    new_step482 = '''        val destinations = listOf<kotlin.Pair<String, () -> Unit>>(
+            "←  Back" to { canonicalNavigateBack() },
+            "⌂  Home" to { canonicalNavigateHome() },
+            "▰  Files" to { canonicalOpenCurrentInstanceFolder() },
+            "♟  Accounts" to { showPage("Accounts") },
+            "⇩  Browse" to { showPage("Content") },
+            "◈  Instances" to { showPage("Instances") },
+            "◉  Servers" to { showPage("Servers") },
+            "J  Java" to { showPage("Java") },
+            "⚙  Settings" to { showPage("Settings") }
+        )
+        destinations.forEach { pair ->
+            rail.addView(step482NavItem(pair.first) { pair.second.invoke() },
+                LinearLayout.LayoutParams(-1, dp(48)).apply { bottomMargin = dp(6) })
+        }'''
+    if old_step482 in block:
+        block = block.replace(old_step482, new_step482, 1)
+        return source[:start] + block + source[end:]
+
+    raise SystemExit("[canonical-nav] no supported buildUi navigation layout found")
 
 def patch_show_page(source: str) -> str:
     start, end = method_span(source, "    private fun showPage(page: String)")
@@ -281,25 +316,39 @@ def patch_show_page(source: str) -> str:
         }
         currentPage = page
         pageArea.removeAllViews()'''
+    if old in block:
+        block = block.replace(old, new, 1)
+
+    block = block.replace('"Content","Downloads"->step479Content()', '"Content","Downloads"->canonicalBrowsePage()')
+    block = block.replace('"Content", "Downloads" -> step479Content()', '"Content", "Downloads" -> canonicalBrowsePage()')
+    block = block.replace('"Content" -> step375Content()', '"Content" -> canonicalBrowsePage()')
+    block = block.replace('"Versions"->step479Versions()', '"Versions"->canonicalVersionPage()')
+
+    if '"Versions"->canonicalVersionPage()' not in block and '"Versions" -> canonicalVersionPage()' not in block:
+        block = block.replace('else->step479Content()', ' "Versions"->canonicalVersionPage()\n            else->canonicalBrowsePage()', 1)
+        block = block.replace('else -> step375Content()', ' "Versions" -> canonicalVersionPage()\n            else -> canonicalBrowsePage()', 1)
+
+    if 'canonicalSecureMode' in block and 'canonicalPageHistory' in block:
+        return source[:start] + block + source[end:]
     if old not in block:
         raise SystemExit("[canonical-nav] showPage state anchor missing")
-    block = block.replace(old, new, 1)
-    old_route = '''            "Features", "Servers" -> aboutPage()'''
-    new_route = '''            "Features" -> aboutPage()
-            "Servers" -> canonicalServerPage()'''
-    if old_route in block:
-        block = block.replace(old_route, new_route, 1)
-    elif '"Servers" -> canonicalServerPage()' not in block:
-        raise SystemExit("[canonical-nav] Servers route anchor missing")
     return source[:start] + block + source[end:]
 
 def patch_home(source: str) -> str:
-    start, end = method_span(source, "    private fun step375Home()")
+    sig = "    private fun step479Home()" if "private fun step479Home()" in source else "    private fun step375Home()"
+    start, end = method_span(source, sig)
     block = source[start:end]
     if "canonicalToggleSecureMode()" in block:
         return source
-    anchor = '        pageArea.addView(step375Title("Home"'
-    pos = block.find(anchor)
+    anchors = (
+        '        pageArea.addView(step375Title("Minecraft Dashboard"',
+        '        pageArea.addView(step375Title("Home"',
+    )
+    pos = -1
+    for anchor in anchors:
+        pos = block.find(anchor)
+        if pos >= 0:
+            break
     if pos < 0:
         raise SystemExit("[canonical-nav] Home title anchor missing")
     line_end = block.find("\n", pos)
@@ -308,21 +357,80 @@ def patch_home(source: str) -> str:
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        homeActions.addView(step375Button(if (canonicalSecureMode()) "🔒" else "🔓") { canonicalToggleSecureMode() },
-            LinearLayout.LayoutParams(dp(52), dp(48)))
-        homeActions.addView(step375Button("＋  New instance") { showPage("Instances") },
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(7) })
-        homeActions.addView(step375Button("↗  Export") { canonicalExportInstanceConfig() },
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(7) })
-        homeActions.addView(step375Button("＋  Add Account") { showPage("Accounts") },
-            LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(7) })
+        homeActions.addView(step375Button(if (canonicalSecureMode()) "🔒" else "🔓") {
+            canonicalToggleSecureMode()
+        }, LinearLayout.LayoutParams(dp(52), dp(48)))
+        homeActions.addView(step375Button("＋  New instance") {
+            showPage("Instances")
+        }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(7) })
+        homeActions.addView(step375Button("↗  Export") {
+            canonicalExportInstanceConfig()
+        }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(7) })
+        homeActions.addView(step375Button("＋  Add Account") {
+            showPage("Accounts")
+        }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(7) })
         pageArea.addView(homeActions, LinearLayout.LayoutParams(-1, dp(54)))
         pageArea.addView(step375Button(
-            if (step375HasInstance()) "INSTANCE  ·  ${step375SelectedInstance()}" else "INSTANCE  ·  Select an instance"
+            if (step375HasInstance()) "INSTANCE  ·  " + step375SelectedInstance() else "INSTANCE  ·  Select an instance"
         ) { showPage("Instances") }, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(7) })
 '''
     block = block[:line_end] + insert + block[line_end:]
     return source[:start] + block + source[end:]
+
+def patch_servers(source: str) -> str:
+    sig = "    private fun step479Servers()"
+    if sig not in source:
+        return source
+    start, end = method_span(source, sig)
+    replacement = r'''    private fun step479Servers(){
+        pageArea.addView(step375Title("Servers","Saved Minecraft server connections · live ping · local data"))
+        val top=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+        top.addView(step375Button("+ ADD SERVER",true){showServerDialog(-1)},LinearLayout.LayoutParams(0,dp(48),1f))
+        top.addView(step375Button("↻ REFRESH ALL"){getSavedServers().forEach{refreshServerStatus(it.first,it.second)};showPage("Servers")},LinearLayout.LayoutParams(0,dp(48),1f).apply{marginStart=dp(8)})
+        pageArea.addView(top)
+        val selected=getSharedPreferences("droid_launcher"," MODE_PRIVATE").getString("selected_server","") ?: ""
+        val list=getSavedServers()
+        if(list.isEmpty()){
+            val p=step375Panel(20);p.gravity=Gravity.CENTER
+            p.addView(step460MiniBadge("SRV"))
+            p.addView(step375Text("No servers saved",20f,true))
+            p.addView(step375Text("Add a server to monitor reachability and manage its local folder."))
+            pageArea.addView(p,LinearLayout.LayoutParams(-1,dp(200)).apply{topMargin=dp(8)})
+            return
+        }
+        list.forEachIndexed{index,s->
+            val host=s.first; val port=s.second; val chosen="$host:$port"==selected
+            val row=LinearLayout(this).apply{
+                orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL
+                setPadding(dp(9),dp(7),dp(7),dp(7))
+                background=step460Surface(48)
+            }
+            row.addView(step481ServerIcon(host,port),LinearLayout.LayoutParams(dp(54),dp(54)).apply{marginEnd=dp(8)})
+            val center=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
+            val name=android.widget.EditText(this).apply{
+                setSingleLine(true)
+                setText(getServerName(index).ifBlank{host})
+                hint="Server name"
+                textSize=15f
+                setTextColor(android.graphics.Color.WHITE)
+                setHintTextColor(android.graphics.Color.argb(150,210,225,235))
+                setPadding(0,0,0,0)
+                contentDescription="Tap to edit server name or address"
+                setOnFocusChangeListener { _, focused -> if(focused) showServerDialog(index) }
+            }
+            center.addView(name,LinearLayout.LayoutParams(0,dp(40),1f))
+            center.addView(step375Text("$host:$port  ·  "+getServerStatus(host,port),10.5f).apply{setTextColor(android.graphics.Color.argb(175,205,225,235))})
+            row.addView(center,LinearLayout.LayoutParams(0,dp(58),1f))
+            val signal=step460MiniBadge("▂▄▆█").apply{contentDescription="Live ping / connection quality"}
+            row.addView(signal,LinearLayout.LayoutParams(dp(62),dp(44)).apply{marginStart=dp(5)})
+            row.addView(step375Button("▱"){selectServer(host,port);canonicalOpenServerFolder()},LinearLayout.LayoutParams(dp(46),dp(42)).apply{marginStart=dp(5)})
+            row.addView(step375Button("🗑"){deleteServer(index);showPage("Servers")},LinearLayout.LayoutParams(dp(46),dp(42)).apply{marginStart=dp(5)})
+            pageArea.addView(row,LinearLayout.LayoutParams(-1,dp(72)).apply{topMargin=dp(7)})
+        }
+    }
+'''
+    replacement = replacement.replace('" MODE_PRIVATE"', ' MODE_PRIVATE')
+    return source[:start] + replacement + source[end:]
 
 def patch_accounts(source: str) -> str:
     replacements = {
@@ -376,6 +484,79 @@ def patch_loader_strip(source: str) -> str:
             addView(row)
         }'''
     return source[:start] + replacement + source[end:]
+
+def ensure_extra_helpers(source: str) -> str:
+    if "private fun canonicalBrowsePage()" in source:
+        return source
+    anchor = "    private fun canonicalServerPage()"
+    if anchor not in source:
+        raise SystemExit("[canonical-nav] helper insertion anchor missing")
+    extra = r'''
+    private fun canonicalBrowsePage() {
+        pageArea.addView(step375Title("Browse", "Modrinth + CurseForge · content type · Minecraft version"))
+        val filters = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        val prefs = getSharedPreferences("droid_launcher_canonical_ui", MODE_PRIVATE)
+        filters.addView(step375Button("MODRINTH", true) {
+            prefs.edit().putString("source", "Modrinth").apply()
+            android.widget.Toast.makeText(this, "Modrinth selected", android.widget.Toast.LENGTH_SHORT).show()
+        }, LinearLayout.LayoutParams(0, dp(46), 1f))
+        filters.addView(step375Button("CURSEFORGE") {
+            prefs.edit().putString("source", "CurseForge").apply()
+            android.widget.Toast.makeText(this, "CurseForge selected", android.widget.Toast.LENGTH_SHORT).show()
+        }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginStart = dp(7) })
+        filters.addView(step375Button(
+            prefs.getString("browse_version", "Any version") ?: "Any version"
+        ) { canonicalShowVersionFilter() }, LinearLayout.LayoutParams(dp(150), dp(46)).apply { marginStart = dp(7) })
+        pageArea.addView(filters, LinearLayout.LayoutParams(-1, dp(52)))
+
+        val types = listOf(
+            "Modpack" to "PACK",
+            "Resource Pack" to "RES",
+            "Shader Pack" to "FX",
+            "Mod" to "MOD",
+            "World" to "WRLD"
+        )
+        types.forEach { pair ->
+            pageArea.addView(
+                step460CategoryCard(
+                    pair.second, pair.first, "Content type",
+                    { step391StartContentImport(pair.first) }
+                ),
+                LinearLayout.LayoutParams(-1, dp(76)).apply { topMargin = dp(7) }
+            )
+        }
+    }
+
+    private fun canonicalVersionPage() {
+        pageArea.addView(step375Title("Minecraft Versions", "Vanilla releases · grass-block version entries"))
+        val versions = listOf("26.3","26.2","26.1.2","26.1.1","1.21.11","1.21.10","1.21.9","1.20.6","1.20.4")
+        versions.forEach { version ->
+            val installed = MinecraftVersionInstallManager.isInstalled(this, version)
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(9), dp(7), dp(9), dp(7))
+                background = step460Surface(48)
+            }
+            row.addView(
+                step460MiniBadge("🌿").apply { contentDescription = "Grass block version tile" },
+                LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(9) }
+            )
+            row.addView(step375Text(version, 16f, true), LinearLayout.LayoutParams(0, dp(52), 1f))
+            row.addView(step375Button(
+                if (installed) "SELECT" else "INSTALL", installed
+            ) {
+                saveMinecraftVersion(version)
+                if (installed) showPage("Home") else installMinecraftVersion(version)
+            }, LinearLayout.LayoutParams(dp(112), dp(44)))
+            pageArea.addView(row, LinearLayout.LayoutParams(-1, dp(68)).apply { topMargin = dp(7) })
+        }
+    }
+'''
+    return source.replace(anchor, extra + "
+" + anchor, 1)
 
 def patch_content(source: str) -> str:
     start, end = method_span(source, "    private fun step375Content()")
@@ -441,11 +622,13 @@ def main() -> int:
     ui = find_ui(root)
     source = ui.read_text(encoding="utf-8")
     source = add_helpers(source)
+    source = ensure_extra_helpers(source)
     source = patch_build_ui(source)
     source = patch_show_page(source)
     source = patch_home(source)
     source = patch_accounts(source)
     source = patch_account_detail(source)
+    source = patch_servers(source)
     source = patch_loader_strip(source)
     source = patch_content(source)
     source = patch_settings(source)
@@ -458,7 +641,8 @@ def main() -> int:
         "canonicalNavigateHome",
         "canonicalOpenCurrentInstanceFolder",
         "canonicalExportInstanceConfig",
-        "canonicalServerPage",
+        "canonicalBrowsePage",
+        "canonicalVersionPage",
         "OptiFine",
         "Legacy Fabric",
         "Forge",
@@ -469,6 +653,7 @@ def main() -> int:
         "Any version",
         "TOUCH CONTROLS",
         "SIGN IN FROM MICROSOFT",
+        "Grass block version tile",
     )
     missing = [x for x in required if x not in source]
     if missing:
