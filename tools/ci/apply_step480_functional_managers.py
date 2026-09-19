@@ -130,6 +130,7 @@ HELPERS = r'''
         val queryPrefs = getSharedPreferences("droid_launcher_ui", MODE_PRIVATE)
         val query = queryPrefs.getString("query_" + type, "") ?: ""
         val pageOffset = queryPrefs.getInt("offset_" + type, 0).coerceAtLeast(0)
+        val category = queryPrefs.getString("category_" + type, "") ?: ""
         pageArea.addView(step375Title(titleValue, "Real Modrinth discovery · search, thumbnails, compatibility and install"))
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val field = android.widget.EditText(this).apply {
@@ -149,6 +150,39 @@ HELPERS = r'''
             LinearLayout.LayoutParams(dp(94), dp(46)).apply { marginStart = dp(7) })
         pageArea.addView(controls)
 
+        val filters = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            val row = LinearLayout(this@DroidLauncherUiActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+            }
+            listOf(
+                "All" to "",
+                "Adventure" to "adventure",
+                "Technology" to "technology",
+                "Optimization" to "optimization",
+                "Magic" to "magic",
+                "Fabric" to "fabric",
+                "Forge" to "forge",
+                "NeoForge" to "neoforge",
+                "Quilt" to "quilt"
+            ).forEach { pair ->
+                row.addView(step375Button(
+                    if (category == pair.second) "✓ " + pair.first else pair.first,
+                    category == pair.second
+                ) {
+                    queryPrefs.edit()
+                        .putString("category_" + type, pair.second)
+                        .putInt("offset_" + type, 0)
+                        .apply()
+                    showPage(type)
+                }, LinearLayout.LayoutParams(dp(112), dp(42)).apply {
+                    marginEnd = dp(6)
+                })
+            }
+            addView(row)
+        }
+        pageArea.addView(filters, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(7) })
+
         val listCard = step375Panel(10)
         listCard.addView(step375Text("DISCOVER", 11f, true).apply {
             setTextColor(android.graphics.Color.rgb(86, 240, 177))
@@ -161,7 +195,12 @@ HELPERS = r'''
         step480Run {
             try {
                 val q = java.net.URLEncoder.encode(query, "UTF-8")
-                val facets = java.net.URLEncoder.encode("[[\"project_type:" + projectType + "\"]]", "UTF-8")
+                val facetText = if (category.isBlank()) {
+                    "[[\"project_type:" + projectType + "\"]]"
+                } else {
+                    "[[\"project_type:" + projectType + "\"],[\"categories:" + category + "\"]]"
+                }
+                val facets = java.net.URLEncoder.encode(facetText, "UTF-8")
                 val u = java.net.URL("https://api.modrinth.com/v2/search?limit=8&offset=" + pageOffset + "&query=" + q + "&facets=" + facets)
                 val c = u.openConnection() as java.net.HttpURLConnection
                 c.connectTimeout = 7000
