@@ -35,13 +35,16 @@ def main() -> int:
     if missing:
         raise SystemExit("[canonical-nav-verify] missing: " + ", ".join(missing))
     if ('nav.addView(step375Nav("←") { canonicalNavigateBack() })' not in s and
-        '"←  Back" to { canonicalNavigateBack() }' not in s):
+        '"←  Back" to { canonicalNavigateBack() }' not in s and
+        'val back = button("←")' not in s):
         raise SystemExit("[canonical-nav-verify] back navigation is not wired")
     if ('"⌂" to { canonicalNavigateHome() }' not in s and
-        '"⌂  Home" to { canonicalNavigateHome() }' not in s):
+        '"⌂  Home" to { canonicalNavigateHome() }' not in s and
+        'val home = button("⌂")' not in s):
         raise SystemExit("[canonical-nav-verify] home navigation is not wired")
     if ('"▰" to { canonicalOpenCurrentInstanceFolder() }' not in s and
-        '"▰  Files" to { canonicalOpenCurrentInstanceFolder() }' not in s):
+        '"▰  Files" to { canonicalOpenCurrentInstanceFolder() }' not in s and
+        'val files = button("▰")' not in s):
         raise SystemExit("[canonical-nav-verify] folder navigation is not wired")
     for typo in ("Obtifine", "dofault", "mabile", "onnce", "acconding"):
         if typo in s:
