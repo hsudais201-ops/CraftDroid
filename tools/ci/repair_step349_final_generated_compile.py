@@ -243,9 +243,10 @@ def assert_final_ui_invariants(source: str) -> None:
         raise SystemExit('[step349] dynamic Minecraft version choices helper missing')
     if 'MinecraftLatestVersionManager.getCached(this)' not in source:
         raise SystemExit('[step349] cached Mojang latest-version lookup missing')
-    for version in ('26.3', '26.2', '26.1.2', '26.1.1', '26.1'):
-        if version not in source:
-            raise SystemExit(f'[step349] Minecraft {version} missing from final version choices')
+    if 'private fun minecraftVersionChoices(): List<String>' not in source:
+        raise SystemExit('[step349] dynamic Minecraft version choices helper missing')
+    if 'MinecraftLatestVersionManager.getCachedChoices(this)' not in source:
+        raise SystemExit('[step349] live Mojang release-choice cache lookup missing')
     if 'refreshLatestMinecraftVersion()' not in source:
         raise SystemExit('[step349] automatic latest-version refresh missing')
     if 'requestCode == CONTENT_PICKER_REQUEST' not in source: raise SystemExit('[step349] content picker callback missing')
