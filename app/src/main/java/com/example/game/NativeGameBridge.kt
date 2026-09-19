@@ -288,6 +288,11 @@ object NativeGameBridge {
         try { nativeKey(key, down, modifiers) } catch (_: Throwable) { }
     }
 
+    fun sendChar(codePoint: Int) {
+        if (!loaded) return
+        runCatching { nativeSendChar(codePoint) }
+    }
+
     fun sendGamepad(axis: Int, value: Float) {
         if (!loaded) return
         try { nativeGamepadAxis(axis, value) } catch (_: Throwable) { }
@@ -319,7 +324,7 @@ object NativeGameBridge {
     fun isJavaRunning(): Boolean = loaded && runCatching { nativeIsJavaRunning() }.getOrDefault(false)
 
     /** Embedded JVM bridge state: 0=IDLE, 1=STARTING, 2=RUNNING, 3=STOPPING, 4=EXITED (terminal after JLI_Launch returns). */
-    fun javaState(): Int = loaded && runCatching { nativeGetJavaState() }.getOrDefault(0)
+    fun javaState(): Int = if (loaded) runCatching { nativeGetJavaState() }.getOrDefault(0) else 0
 
     fun isLoaded(): Boolean = loaded
 
@@ -352,6 +357,7 @@ object NativeGameBridge {
     private external fun nativeMouse(x: Float, y: Float, dx: Float, dy: Float, button: Int, down: Boolean)
     private external fun nativeMouseScroll(horizontal: Float, vertical: Float)
     private external fun nativeKey(key: Int, down: Boolean, modifiers: Int)
+    private external fun nativeSendChar(codePoint: Int)
     private external fun nativeGamepadAxis(axis: Int, value: Float)
     private external fun nativeGamepadButton(button: Int, down: Boolean)
     private external fun nativePollEvent(out: IntArray): Int
