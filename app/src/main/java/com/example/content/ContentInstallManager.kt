@@ -100,8 +100,13 @@ class ContentInstallManager(
         archive.parentFile?.mkdirs()
         val ok = downloadManager.downloadSingleFile(DownloadTask(curseForge.distributionUrl(modId, fileId), archive, size = file.fileLength, name = file.fileName))
         if (!ok) throw IOException("CurseForge world download failed")
-        val installed = extractZipSafely(archive, fileSystem.savesDir)
-        archive.delete()
+        val installed = try {
+            extractWorldZipSafely(archive, fileSystem.savesDir, file.fileName)
+        } finally {
+            if (!archive.delete() && archive.exists()) {
+                LauncherLogger.warn("Could not delete temporary CurseForge world archive: " + archive.absolutePath)
+            }
+        }
         ContentInstallResult(installed)
     }
 
@@ -158,19 +163,29 @@ class ContentInstallManager(
         return files
     }
 
-    private fun extractZipSafely(archive: File, destination: File): List<File> {
+    private fun extractWorldZipSafely(archive: File, destination: File, displayName: String): List<File> {
         val files = mutableListOf<File>()
         ZipFile(archive).use { zip ->
-            zip.entries().asSequence().forEach { entry ->
-                if (entry.isDirectory) return@forEach
-                val out = safeChild(destination, entry.name)
+            val entries = zip.entries().asSequence().filterNot { it.isDirectory }.toList()
+            if (entries.isEmpty()) throw IOException("CurseForge world archive is empty")
+NaN
+            val root = if (hasDirectLevelDat) {
+                val baseName = displayName.substringBeforeLast(".").ifBlank { "Imported World" }
+                safeChild(destination, sanitizeWorldDirectoryName(baseName))
+            } else destination
+            entries.forEach { entry ->
+                val relative = entry.name.replace("\\\\", "/").trimStart("/")
+                val out = safeChild(root, relative)
                 zip.getInputStream(entry).use { input -> FileOutputStream(out).use { input.copyTo(it) } }
                 files += out
             }
         }
-        if (files.none { it.name == "level.dat" }) {
-            LauncherLogger.warn("CurseForge world archive installed without an immediately visible level.dat; inspect the resulting saves folder.")
+        if (files.none { it.name.equals("level.dat", true) }) {
+            throw IOException("CurseForge world archive contains no level.dat; it is not a valid Minecraft world save")
         }
         return files
     }
+
+    private fun sanitizeWorldDirectoryName(value: String): String =
+        value.replace(Regex("[^A-Za-z0-9 _-]"), "_").trim().take(80).ifBlank { "Imported World" }
 }
