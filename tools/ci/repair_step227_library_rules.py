@@ -160,7 +160,7 @@ def main() -> int:
     print('[step227] Mojang library rules are evaluated before download')
     if 'val classifier = preferredNativeClassifier(lib)' in text:
         print('[step227] native classifier selection is limited to the preferred Linux variant')
-    elif classifiers_start < 0:
+    elif 'val classifiers = libDownloads.optJSONObject("classifiers")' not in text:
         print('[step227] native classifier selection will be enforced by the canonical installer restore')
     else:
         raise SystemExit('[step227] classifier block was present but targeted selection was not installed')
