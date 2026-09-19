@@ -69,11 +69,17 @@ class ContentInstallManager(
         }
     }
 
-    suspend fun installCurseForgeFile(modId: Long, fileId: Long, destinationDir: File): ContentInstallResult = withContext(Dispatchers.IO) {
+    suspend fun installCurseForgeFile(
+        modId: Long,
+        fileId: Long,
+        destinationDir: File,
+        minecraftVersion: String,
+        loaderType: Int?
+    ): ContentInstallResult = withContext(Dispatchers.IO) {
         destinationDir.mkdirs()
         val project = curseForge.getProject(modId)
         val rootFile = curseForge.getFile(modId, fileId)
-        val dependencies = curseForge.resolveRequiredDependencies(rootFile)
+        val dependencies = curseForge.resolveRequiredDependencies(rootFile, minecraftVersion, loaderType)
         val allFiles = listOf(rootFile) + dependencies
         val tasks = allFiles.map { item ->
             DownloadTask(
