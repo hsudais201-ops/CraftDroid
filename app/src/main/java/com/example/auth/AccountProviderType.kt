@@ -23,7 +23,7 @@ enum class AccountProviderType(
 
     companion object {
         fun fromId(id: String?): AccountProviderType {
-            return entries.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: LOCAL_TEST
+            return entries.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: MICROSOFT
         }
     }
 }
