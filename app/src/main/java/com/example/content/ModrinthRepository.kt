@@ -66,42 +66,105 @@ class ModrinthRepository(private val context: Context) {
 
     suspend fun install(item: ContentItem, gameVersion: String): File {
         require(!item.isLocal) { "Item is already installed locally" }
-        val url = "$base/project/${item.id}/version".toHttpUrl().newBuilder()
+
+        val selected = selectCompatibleVersion(item, gameVersion)
+            ?: error("No compatible " + item.type.title + " version found for Minecraft " + gameVersion)
+        val selectedId = selected.optString("id").ifBlank { error("Modrinth returned a version without an id") }
+        installVersionRecursive(item.type, selectedId, gameVersion, item.loaders, linkedSetOf())
+        return File(context.cacheDir, "modrinth-install-complete-" + item.id)
+    }
+
+    private fun selectCompatibleVersion(item: ContentItem, gameVersion: String): JSONObject? {
+        val url = "$base/project/" + item.id + "/version".toHttpUrl().newBuilder()
             .addQueryParameter("game_versions", JSONArray().put(gameVersion).toString())
-            .addQueryParameter("limit", "20")
+            .addQueryParameter("limit", "50")
+            .addQueryParameter("featured", "true")
             .build()
         val request = Request.Builder().url(url).header("User-Agent", "DroidLauncher/2.4").build()
         val versions = client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) error("Could not load versions for ${item.name} (HTTP ${response.code})")
+            if (!response.isSuccessful) error("Could not load versions for " + item.name + " (HTTP " + response.code + ")")
             JSONArray(response.body?.string().orEmpty())
         }
-        var selected: JSONObject? = null
+        val preferredLoaders = item.loaders.filter {
+            it.lowercase() in setOf("fabric", "forge", "neoforge", "quilt", "liteloader")
+        }
         for (i in 0 until versions.length()) {
             val v = versions.optJSONObject(i) ?: continue
             val files = v.optJSONArray("files") ?: continue
-            if (files.length() > 0) { selected = v; if (v.optBoolean("featured")) break }
+            if (files.length() == 0) continue
+            val loaders = jsonStringArray(v, "loaders")
+            if (preferredLoaders.isNotEmpty() && loaders.none { it in preferredLoaders }) continue
+            return v
         }
-        val files = selected?.optJSONArray("files") ?: error("No compatible download found for ${item.name}")
-        var source: JSONObject? = null
-        for (i in 0 until files.length()) {
-            val f = files.optJSONObject(i) ?: continue
-            if (f.optBoolean("primary")) { source = f; break }
-            if (source == null) source = f
-        }
-        val fileObject = source ?: error("No file found for ${item.name}")
-        val downloadUrl = fileObject.optString("url")
-        require(downloadUrl.startsWith("https://")) { "Untrusted download URL" }
-        val tmp = File(context.cacheDir, "content-${System.nanoTime()}-${fileObject.optString("filename")}")
-        downloadVerified(downloadUrl, tmp, fileObject.optLong("size", -1), fileObject.optJSONObject("hashes")?.optString("sha1"))
+        return null
+    }
+
+    private fun installVersionRecursive(
+        type: ContentType,
+        versionId: String,
+        gameVersion: String,
+        preferredLoaders: List<String>,
+        visited: MutableSet<String>
+    ) {
+        if (!visited.add(versionId)) return
+        val version = fetchVersion(versionId)
+        val files = version.optJSONArray("files") ?: JSONArray()
+        val primary = (0 until files.length())
+            .mapNotNull { files.optJSONObject(it) }
+            .firstOrNull { it.optBoolean("primary") }
+            ?: files.optJSONObject(0)
+            ?: error("No downloadable file in Modrinth version " + versionId)
+
+        val url = primary.optString("url")
+        require(url.startsWith("https://")) { "Untrusted Modrinth download URL" }
+        val tmp = File(context.cacheDir, "mr-" + System.nanoTime() + "-" + primary.optString("filename"))
+        downloadVerified(url, tmp, primary.optLong("size", -1), primary.optJSONObject("hashes")?.optString("sha1"))
         try {
-            return when (item.type) {
-                ContentType.MODPACK -> MinecraftModpackManager.install(context, tmp).instanceDirectory
-                ContentType.MOD, ContentType.SHADER, ContentType.RESOURCE_PACK ->
-                    MinecraftContentManager.importFile(context, item.type.kind, tmp, fileObject.optString("filename"))
-                ContentType.WORLD -> error("Remote worlds are imported from the device")
+            if (type == ContentType.MODPACK) {
+                MinecraftModpackManager.install(context, tmp)
+            } else {
+                MinecraftContentManager.importFile(context, type.kind, tmp, primary.optString("filename"))
             }
         } finally {
             tmp.delete()
+        }
+
+        val dependencies = version.optJSONArray("dependencies") ?: JSONArray()
+        for (i in 0 until dependencies.length()) {
+            val dep = dependencies.optJSONObject(i) ?: continue
+            if (!dep.optString("dependency_type").equals("required", true)) continue
+            val depVersionId = dep.optString("version_id").ifBlank { null }
+            if (depVersionId != null) {
+                installVersionRecursive(type, depVersionId, gameVersion, preferredLoaders, visited)
+            } else {
+                val projectId = dep.optString("project_id").ifBlank { null } ?: continue
+                val depItem = ContentItem(
+                    id = projectId,
+                    type = ContentType.MOD,
+                    name = projectId,
+                    description = "",
+                    iconUrl = null,
+                    versions = listOf(gameVersion),
+                    loaders = preferredLoaders,
+                    categories = emptyList(),
+                    downloads = 0L
+                )
+                val selectedDep = selectCompatibleVersion(depItem, gameVersion)
+                    ?: error("Required dependency " + projectId + " has no compatible version for " + gameVersion)
+                val depId = selectedDep.optString("id").ifBlank { error("Dependency " + projectId + " has no version id") }
+                installVersionRecursive(ContentType.MOD, depId, gameVersion, preferredLoaders, visited)
+            }
+        }
+    }
+
+    private fun fetchVersion(versionId: String): JSONObject {
+        val request = Request.Builder()
+            .url(base + "/version/" + versionId)
+            .header("User-Agent", "DroidLauncher/2.4")
+            .build()
+        return client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) error("Modrinth version lookup failed (HTTP " + response.code + ")")
+            JSONObject(response.body?.string().orEmpty())
         }
     }
 
