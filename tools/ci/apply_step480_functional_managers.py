@@ -646,7 +646,14 @@ def main():
     # Make Home navigation truthful after a fresh state even if an old preference survives.
     old_oncreate = '''        if(step375Prefs().getBoolean("installed",false)) showPage("Home") else showPage("FirstRun")'''
     if old_oncreate in s:
-        s = s.replace(old_oncreate, '''        if(step375Prefs().getBoolean("installed",false) && minecraftVersionChoices().any { MinecraftVersionInstallManager.isInstalled(this, it) }) showPage("Home") else showPage("FirstRun")''', 1)
+        s = s.replace(old_oncreate, '''        val onboardingComplete = step375Prefs().getBoolean("installed", false)
+        if (!onboardingComplete) {
+            showPage("FirstRun")
+        } else if (minecraftVersionChoices().any { MinecraftVersionInstallManager.isInstalled(this, it) }) {
+            showPage("Home")
+        } else {
+            showPage("Versions")
+        }''', 1)
 
     ui.write_text(s, encoding="utf-8")
     print("[step480] functional content discovery, server ping, version install progress and first-run install flow applied")
