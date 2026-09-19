@@ -60,9 +60,9 @@ class JavaRuntimeManager(
 
         private val JRE_TAGS = mapOf(
             8 to "download_jre8",
-            17 to "release",
-            21 to "release",
-            25 to "release"
+            17 to "download_jre17",
+            21 to "download_jre21",
+            25 to "download_jre25"
         )
 
         private val JRE_SHA256 = mapOf(
