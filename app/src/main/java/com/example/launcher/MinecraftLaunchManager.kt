@@ -172,8 +172,13 @@ class MinecraftLaunchManager(
                 // Step 3: Checking Java
                 _state.value = LaunchState.Preparing(3, "Checking Java", "Detecting compatible OpenJDK runtime...")
                 LauncherLogger.info("Step 3/6: Checking Java requirement (${versionDetail.javaVersion.majorVersion})...")
-                val requiredJava = versionDetail.javaVersion.majorVersion
-                LauncherLogger.info("Minecraft ${versionDetail.id} declares Java $requiredJava")
+                val declaredJava = versionDetail.javaVersion.majorVersion
+                val requiredJava = currentSettings.javaMajorOverride ?: declaredJava
+                if (currentSettings.javaMajorOverride != null) {
+                    LauncherLogger.warn("Advanced Java override active: declared=" + declaredJava + " selected=" + requiredJava)
+                } else {
+                    LauncherLogger.info("Minecraft " + versionDetail.id + " declares Java " + declaredJava)
+                }
                 if (requiredJava !in setOf(8, 16, 17, 21, 25)) {
                     throw IllegalStateException(
                         "Minecraft ${versionDetail.id} requires unsupported Java $requiredJava. " +
@@ -224,8 +229,12 @@ class MinecraftLaunchManager(
                 }
                 LauncherLogger.info("Audio compatibility check passed: ${audioCheck.reason}")
 
+                val safeRendererRequest = com.example.logs.LaunchRecoveryPolicy.rendererFallbackFromPreviousCrash(
+                    fileSystem.rootDir,
+                    rendererBackend
+                )
                 val rendererDecision = com.example.renderer.RendererCompatibilityPolicy.choose(
-                    rendererBackend,
+                    safeRendererRequest,
                     rendererManager.gpuInfo,
                     versionDetail
                 )
@@ -273,14 +282,18 @@ class MinecraftLaunchManager(
                 }
                 LauncherLogger.info("Java compatibility gate passed: requested=$requiredJava runtime=$detectedRuntimeMajor")
 
+                val memoryPlan = com.example.logs.LaunchRecoveryPolicy.memoryPlan(fileSystem.appContext, ramMb)
+                val customMemorySafeJvmArgs = com.example.logs.LaunchRecoveryPolicy.stripUnsafeMemoryOverrides(customJvmArgs)
+                LauncherLogger.info("Launch memory plan: " + memoryPlan.reason)
                 val launchConfig = LaunchConfig(
                     versionDetail = versionDetail,
                     username = username,
                     uuid = uuid,
                     accessToken = accessToken,
                     isOfflineAccount = isOfflineAccount,
-                    ramMb = ramMb,
-                    customJvmArgs = customJvmArgs,
+                    ramMb = memoryPlan.maxRamMb,
+                    minRamMb = memoryPlan.minRamMb,
+                    customJvmArgs = customMemorySafeJvmArgs,
                     javaExecutable = javaRuntime.javaExecutable,
                     serverHost = serverHost,
                     serverPort = serverPort
