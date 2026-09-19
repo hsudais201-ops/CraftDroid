@@ -32,6 +32,7 @@ class MinecraftInstaller(
     suspend fun installVersion(
         versionId: String,
         versionJsonUrl: String,
+        versionJsonSha1: String? = null,
         onProgress: (DownloadProgress) -> Unit,
         onStatus: (String) -> Unit
     ): Boolean = withContext(Dispatchers.IO) {
@@ -51,7 +52,7 @@ class MinecraftInstaller(
             // 1. Download & save Version JSON
             val versionJsonFile = fileSystem.getVersionJsonFile(versionId)
             val jsonSuccess = downloadManager.downloadSingleFile(
-                DownloadTask(url = versionJsonUrl, destination = versionJsonFile, name = "$versionId.json")
+                DownloadTask(url = versionJsonUrl, destination = versionJsonFile, expectedSha1 = versionJsonSha1, name = "$versionId.json")
             )
             if (!jsonSuccess || !versionJsonFile.exists()) {
                 throw IOException("Failed to download $versionId.json")
@@ -138,7 +139,7 @@ class MinecraftInstaller(
             val assetTasks = collectAssetTasks(assetIndexFile)
             val assetsSuccess = downloadManager.downloadQueue(assetTasks, parallelism = 6, onProgressUpdate = onProgress)
             if (!assetsSuccess) {
-                LauncherLogger.warn("Some secondary assets failed to download, game may still launch.")
+                throw IOException("One or more Minecraft asset objects failed to download or verify")
             }
 
             // 7. Extract Native Libraries
@@ -198,18 +199,16 @@ class MinecraftInstaller(
                 val prefix = hash.substring(0, 2)
                 val destFile = fileSystem.getAssetObjectFile(hash)
 
-                if (!destFile.exists() || destFile.length() != size) {
-                    val url = "https://resources.download.minecraft.net/$prefix/$hash"
-                    tasks.add(
-                        DownloadTask(
-                            url = url,
-                            destination = destFile,
-                            expectedSha1 = hash,
-                            size = size,
-                            name = key
-                        )
+                val url = "https://resources.download.minecraft.net/$prefix/$hash"
+                tasks.add(
+                    DownloadTask(
+                        url = url,
+                        destination = destFile,
+                        expectedSha1 = hash,
+                        size = size,
+                        name = key
                     )
-                }
+                )
             }
         } catch (e: Exception) {
             LauncherLogger.error("Error reading asset index: ${e.message}")
