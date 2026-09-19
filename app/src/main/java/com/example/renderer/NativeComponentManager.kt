@@ -160,7 +160,7 @@ class NativeComponentManager(
     }
 
     fun inspectInstalled(): NativeStack? {
-        val abi = runCatching { archName() }.getOrNull() ?: return null
+        val abi = runCatching { archName() }.onFailure { LauncherLogger.warn("Native stack ABI probe failed: " + it.message) }.getOrNull() ?: return null
         // Runtime stacks are stored under lwjgl/<version-or-auto>/<abi>.
         // The old diagnostic path used <root>/<abi>, which made a correctly
         // installed stack appear to be missing. Prefer the active launch
