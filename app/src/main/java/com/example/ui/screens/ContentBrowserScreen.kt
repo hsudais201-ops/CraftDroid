@@ -62,7 +62,7 @@ import com.example.ui.LauncherViewModel
 import com.example.ui.content.ContentBrowserViewModel
 import com.example.ui.theme.UiTokens
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(androidx.compose.material.ExperimentalMaterialApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ContentBrowserScreen(viewModel: LauncherViewModel) {
     val container = LauncherContainer.get(viewModel.container.context)
