@@ -87,6 +87,7 @@ fun SettingsScreen(
     var showDevWarningDialog by remember { mutableStateOf(false) }
 
     var rendererDropdownExpanded by remember { mutableStateOf(false) }
+    var javaOverrideExpanded by remember { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxSize()) {
         TopAppBar(
@@ -185,6 +186,50 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.height(8.dp))
+
+                    ExposedDropdownMenuBox(
+                        expanded = javaOverrideExpanded,
+                        onExpandedChange = { javaOverrideExpanded = !javaOverrideExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = settings.javaRuntimeOverride?.let { "Java " + it + " (manual)" } ?: "Automatic (per Minecraft version)",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Java Runtime Override") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = javaOverrideExpanded) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                        )
+                        ExposedDropdownMenu(
+                            expanded = javaOverrideExpanded,
+                            onDismissRequest = { javaOverrideExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Automatic (recommended)") },
+                                onClick = {
+                                    viewModel.updateJavaRuntimeOverride(null)
+                                    javaOverrideExpanded = false
+                                }
+                            )
+                            runtimes.forEach { rt ->
+                                DropdownMenuItem(
+                                    text = { Text("Java " + rt.majorVersion + " — " + if (rt.isValid) "ready" else "not validated") },
+                                    onClick = {
+                                        viewModel.updateJavaRuntimeOverride(rt.majorVersion)
+                                        javaOverrideExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        "Manual selection is validated against the Minecraft version requirement before launch.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     runtimes.forEach { rt ->
                         Row(
@@ -291,7 +336,9 @@ fun SettingsScreen(
                             Text("GPU: ${gpuInfo.glRenderer}", style = MaterialTheme.typography.bodySmall)
                             Text("Vendor: ${gpuInfo.glVendor}", style = MaterialTheme.typography.bodySmall)
                             Text("OpenGL ES: ${gpuInfo.glEsVersion}", style = MaterialTheme.typography.bodySmall)
-                            Text("Vulkan Support: ${if (gpuInfo.hasVulkan) "Yes" else "No"}", style = MaterialTheme.typography.bodySmall)
+                            Text("Vulkan Support: " + if (gpuInfo.hasVulkan) "Yes" else "No", style = MaterialTheme.typography.bodySmall)
+                            Text("Vulkan API: " + (gpuInfo.vulkanApiVersion ?: "Unavailable"), style = MaterialTheme.typography.bodySmall)
+                            Text("Vulkan 1.2 gate: " + if (gpuInfo.hasVulkan12) "Pass" else "Fail", style = MaterialTheme.typography.bodySmall)
                             Text("CPU Architecture: ${gpuInfo.cpuAbi}", style = MaterialTheme.typography.bodySmall)
                         }
                     }

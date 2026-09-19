@@ -100,6 +100,7 @@ class ControlLayoutStorage(private val context: Context) {
             activeProfileFile.readText().trim()
         } else if (storageFile.exists()) {
             runCatching { JSONObject(storageFile.readText()).optString("activeProfileId", "default") }
+                .onFailure { LauncherLogger.warn("Failed to read active control profile id: " + it.message) }
                 .getOrDefault("default")
         } else {
             "default"

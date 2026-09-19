@@ -9,6 +9,7 @@ import com.example.launcher.LaunchCommandBuilder
 import com.example.launcher.LaunchConfig
 import com.example.logs.CrashAnalyzer
 import com.example.versions.VersionJsonParser
+import com.example.versions.MinecraftJavaRequirements
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -316,4 +317,21 @@ class LauncherCoreUnitTest {
         assertFalse(localAccount.isAuthenticated)
         assertTrue(localAccount.isLocalTestProfile)
     }
+
+    @Test
+    fun testMinecraftJavaRequirementMapping() {
+        assertEquals(25, MinecraftJavaRequirements.requiredMajor("26.1"))
+        assertEquals(25, MinecraftJavaRequirements.requiredMajor("26.2"))
+        assertEquals(25, MinecraftJavaRequirements.requiredMajor("26.3"))
+        assertEquals(21, MinecraftJavaRequirements.requiredMajor("1.21.11"))
+        assertEquals(21, MinecraftJavaRequirements.requiredMajor("1.20.5"))
+        assertEquals(17, MinecraftJavaRequirements.requiredMajor("1.20.4"))
+        assertEquals(17, MinecraftJavaRequirements.requiredMajor("1.18.2"))
+        assertEquals(16, MinecraftJavaRequirements.requiredMajor("1.17.1"))
+        assertEquals(16, MinecraftJavaRequirements.requiredMajor("1.17"))
+        assertEquals(8, MinecraftJavaRequirements.requiredMajor("1.16.5"))
+        assertTrue(MinecraftJavaRequirements.isCompatibleRuntime(16, 17))
+        assertFalse(MinecraftJavaRequirements.isCompatibleRuntime(21, 17))
+    }
+
 }

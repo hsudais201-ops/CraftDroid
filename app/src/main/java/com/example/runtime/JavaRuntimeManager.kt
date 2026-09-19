@@ -19,6 +19,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.nio.file.Files
+import java.net.URI
 import java.security.MessageDigest
 import java.util.zip.ZipInputStream
 
@@ -253,29 +254,48 @@ class JavaRuntimeManager(
         // Java 8 is a real Android JRE published for all four supported ABIs.
         // Its dedicated release exposes machine-readable SHA-256 digests.
         if (major !in SUPPORTED_MAJORS) return null
-        if (major == 25 && arch == "x86") return null // upstream does not publish it
         val fileName = "jre$major-android-$arch.tar.xz"
         val tag = JRE_TAGS[major] ?: return null
+        val sha = JRE_SHA256["$major/$arch"]?.takeIf { it.length == 64 } ?: return null
         return RuntimePackage(
             major = major,
             arch = arch,
             url = JRE_BASE + tag + "/" + fileName,
-            sha256 = JRE_SHA256["$major/$arch"]?.takeIf { it.length == 64 }
+            sha256 = sha
         )
     }
 
     private fun download(url: String, destination: File) {
-        val request = Request.Builder().url(url)
-            .header("User-Agent", "CraftDroid-Launcher/1.3")
-            .build()
-        okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) error("HTTP ${response.code}")
-            val body = response.body ?: error("Empty runtime download")
-            destination.parentFile?.mkdirs()
-            FileOutputStream(destination).use { out -> body.byteStream().use { it.copyTo(out) } }
+        require(URI(url).scheme?.equals("https", true) == true) {
+            "Non-HTTPS runtime URL rejected: $url"
         }
+        destination.parentFile?.mkdirs()
+        for (attempt in 0 until 3) {
+            val resumeBytes = if (destination.isFile) destination.length() else 0L
+            val builder = Request.Builder().url(url)
+                .header("User-Agent", "CraftDroid-Launcher/1.4")
+            if (resumeBytes > 0L) builder.header("Range", "bytes=" + resumeBytes + "-")
+            val response = okHttpClient.newCall(builder.build()).execute()
+            var retry = false
+            response.use {
+                if (it.code == 416 && resumeBytes > 0L) {
+                    destination.delete()
+                    retry = true
+                } else {
+                    if (!it.isSuccessful) error("HTTP " + it.code)
+                    val body = it.body ?: error("Empty runtime download")
+                    val append = resumeBytes > 0L && it.code == 206
+                    FileOutputStream(destination, append).use { out ->
+                        body.byteStream().use { input -> input.copyTo(out) }
+                        out.fd.sync()
+                    }
+                    return
+                }
+            }
+            if (!retry || attempt >= 2) error("HTTP 416 after runtime download resume reset")
+        }
+        error("Runtime download exhausted retry attempts")
     }
-
     private fun verifySha256(file: File, expected: String): Boolean {
         val digest = MessageDigest.getInstance("SHA-256")
         FileInputStream(file).use { input ->
@@ -367,8 +387,9 @@ class JavaRuntimeManager(
 
     suspend fun installRuntime(majorVersion: Int, onStatus: (String) -> Unit): Boolean = withContext(Dispatchers.IO) {
         try {
-            val pkg = packageFor(majorVersion, getArch())
-                ?: throw IllegalStateException("No Android JRE package for Java $majorVersion/${getArch()}")
+            val arch = getArch()
+            val pkg = packageFor(majorVersion, arch)
+                ?: throw IllegalStateException("No verified Android OpenJDK " + majorVersion + " package is published for ABI " + arch + ". The launcher refuses to install an unverified or desktop-only runtime.")
 
             val downloadDir = File(fileSystem.runtimeDir, "downloads")
             val archive = File(downloadDir, "jre-$majorVersion-${pkg.arch}.tar.xz")
@@ -389,27 +410,47 @@ class JavaRuntimeManager(
             onStatus("Extracting OpenJDK $majorVersion…")
             staging.deleteRecursively()
             extractTarXz(archive, staging)
-            val javaHome = findJavaHome(staging)
+            val stagedJavaHome = findJavaHome(staging)
                 ?: throw IllegalStateException("Downloaded archive does not contain bin/java")
 
-            target.deleteRecursively()
-            target.parentFile?.mkdirs()
-            if (!javaHome.renameTo(target)) {
-                javaHome.copyRecursively(target, overwrite = true)
+            val stagedJava = File(stagedJavaHome, "bin/java")
+            stagedJava.setExecutable(true, false)
+            val stagedValidation = testJavaExecutable(stagedJava)
+            if (!stagedValidation.first) {
                 staging.deleteRecursively()
+                throw IllegalStateException("Extracted Java failed validation: ${stagedValidation.second}")
             }
-            staging.deleteRecursively()
 
-            val javaExe = File(target, "bin/java")
-            javaExe.setExecutable(true, false)
-            val validation = testJavaExecutable(javaExe)
-            if (!validation.first) {
-                target.deleteRecursively()
-                throw IllegalStateException("Installed Java failed validation: ${validation.second}")
+            target.parentFile?.mkdirs()
+            val backup = File(fileSystem.javaDir, "java-$majorVersion.backup-${System.currentTimeMillis()}")
+            if (target.exists() && !target.renameTo(backup)) {
+                staging.deleteRecursively()
+                throw IllegalStateException("Could not safely replace existing Java $majorVersion runtime")
+            }
+
+            try {
+                if (!stagedJavaHome.renameTo(target)) {
+                    stagedJavaHome.copyRecursively(target, overwrite = true)
+                }
+                val javaExe = File(target, "bin/java")
+                javaExe.setExecutable(true, false)
+                val validation = testJavaExecutable(javaExe)
+                if (!validation.first) {
+                    target.deleteRecursively()
+                    if (backup.exists()) backup.renameTo(target)
+                    throw IllegalStateException("Installed Java failed validation: ${validation.second}")
+                }
+                backup.deleteRecursively()
+            } catch (e: Exception) {
+                if (backup.exists() && !target.exists()) backup.renameTo(target)
+                staging.deleteRecursively()
+                throw e
+            } finally {
+                staging.deleteRecursively()
             }
 
             refreshRuntimes()
-            LauncherLogger.info("Installed Android OpenJDK $majorVersion/${pkg.arch}: ${validation.second}")
+            LauncherLogger.info("Installed Android OpenJDK " + majorVersion + "/" + pkg.arch + " successfully")
             onStatus("OpenJDK $majorVersion ready")
             true
         } catch (e: Exception) {

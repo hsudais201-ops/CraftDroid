@@ -1,0 +1,231 @@
+package com.example.content
+
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.IOException
+import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
+
+data class CurseForgeSearchResult(
+    val id: Long,
+    val name: String,
+    val slug: String,
+    val summary: String,
+    val pageUrl: String,
+    val classId: Int?,
+    val categoryIds: List<Int>,
+    val available: Boolean,
+    val allowDistribution: Boolean
+)
+
+data class CurseForgeCategory(val id: Int, val name: String, val classId: Int?, val parentId: Int?)
+
+data class CurseForgeFile(
+    val id: Long,
+    val modId: Long,
+    val fileName: String,
+    val displayName: String,
+    val downloadUrl: String?,
+    val fileLength: Long,
+    val gameVersions: List<String>,
+    val dependencies: List<Pair<Long, Long?>>,
+    val pageUrl: String
+)
+
+class CurseForgeClient(private val http: OkHttpClient, private val proxyBaseUrl: String) {
+    private val responseCache = ConcurrentHashMap<String, Pair<Long, String>>()
+    private val cacheTtlMs = 5 * 60 * 1000L
+    companion object { const val GAME_ID = 432 }
+
+    private fun requireProxy() {
+        if (proxyBaseUrl.isBlank()) {
+            throw IllegalStateException("CurseForge is not configured. Set CURSEFORGE_PROXY_BASE_URL on your backend; never ship the API key in the APK.")
+        }
+    }
+
+    suspend fun categories(): JSONArray = withContext(Dispatchers.IO) {
+        requireProxy()
+        getJson(proxyBaseUrl + "/v1/categories?gameId=" + GAME_ID).optJSONArray("data") ?: JSONArray()
+    }
+
+    suspend fun categoryList(): List<CurseForgeCategory> = withContext(Dispatchers.IO) {
+        val data = categories()
+        buildList {
+            for (i in 0 until data.length()) {
+                val item = data.optJSONObject(i) ?: continue
+                add(
+                    CurseForgeCategory(
+                        id = item.optInt("id"),
+                        name = item.optString("name"),
+                        classId = item.optInt("classId", -1).takeIf { it >= 0 },
+                        parentId = item.optInt("parentId", -1).takeIf { it >= 0 }
+                    )
+                )
+            }
+        }
+    }
+
+    suspend fun search(query: String = "", gameVersion: String? = null, loaderType: Int? = null, classId: Int? = null, categoryIds: List<Int> = emptyList(), index: Int = 0): List<CurseForgeSearchResult> =
+        withContext(Dispatchers.IO) {
+            requireProxy()
+            val params = mutableListOf("gameId=" + GAME_ID, "pageSize=20", "index=" + index.coerceAtLeast(0))
+            if (query.isNotBlank()) params += "searchFilter=" + enc(query)
+            gameVersion?.let { params += "gameVersion=" + enc(it) }
+            loaderType?.let { params += "modLoaderType=" + it }
+            classId?.let { params += "classId=" + it }
+            if (categoryIds.isNotEmpty()) params += "categoryIds=" + categoryIds.joinToString(",")
+            val data = getJson(proxyBaseUrl + "/v1/mods/search?" + params.joinToString("&")).optJSONArray("data") ?: JSONArray()
+            buildList {
+                for (i in 0 until data.length()) {
+                    val item = data.optJSONObject(i) ?: continue
+                    val links = item.optJSONObject("links")
+                    add(CurseForgeSearchResult(
+                        item.optLong("id"),
+                        item.optString("name"),
+                        item.optString("slug"),
+                        item.optString("summary"),
+                        links?.optString("websiteUrl") ?: "https://www.curseforge.com/",
+                        item.optInt("classId", -1).takeIf { it >= 0 },
+                        ints(item.optJSONArray("categories")),
+                        item.optBoolean("isAvailable", true),
+                        item.optBoolean("allowModDistribution", true)
+                    ))
+                }
+            }
+        }
+
+    suspend fun getFile(modId: Long, fileId: Long): CurseForgeFile = withContext(Dispatchers.IO) {
+        requireProxy()
+        parseFile(getJson(proxyBaseUrl + "/v1/mods/" + modId + "/files/" + fileId).optJSONObject("data")
+            ?: throw IOException("CurseForge returned no file metadata"))
+    }
+
+    suspend fun latestCompatibleFile(
+        modId: Long,
+        gameVersion: String,
+        loaderType: Int? = null
+    ): CurseForgeFile = withContext(Dispatchers.IO) {
+        requireProxy()
+        val params = mutableListOf(
+            "gameVersion=" + enc(gameVersion),
+            "pageSize=1",
+            "sortField=2",
+            "sortOrder=desc"
+        )
+        loaderType?.let { params += "modLoaderType=" + it }
+        val data = getJson(proxyBaseUrl + "/v1/mods/" + modId + "/files?" + params.joinToString("&"))
+            .optJSONArray("data") ?: JSONArray()
+        val item = data.optJSONObject(0) ?: throw IOException(
+            "CurseForge has no compatible file for project " + modId + " and Minecraft " + gameVersion
+        )
+        parseFile(item)
+    }
+
+    suspend fun getProject(modId: Long): CurseForgeSearchResult = withContext(Dispatchers.IO) {
+        requireProxy()
+        val item = getJson(proxyBaseUrl + "/v1/mods/" + modId).optJSONObject("data")
+            ?: throw IOException("CurseForge returned no project metadata")
+        val links = item.optJSONObject("links")
+        CurseForgeSearchResult(
+            item.optLong("id"), item.optString("name"), item.optString("slug"), item.optString("summary"),
+            links?.optString("websiteUrl") ?: "https://www.curseforge.com/",
+            item.optInt("classId", -1).takeIf { it >= 0 },
+            ints(item.optJSONArray("categories")),
+            item.optBoolean("isAvailable", true),
+            item.optBoolean("allowModDistribution", true)
+        )
+    }
+
+    suspend fun resolveRequiredDependencies(
+        root: CurseForgeFile,
+        gameVersion: String,
+        loaderType: Int?,
+        maxNodes: Int = 128
+    ): List<CurseForgeFile> = withContext(Dispatchers.IO) {
+        val resolved = LinkedHashMap<String, CurseForgeFile>()
+        val queue = ArrayDeque<Pair<Long, Long?>>()
+        root.dependencies.forEach(queue::addLast)
+        while (queue.isNotEmpty()) {
+            if (resolved.size >= maxNodes) throw IOException("CurseForge dependency graph exceeded " + maxNodes + " nodes")
+            val (modId, fileId) = queue.removeFirst()
+            val file = if (fileId != null) getFile(modId, fileId) else latestCompatibleFile(modId, gameVersion, loaderType)
+            val key = modId.toString() + ":" + file.id
+            if (resolved.containsKey(key)) continue
+            resolved[key] = file
+            file.dependencies.forEach(queue::addLast)
+        }
+        resolved.values.toList()
+    }
+
+    suspend fun distributionUrl(modId: Long, fileId: Long): String {
+        val project = getProject(modId)
+        val file = getFile(modId, fileId)
+        if (!project.available || !project.allowDistribution || file.downloadUrl.isNullOrBlank()) {
+            throw CurseForgeDistributionDisabledException(
+                project.pageUrl,
+                "Third-party distribution is disabled for " + file.fileName
+            )
+        }
+        return file.downloadUrl
+    }
+
+    private fun parseFile(item: JSONObject): CurseForgeFile {
+        val links = item.optJSONObject("links")
+        val deps = item.optJSONArray("dependencies") ?: JSONArray()
+        val dependencies = buildList<Pair<Long, Long?>> {
+            for (i in 0 until deps.length()) {
+                val d = deps.optJSONObject(i) ?: continue
+                if (d.optInt("relationType", -1) == 3 && d.optLong("modId") > 0) {
+                    add(d.optLong("modId") to d.optLong("fileId", 0).takeIf { it > 0 })
+                }
+            }
+        }
+        return CurseForgeFile(
+            item.optLong("id"), item.optLong("modId"), item.optString("fileName"),
+            item.optString("displayName"), item.optString("downloadUrl").takeIf { it.isNotBlank() },
+            item.optLong("fileLength", 0L), strings(item.optJSONArray("gameVersions")),
+            dependencies, links?.optString("websiteUrl") ?: "https://www.curseforge.com/"
+        )
+    }
+
+    private suspend fun getJson(url: String): JSONObject {
+        val cached = responseCache[url]?.takeIf { System.currentTimeMillis() - it.first < cacheTtlMs }?.second
+        if (cached != null) return JSONObject(cached)
+        for (attempt in 0 until 3) {
+            val request = Request.Builder().url(url).header("Accept", "application/json")
+                .header("User-Agent", "CraftDroid-Launcher/2.5").build()
+            val response = http.newCall(request).execute()
+            var retry = false
+            var result: String? = null
+            response.use {
+                if (it.code == 429) {
+                    val retryAfter = it.header("Retry-After")?.toLongOrNull()?.coerceIn(1L, 30L) ?: ((attempt + 1L) * 2L)
+                    delay(retryAfter * 1000L)
+                    retry = true
+                } else {
+                    if (!it.isSuccessful) throw IOException("CurseForge HTTP " + it.code + " for " + url)
+                    result = it.body?.string() ?: throw IOException("CurseForge returned an empty response")
+                }
+            }
+            if (retry) continue
+            val body = result!!
+            responseCache[url] = System.currentTimeMillis() to body
+            return JSONObject(body)
+        }
+        throw IOException("CurseForge rate limit persisted after 3 attempts")
+    }
+    private fun strings(a: JSONArray?): List<String> =
+        if (a == null) emptyList() else buildList { for (i in 0 until a.length()) add(a.optString(i)) }
+
+    private fun ints(a: JSONArray?): List<Int> =
+        if (a == null) emptyList() else buildList { for (i in 0 until a.length()) add(a.optInt(i)) }
+
+    private fun enc(v: String): String = URLEncoder.encode(v, "UTF-8")
+}
+
+class CurseForgeDistributionDisabledException(val pageUrl: String, message: String) : IOException(message)

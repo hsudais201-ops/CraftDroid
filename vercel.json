@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/curseforge/[...path].ts": {
+      "maxDuration": 30
+    }
+  }
+}

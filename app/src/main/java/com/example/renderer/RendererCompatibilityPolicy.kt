@@ -37,9 +37,9 @@ object RendererCompatibilityPolicy {
 
         return when (effectiveRequested) {
             RendererBackend.ZINK -> {
-                if (!gpu.hasVulkan) {
+                if (!gpu.hasVulkan12) {
                     Decision(requested, RendererBackend.GL4ES, true,
-                        "Zink requested but Vulkan is unavailable; falling back to GL4ES")
+                        "Zink requested but Vulkan 1.2 is unavailable; falling back to GL4ES")
                 } else if (!modern) {
                     Decision(requested, RendererBackend.GL4ES, true,
                         "Zink is disabled for pre-1.17 versions in the conservative policy")
@@ -91,10 +91,10 @@ object RendererCompatibilityPolicy {
             } else {
                 fallback("MobileGlues native backend is unavailable on the installed device stack")
             }
-            RendererBackend.ZINK -> if (stack.hasZink && gpu.hasVulkan) {
-                Decision(backend, backend, true, "Zink/Mesa native backend is installed and Vulkan is available")
+            RendererBackend.ZINK -> if (stack.hasZink && gpu.hasVulkan12) {
+                Decision(backend, backend, true, "Zink/Mesa native backend is installed and Vulkan 1.2 is available")
             } else {
-                fallback("Zink native backend or Vulkan support is unavailable; using GL4ES")
+                fallback("Zink native backend or Vulkan 1.2 support is unavailable; using GL4ES")
             }
             RendererBackend.COMPATIBILITY -> Decision(backend, backend, true, "Compatibility mode does not require a third-party renderer")
             RendererBackend.AUTO -> error("AUTO must be resolved before installed-backend validation")

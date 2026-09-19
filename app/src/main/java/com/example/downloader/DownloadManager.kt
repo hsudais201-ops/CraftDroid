@@ -15,6 +15,7 @@ import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.net.URI
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
@@ -59,16 +60,24 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
         isCancelled = true
     }
 
+    private fun requireHttps(rawUrl: String, label: String) {
+        val scheme = runCatching { URI(rawUrl).scheme?.lowercase() }.getOrNull()
+        require(scheme == "https") { "Non-HTTPS download URL rejected for $label" }
+    }
+
     suspend fun downloadSingleFile(
         task: DownloadTask,
         verifyHash: Boolean = true,
         maxRetries: Int = 3
     ): Boolean = withContext(Dispatchers.IO) {
         isCancelled = false
-        if (task.destination.exists() && task.destination.length() > 0) {
-            if (!verifyHash || HashVerifier.verifySha1(task.destination, task.expectedSha1)) {
-                return@withContext true
-            }
+        requireHttps(task.url, task.name)
+        if (task.destination.isFile && task.destination.length() > 0L) {
+            val sizeOk = task.size <= 0L || task.destination.length() == task.size
+            val hashOk = !verifyHash || task.expectedSha1.isNullOrBlank() ||
+                HashVerifier.verifySha1(task.destination, task.expectedSha1)
+            if (sizeOk && hashOk) return@withContext true
+            if (!sizeOk || !hashOk) task.destination.delete()
         }
 
         var attempt = 0
@@ -78,20 +87,30 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
                 task.destination.parentFile?.mkdirs()
                 val tempFile = File(task.destination.parentFile, "${task.destination.name}.download")
 
-                val request = Request.Builder()
+                val resumeBytes = if (tempFile.isFile) tempFile.length() else 0L
+                val requestBuilder = Request.Builder()
                     .url(task.url)
-                    .header("User-Agent", "CraftDroid-Launcher/1.3")
-                    .build()
+                    .header("User-Agent", "CraftDroid-Launcher/1.4")
+                if (resumeBytes > 0L) requestBuilder.header("Range", "bytes=$resumeBytes-")
+                val request = requestBuilder.build()
 
                 okHttpClient.newCall(request).execute().use { response ->
+                    if (response.code == 416 && resumeBytes > 0L) {
+                        tempFile.delete()
+                        throw IOException("HTTP 416; partial download reset for ${task.name}")
+                    }
                     if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
                     val body = response.body ?: throw IOException("Empty body")
 
                     body.byteStream().use { input ->
-                        FileOutputStream(tempFile).use { output ->
+                        FileOutputStream(tempFile, resumeBytes > 0L && response.code == 206).use { output ->
                             input.copyTo(output)
                         }
                     }
+                }
+
+                if (task.size > 0L && tempFile.length() != task.size) {
+                    throw IOException("Size mismatch for " + task.name + ": " + tempFile.length() + "/" + task.size)
                 }
 
                 if (verifyHash && !task.expectedSha1.isNullOrBlank()) {
@@ -126,6 +145,7 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
         val totalBytes = tasks.sumOf { it.size }
         val completedCount = AtomicInteger(0)
         val downloadedBytesCounter = AtomicLong(0L)
+        val perTaskBytes = java.util.concurrent.ConcurrentHashMap<String, AtomicLong>()
 
         val startTime = System.currentTimeMillis()
         var lastSampleTime = startTime
@@ -150,13 +170,21 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
                     semaphore.withPermit {
                         if (isCancelled) return@withPermit false
 
-                        // Check if already downloaded and valid
-                        if (task.destination.exists() && task.destination.length() > 0) {
-                            if (task.expectedSha1.isNullOrBlank() || HashVerifier.verifySha1(task.destination, task.expectedSha1)) {
+                        requireHttps(task.url, task.name)
+                        // Check if already downloaded and valid.
+                        if (task.destination.isFile && task.destination.length() > 0L) {
+                            val sizeOk = task.size <= 0L || task.destination.length() == task.size
+                            val hashOk = task.expectedSha1.isNullOrBlank() ||
+                                HashVerifier.verifySha1(task.destination, task.expectedSha1)
+                            if (sizeOk && hashOk) {
                                 completedCount.incrementAndGet()
-                                downloadedBytesCounter.addAndGet(task.destination.length())
+                                val previous = perTaskBytes.putIfAbsent(task.destination.absolutePath, AtomicLong(task.destination.length()))
+                                if (previous == null) {
+                                    downloadedBytesCounter.addAndGet(task.destination.length())
+                                }
                                 return@withPermit true
                             }
+                            task.destination.delete()
                         }
 
                         var success = false
@@ -167,22 +195,42 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
                                 task.destination.parentFile?.mkdirs()
                                 val tempFile = File(task.destination.parentFile, "${task.destination.name}.tmp")
 
-                                val request = Request.Builder()
+                                val resumeBytes = if (tempFile.isFile) tempFile.length() else 0L
+                                val progressBytes = perTaskBytes.computeIfAbsent(
+                                    task.destination.absolutePath
+                                ) { AtomicLong(resumeBytes) }
+                                if (resumeBytes > progressBytes.get()) {
+                                    downloadedBytesCounter.addAndGet(resumeBytes - progressBytes.get())
+                                    progressBytes.set(resumeBytes)
+                                }
+                                val requestBuilder = Request.Builder()
                                     .url(task.url)
-                                    .header("User-Agent", "CraftDroid-Launcher/1.3")
-                                    .build()
+                                    .header("User-Agent", "CraftDroid-Launcher/1.4")
+                                if (resumeBytes > 0L) requestBuilder.header("Range", "bytes=$resumeBytes-")
+                                val request = requestBuilder.build()
 
                                 okHttpClient.newCall(request).execute().use { response ->
-                                    if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
+                                    if (response.code == 416 && resumeBytes > 0L) {
+                                        tempFile.delete()
+                                        val oldBytes = progressBytes.getAndSet(0L)
+                                        downloadedBytesCounter.addAndGet(-oldBytes)
+                                        throw IOException("HTTP 416; partial download reset for " + task.name)
+                                    }
+                                    if (!response.isSuccessful) throw IOException("HTTP " + response.code)
+                                    if (resumeBytes > 0L && response.code == 200) {
+                                        val oldBytes = progressBytes.getAndSet(0L)
+                                        downloadedBytesCounter.addAndGet(-oldBytes)
+                                    }
                                     val body = response.body ?: throw IOException("Empty body")
 
                                     val buffer = ByteArray(8192)
                                     body.byteStream().use { input ->
-                                        FileOutputStream(tempFile).use { output ->
+                                        FileOutputStream(tempFile, resumeBytes > 0L && response.code == 206).use { output ->
                                             var bytesRead: Int
                                             while (input.read(buffer).also { bytesRead = it } != -1) {
                                                 if (isCancelled) throw IOException("Cancelled")
                                                 output.write(buffer, 0, bytesRead)
+                                                progressBytes.addAndGet(bytesRead.toLong())
                                                 val currentTotal = downloadedBytesCounter.addAndGet(bytesRead.toLong())
 
                                                 // Update speed calculation every 500ms
@@ -215,6 +263,10 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
                                             }
                                         }
                                     }
+                                }
+
+                                if (task.size > 0L && tempFile.length() != task.size) {
+                                    throw IOException("Size mismatch for " + task.name + ": " + tempFile.length() + "/" + task.size)
                                 }
 
                                 if (!task.expectedSha1.isNullOrBlank()) {

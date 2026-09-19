@@ -11,6 +11,9 @@ import com.example.auth.MinecraftAuthManager
 import com.example.auth.SecureAccountStorage
 import com.example.core.db.AppDatabase
 import com.example.downloader.DownloadManager
+import com.example.content.ContentInstallManager
+import com.example.content.CurseForgeClient
+import com.example.content.ModrinthClient
 import com.example.filesystem.MinecraftFileSystem
 import com.example.input.ControllerManager
 import com.example.input.KeyboardManager
@@ -95,6 +98,14 @@ class LauncherContainer private constructor(context: Context) {
     }
 
     val downloadManager: DownloadManager by lazy { DownloadManager(okHttpClient) }
+
+    val modrinthClient: ModrinthClient by lazy { ModrinthClient(okHttpClient) }
+    val curseForgeClient: CurseForgeClient by lazy {
+        CurseForgeClient(okHttpClient, com.example.BuildConfig.CURSEFORGE_PROXY_BASE_URL)
+    }
+    val contentInstallManager: ContentInstallManager by lazy {
+        ContentInstallManager(fileSystem, downloadManager, modrinthClient, curseForgeClient)
+    }
     val versionParser: VersionJsonParser by lazy { VersionJsonParser() }
     val versionInheritanceResolver: com.example.versions.VersionInheritanceResolver by lazy { com.example.versions.VersionInheritanceResolver(fileSystem, okHttpClient) }
     val installer: MinecraftInstaller by lazy {
@@ -102,6 +113,10 @@ class LauncherContainer private constructor(context: Context) {
     }
     val fabricLoaderInstaller: com.example.minecraft.FabricLoaderInstaller by lazy {
         com.example.minecraft.FabricLoaderInstaller(fileSystem, downloadManager, okHttpClient)
+    }
+
+    val quiltLoaderInstaller: com.example.minecraft.QuiltLoaderInstaller by lazy {
+        com.example.minecraft.QuiltLoaderInstaller(fileSystem, downloadManager, okHttpClient)
     }
     val forgeNeoForgeInstaller: com.example.minecraft.ForgeNeoForgeInstaller by lazy {
         com.example.minecraft.ForgeNeoForgeInstaller(fileSystem, downloadManager, okHttpClient, javaManager)

@@ -56,8 +56,8 @@ class VersionJsonParser {
         val assets = root.optString("assets", null)
         val logging = root.optJSONObject("logging")?.optJSONObject("client")?.let { client ->
             val file = client.optJSONObject("file")
-            val id = client.optString("argument", "${path}")
-                .removePrefix("${")
+            val id = client.optString("argument", "\${path}")
+                .removePrefix("\${")
                 .removeSuffix("}")
                 .ifBlank { "client" }
             if (file != null) {
@@ -256,11 +256,6 @@ class VersionJsonParser {
         return LibraryArtifact(path = path, sha1 = "", size = 0L, url = url)
     }
 
-    private fun inferJavaVersion(versionId: String): Int {
-        return when {
-            versionId.startsWith("1.21") || versionId.startsWith("1.20.5") || versionId.startsWith("1.20.6") -> 21
-            versionId.startsWith("1.17") || versionId.startsWith("1.18") || versionId.startsWith("1.19") || versionId.startsWith("1.20") -> 17
-            else -> 8
-        }
-    }
+    private fun inferJavaVersion(versionId: String): Int =
+        MinecraftJavaRequirements.requiredMajor(versionId)
 }

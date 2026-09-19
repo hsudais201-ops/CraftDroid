@@ -81,11 +81,7 @@ class VersionManager(
                 val sha1 = v.getString("sha1")
 
                 val isInstalled = fileSystem.getVersionJarFile(id).exists() && fileSystem.getVersionJsonFile(id).exists()
-                val javaReq = when {
-                    id.startsWith("1.21") || id.startsWith("1.20.5") || id.startsWith("1.20.6") -> 21
-                    id.startsWith("1.17") || id.startsWith("1.18") || id.startsWith("1.19") || id.startsWith("1.20") -> 17
-                    else -> 8
-                }
+                val javaReq = MinecraftJavaRequirements.requiredMajor(id)
 
                 if (includeSnapshots || type == "release") {
                     summaries.add(
@@ -137,7 +133,7 @@ class VersionManager(
                         releaseTime = "Offline",
                         sha1 = "",
                         isInstalled = true,
-                        javaRequirement = 21
+                        javaRequirement = MinecraftJavaRequirements.requiredMajor(id)
                     )
                 )
             }
@@ -181,9 +177,7 @@ class VersionManager(
                     if (objs != null) {
                         totalAssets = objs.length()
                         val keys = objs.keys()
-                        var sampleCount = 0
-                        while (keys.hasNext() && sampleCount < 50) { // check sample for speed
-                            sampleCount++
+                        while (keys.hasNext()) {
                             val hash = objs.getJSONObject(keys.next()).getString("hash")
                             val assetFile = fileSystem.getAssetObjectFile(hash)
                             if (!assetFile.exists() || assetFile.length() == 0L) {
@@ -200,7 +194,7 @@ class VersionManager(
         }
 
         val requiredJava = runCatching { versionParser.parseVersionDetail(jsonFile.readText()).javaVersion.majorVersion }
-            .getOrDefault(21)
+            .getOrElse { MinecraftJavaRequirements.requiredMajor(versionId) }
         val javaInstalled = javaRuntimeManager.getBestRuntime(requiredJava) != null
         val canLaunch = isJsonValid && isJarValid && missingLibs == 0 && javaInstalled
 
@@ -223,8 +217,9 @@ class VersionManager(
         onStatus: (String) -> Unit
     ): Boolean = withContext(Dispatchers.IO) {
         val summary = _versionsList.value.find { it.id == versionId }
-        val url = summary?.url ?: "https://piston-meta.mojang.com/v1/packages/${versionId}/${versionId}.json"
-        LauncherLogger.info("Starting automated repair for $versionId...")
+        val url = summary?.url
+            ?: throw IllegalStateException("No Mojang version-manifest URL is available; refresh the version list before repairing it")
+        LauncherLogger.info("Starting automated repair for " + versionId + "...")
         installer.installVersion(versionId, url, onProgress, onStatus)
     }
 

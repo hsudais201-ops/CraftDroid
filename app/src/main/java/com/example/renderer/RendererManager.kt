@@ -27,6 +27,8 @@ data class DeviceGpuInfo(
     val glVendor: String,
     val glVersion: String,
     val hasVulkan: Boolean,
+    val vulkanApiVersion: String?,
+    val hasVulkan12: Boolean,
     val cpuAbi: String,
     val androidVersion: Int,
     val isSupported: Boolean,
@@ -44,6 +46,13 @@ class RendererManager(private val context: Context, private val fileSystem: Mine
         val glesVer = am?.deviceConfigurationInfo?.glEsVersion ?: "Unknown"
 
         val hasVulkan = context.packageManager.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_LEVEL)
+        val vulkanVersionInt = if (Build.VERSION.SDK_INT >= 24) {
+            context.packageManager.systemAvailableFeatures
+                .firstOrNull { it.name == PackageManager.FEATURE_VULKAN_HARDWARE_VERSION }
+                ?.version
+        } else null
+        val vulkanVersion = vulkanVersionInt?.let(::decodeVulkanVersion)
+        val hasVulkan12 = vulkanVersionInt?.let { it >= encodeVulkanVersion(1, 2, 0) } == true
         val abi = Build.SUPPORTED_ABIS.firstOrNull() ?: "Unknown"
         val sdk = Build.VERSION.SDK_INT
 
@@ -90,7 +99,7 @@ class RendererManager(private val context: Context, private val fileSystem: Mine
         val isSupported = sdk >= 24 && (abi.contains("arm64") || abi.contains("x86_64") || abi.contains("armeabi"))
         val glesMajor = glesVer.substringBefore(".").toIntOrNull() ?: 2
         val recommended = when {
-            hasVulkan && glesMajor < 3 && isSupported -> RendererBackend.ZINK
+            hasVulkan12 && isSupported -> RendererBackend.ZINK
             glesMajor >= 3 && isSupported -> RendererBackend.MOBILEGLUES
             isSupported -> RendererBackend.GL4ES
             else -> RendererBackend.COMPATIBILITY
@@ -102,11 +111,23 @@ class RendererManager(private val context: Context, private val fileSystem: Mine
             glVendor = probedVendor,
             glVersion = probedVersion,
             hasVulkan = hasVulkan,
+            vulkanApiVersion = vulkanVersion,
+            hasVulkan12 = hasVulkan12,
             cpuAbi = abi,
             androidVersion = sdk,
             isSupported = isSupported,
             recommendedBackend = recommended
         )
+    }
+
+    private fun encodeVulkanVersion(major: Int, minor: Int, patch: Int): Int =
+        (major shl 22) or (minor shl 12) or patch
+
+    private fun decodeVulkanVersion(version: Int): String {
+        val major = version ushr 22
+        val minor = (version ushr 12) and 0x3ff
+        val patch = version and 0xfff
+        return "$major.$minor.$patch"
     }
 
     suspend fun ensureNativeStack(requiredLwjglVersion: String? = null, onStatus: (String) -> Unit): NativeComponentManager.NativeStack {

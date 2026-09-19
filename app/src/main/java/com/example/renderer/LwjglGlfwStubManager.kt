@@ -99,16 +99,14 @@ class LwjglGlfwStubManager(
                     "nativeClipboard",
                     "nativeSetGrabbing"
                 )
-                val missing = requiredSymbols.filter { symbol ->
-                    callbackBytes.indexOf(symbol.toByteArray()) < 0
-                }
+                val missing = requiredSymbols.filter { symbol -> !containsAscii(callbackBytes, symbol) }
                 if (missing.isNotEmpty()) {
-                    return StubValidation(false, "CallbackBridge is missing: ${missing.joinToString()}")
+                    return StubValidation(false, "CallbackBridge is missing: " + missing.joinToString())
                 }
 
                 val glfwBytes = zip.getInputStream(glfw).use { it.readBytes() }
-                if (glfwBytes.indexOf("glfwInit".toByteArray()) < 0 ||
-                    glfwBytes.indexOf("glfwPollEvents".toByteArray()) < 0) {
+                if (!containsAscii(glfwBytes, "glfwInit") ||
+                    !containsAscii(glfwBytes, "glfwPollEvents")) {
                     return StubValidation(false, "GLFW class does not expose the expected Android stub API")
                 }
                 StubValidation(true, "compatible GLFW/CallbackBridge classes")
@@ -117,6 +115,22 @@ class LwjglGlfwStubManager(
     }
 
     private fun isValidJar(file: File): Boolean = validateStubJar(file).isValid
+
+    private fun containsAscii(bytes: ByteArray, token: String): Boolean {
+        val needle = token.toByteArray(Charsets.UTF_8)
+        if (needle.isEmpty() || needle.size > bytes.size) return false
+        for (i in 0..(bytes.size - needle.size)) {
+            var matches = true
+            for (j in needle.indices) {
+                if (bytes[i + j] != needle[j]) {
+                    matches = false
+                    break
+                }
+            }
+            if (matches) return true
+        }
+        return false
+    }
 
     private fun download(url: String, destination: File) {
         val request = Request.Builder()

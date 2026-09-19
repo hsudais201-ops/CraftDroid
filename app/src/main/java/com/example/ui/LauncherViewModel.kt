@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.core.LauncherContainer
+import com.example.content.ContentProject
+import com.example.content.CurseForgeCategory
+import com.example.content.CurseForgeSearchResult
 import com.example.core.db.AccountEntity
 import com.example.core.db.ProfileEntity
 import com.example.downloader.DownloadProgress
@@ -23,9 +26,25 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+enum class ContentSource { MODRINTH, CURSEFORGE }
+
+data class ContentBrowserState(
+    val source: ContentSource = ContentSource.MODRINTH,
+    val projectType: String = "mod",
+    val loader: String? = null,
+    val query: String = "",
+    val modrinthResults: List<ContentProject> = emptyList(),
+    val curseForgeResults: List<CurseForgeSearchResult> = emptyList(),
+    val curseForgeCategories: List<CurseForgeCategory> = emptyList(),
+    val isLoading: Boolean = false,
+    val error: String? = null,
+    val status: String = ""
+)
+
 enum class LauncherScreen {
     HOME,
     VERSIONS,
+    CONTENT,
     PROFILES,
     ACCOUNTS,
     SETTINGS,
@@ -85,6 +104,8 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
     val authState = container.accountManager.authState
     val runtimes = container.javaManager.runtimes
     val logs = LauncherLogger.logs
+    private val _contentBrowser = MutableStateFlow(ContentBrowserState())
+    val contentBrowser: StateFlow<ContentBrowserState> = _contentBrowser.asStateFlow()
 
     val homeUiState: StateFlow<HomeUiState> = combine(
         selectedAccount,
@@ -143,9 +164,163 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
         _currentScreen.value = screen
     }
 
+    fun updateContentQuery(query: String) {
+        _contentBrowser.value = _contentBrowser.value.copy(query = query, error = null)
+    }
+
+    fun updateContentType(type: String) {
+        _contentBrowser.value = _contentBrowser.value.copy(projectType = type, error = null)
+    }
+
+    fun updateContentLoader(loader: String?) {
+        _contentBrowser.value = _contentBrowser.value.copy(loader = loader, error = null)
+    }
+
+    private fun curseForgeLoaderType(loader: String?): Int? = when (loader?.lowercase()) {
+        "forge" -> 1
+        "fabric" -> 4
+        "quilt" -> 5
+        "neoforge" -> 6
+        else -> null
+    }
+
+    fun updateContentSource(source: ContentSource) {
+        _contentBrowser.value = _contentBrowser.value.copy(
+            source = source,
+            projectType = if (source == ContentSource.MODRINTH) "mod" else "mods",
+            error = null,
+            modrinthResults = emptyList(),
+            curseForgeResults = emptyList()
+        )
+    }
+
+    fun searchContent() {
+        val request = _contentBrowser.value
+        viewModelScope.launch {
+            _contentBrowser.value = request.copy(isLoading = true, error = null, status = "")
+            try {
+                val gameVersion = settings.value.selectedVersionId
+                if (request.source == ContentSource.MODRINTH) {
+                    val results = container.modrinthClient.search(
+                        query = request.query,
+                        gameVersion = gameVersion,
+                        projectType = request.projectType,
+                        loader = request.loader
+                    )
+                    _contentBrowser.value = request.copy(
+                        isLoading = false,
+                        modrinthResults = results,
+                        curseForgeResults = emptyList(),
+                        status = "Found " + results.size + " Modrinth projects"
+                    )
+                } else {
+                    val categories = container.curseForgeClient.categoryList()
+                    val wanted = categories.filter { cat ->
+                        when (request.projectType.lowercase()) {
+                            "worlds" -> cat.name.contains("world", true) || cat.name.contains("map", true)
+                            "mods" -> cat.name.equals("Mods", true)
+                            "resource packs" -> cat.name.contains("resource", true)
+                            "shaders" -> cat.name.contains("shader", true)
+                            "modpacks" -> cat.name.contains("modpack", true)
+                            else -> false
+                        }
+                    }
+                    val categoryIds = wanted.map { it.id }
+                    val results = container.curseForgeClient.search(
+                        query = request.query,
+                        gameVersion = gameVersion,
+                        loaderType = curseForgeLoaderType(request.loader),
+                        categoryIds = categoryIds
+                    )
+                    _contentBrowser.value = request.copy(
+                        isLoading = false,
+                        curseForgeResults = results,
+                        modrinthResults = emptyList(),
+                        curseForgeCategories = categories,
+                        status = "Found " + results.size + " CurseForge projects"
+                    )
+                }
+            } catch (e: Exception) {
+                _contentBrowser.value = request.copy(isLoading = false, error = e.message ?: "Content search failed")
+            }
+        }
+    }
+
+    fun installContent(projectId: String, isCurseForge: Boolean, projectType: String) {
+        val request = _contentBrowser.value
+        viewModelScope.launch {
+            _contentBrowser.value = _contentBrowser.value.copy(isLoading = true, error = null, status = "Resolving compatible files…")
+            try {
+                val gameVersion = settings.value.selectedVersionId
+                if (!isCurseForge) {
+                    val destination = when (projectType) {
+                        "resourcepack" -> container.fileSystem.resourcePacksDir
+                        "shader" -> container.fileSystem.shaderPacksDir
+                        else -> container.fileSystem.modsDir
+                    }
+                    container.contentInstallManager.installModrinthVersion(
+                        projectId = projectId,
+                        minecraftVersion = gameVersion,
+                        loader = request.loader,
+                        destinationDir = destination
+                    )
+                } else {
+                    val file = container.curseForgeClient.latestCompatibleFile(
+                        modId = projectId.toLong(),
+                        gameVersion = gameVersion,
+                        loaderType = curseForgeLoaderType(request.loader)
+                    )
+                    when (projectType.lowercase()) {
+                        "worlds" -> container.contentInstallManager.installCurseForgeWorld(projectId.toLong(), file.id)
+                        "modpacks" -> {
+                            val archive = java.io.File(container.fileSystem.runtimeDir, "downloads/cf-pack-" + file.id + ".zip")
+                            archive.parentFile?.mkdirs()
+                            if (!container.downloadManager.downloadSingleFile(
+                                    com.example.downloader.DownloadTask(
+                                        url = container.curseForgeClient.distributionUrl(projectId.toLong(), file.id),
+                                        destination = archive,
+                                        size = file.fileLength,
+                                        name = file.fileName
+                                    )
+                                )
+                            ) throw java.io.IOException("CurseForge modpack archive download failed")
+                            container.contentInstallManager.installCurseForgeModpack(archive, java.io.File(container.fileSystem.rootDir, "profiles/" + projectId))
+                            archive.delete()
+                        }
+                        "resource packs" -> container.contentInstallManager.installCurseForgeFile(
+                            projectId.toLong(), file.id, container.fileSystem.resourcePacksDir, gameVersion, curseForgeLoaderType(request.loader)
+                        )
+                        "shaders" -> container.contentInstallManager.installCurseForgeFile(
+                            projectId.toLong(), file.id, container.fileSystem.shaderPacksDir, gameVersion, curseForgeLoaderType(request.loader)
+                        )
+                        else -> container.contentInstallManager.installCurseForgeFile(
+                            projectId.toLong(), file.id, container.fileSystem.modsDir, gameVersion, curseForgeLoaderType(request.loader)
+                        )
+                    }
+                }
+                _contentBrowser.value = _contentBrowser.value.copy(isLoading = false, status = "Install completed successfully")
+            } catch (e: Exception) {
+                _contentBrowser.value = _contentBrowser.value.copy(isLoading = false, error = e.message ?: "Content install failed", status = "")
+            }
+        }
+    }
+
     fun selectVersion(versionId: String) {
         viewModelScope.launch {
             container.settingsRepository.updateSelectedVersion(versionId)
+        }
+    }
+
+    fun refreshVersions() {
+        viewModelScope.launch {
+            try {
+                _downloadStatusText.value = "Refreshing Minecraft versions…"
+                container.versionManager.fetchVersions()
+                _downloadStatusText.value = ""
+            } catch (e: Exception) {
+                LauncherLogger.error("Version refresh failed: " + e.message)
+                _downloadStatusText.value = "Version refresh failed: " + (e.message ?: "network error")
+            }
         }
     }
 
@@ -153,16 +328,25 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
         val current = homeUiState.value
         val vId = current.selectedVersionId
         val summary = versions.value.find { it.id == vId }
-        val url = summary?.url ?: "https://piston-meta.mojang.com/v1/packages/${vId}/${vId}.json"
+        val url = summary?.url ?: run {
+            _downloadStatusText.value = "Version metadata is unavailable. Refresh the version list first."
+            LauncherLogger.error("Cannot install " + vId + ": version manifest URL is missing")
+            return
+        }
 
         viewModelScope.launch {
-            container.installer.installVersion(
-                versionId = vId,
-                versionJsonUrl = url,
-                onProgress = {},
-                onStatus = { _downloadStatusText.value = it }
-            )
-            container.versionManager.fetchVersions()
+            try {
+                container.installer.installVersion(
+                    versionId = vId,
+                    versionJsonUrl = url,
+                    onProgress = {},
+                    onStatus = { _downloadStatusText.value = it }
+                )
+                container.versionManager.fetchVersions()
+            } catch (e: Exception) {
+                LauncherLogger.error("Version installation failed for " + vId + ": " + e.message)
+                _downloadStatusText.value = "Installation failed: " + (e.message ?: "unknown error")
+            }
         }
     }
 
@@ -332,6 +516,12 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
     fun updateJvmArgs(args: String) {
         viewModelScope.launch {
             container.settingsRepository.updateJvmArgs(args)
+        }
+    }
+
+    fun updateJavaRuntimeOverride(major: Int?) {
+        viewModelScope.launch {
+            container.settingsRepository.updateJavaRuntimeOverride(major)
         }
     }
 

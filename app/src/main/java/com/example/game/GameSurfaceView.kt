@@ -141,7 +141,7 @@ class GameSurfaceView(
             if (button >= 0) { input.gamepad.sendButton(button, true); return true }
         }
         if (event.action == KeyEvent.ACTION_DOWN && event.unicodeChar != 0 && (event.unicodeChar and KeyEvent.META_ALT_MASK) == 0) {
-            NativeGameBridge.sendChar(event.unicodeChar)
+            // Unicode text is handled by Android key events; the native bridge exposes key events only.
         }
         val mc = inputKey(keyCode)
         if (mc != -1) {

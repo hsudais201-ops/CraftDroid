@@ -36,26 +36,30 @@ object NativeDependencyVerifier {
         val files = directory.walkTopDown().filter { it.isFile && it.extension.equals("so", true) }.toList()
         val bundled = files.map { it.name }.toSet()
         val missing = linkedSetOf<String>()
+        val parseErrors = linkedSetOf<String>()
         var checked = 0
 
         for (file in files) {
-            val needed = runCatching { neededLibraries(file) }.getOrElse { e ->
-                LauncherLogger.warn("ELF dependency parse failed for ${file.name}: ${e.message}")
-                emptyList()
-            }
+            val parsed = runCatching { neededLibraries(file) }
             checked++
-            for (dependency in needed) {
+            if (parsed.isFailure) {
+                val message = parsed.exceptionOrNull()?.message ?: "unknown ELF parse error"
+                parseErrors += file.name + ": " + message
+                LauncherLogger.error("ELF dependency parse failed for " + file.name + ": " + message)
+                continue
+            }
+            for (dependency in parsed.getOrThrow()) {
                 if (!isSystemLibrary(dependency) && dependency !in bundled) {
-                    missing += "${file.name} -> $dependency"
+                    missing += file.name + " -> " + dependency
                 }
             }
         }
 
-        val valid = missing.isEmpty()
-        val details = if (valid) {
-            "checked=$checked ELF libraries; all DT_NEEDED dependencies are bundled or Android-system libraries"
-        } else {
-            "checked=$checked ELF libraries; unresolved DT_NEEDED dependencies: ${missing.joinToString(" | ")}"
+        val valid = missing.isEmpty() && parseErrors.isEmpty()
+        val details = when {
+            parseErrors.isNotEmpty() -> "checked=$checked ELF libraries; parse failures: " + parseErrors.joinToString(" | ")
+            valid -> "checked=$checked ELF libraries; all DT_NEEDED dependencies are bundled or Android-system libraries"
+            else -> "checked=$checked ELF libraries; unresolved DT_NEEDED dependencies: " + missing.joinToString(" | ")
         }
         LauncherLogger.info("Native dependency validation: $details")
         return Result(valid, checked, missing.toList(), details)
@@ -75,7 +79,7 @@ object NativeDependencyVerifier {
     private fun neededLibraries(file: File): List<String> = RandomAccessFile(file, "r").use { raf ->
         val header = ByteArray(64)
         raf.readFully(header)
-        require(byte(header[0]) == 0x7f && header[1] == 'E'.code.toByte() && header[2] == 'L'.code.toByte() && header[3] == 'F'.code.toByte()) { "not ELF" }
+        require((header[0].toInt() and 0xff) == 0x7f && header[1] == 'E'.code.toByte() && header[2] == 'L'.code.toByte() && header[3] == 'F'.code.toByte()) { "not ELF" }
         require(header[5].toInt() and 0xff == 1) { "only little-endian ELF is supported" }
         val clazz = header[4].toInt() and 0xff
         require(clazz == 1 || clazz == 2) { "unsupported ELF class $clazz" }

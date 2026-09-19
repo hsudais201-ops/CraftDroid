@@ -34,7 +34,7 @@ data class ProcessorRunResult(
 )
 
 enum class ForgeInstallerFormat {
-    V1, V2, LEGACY_PROFILE, UNSUPPORTED
+    V1, V2, LEGACY_PROFILE, LEGACY_JAR_MOD, UNSUPPORTED
 }
 
 data class LoaderBootstrapResult(
@@ -359,6 +359,10 @@ class ForgeNeoForgeInstaller(
         base.put("inheritsFrom", minecraftVersion)
         // Old Forge jar-mod versions use the vanilla Minecraft main class; the
         // Forge classes are injected into the client JAR itself.
+        val downloads = base.optJSONObject("downloads") ?: JSONObject().also { base.put("downloads", it) }
+        val client = downloads.optJSONObject("client") ?: JSONObject().also { downloads.put("client", it) }
+        client.put("size", profileJar.length())
+        client.put("sha1", sha1(profileJar))
         profileFile.writeText(base.toString(2))
 
         LauncherLogger.info("Installed legacy Forge jar-mod $loaderVersion as $profileId")
@@ -495,6 +499,18 @@ class ForgeNeoForgeInstaller(
         }
     }
 
+    private fun sha1(file: File): String {
+        val md = MessageDigest.getInstance("SHA-1")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buffer)
+                if (n <= 0) break
+                md.update(buffer, 0, n)
+            }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
+    }
     private fun outputsSatisfied(outputs: JSONObject, data: Map<String, String>): Boolean {
         if (outputs.length() == 0) return false
         val keys = outputs.keys()

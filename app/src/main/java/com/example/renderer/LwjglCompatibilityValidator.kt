@@ -70,6 +70,18 @@ object LwjglCompatibilityValidator {
         return Result(true, versions, "LWJGL Java artifacts are internally consistent; $mode selected")
     }
 
+    private fun containsAscii(bytes: ByteArray, token: String): Boolean {
+        val needle = token.toByteArray(Charsets.UTF_8)
+        if (needle.isEmpty() || needle.size > bytes.size) return false
+        outer@ for (i in 0..(bytes.size - needle.size)) {
+            for (j in needle.indices) {
+                if (bytes[i + j] != needle[j]) continue@outer
+            }
+            return true
+        }
+        return false
+    }
+
     private fun coordinateVersion(name: String): String? {
         val parts = name.split(':')
         return if (parts.size >= 3 && parts[0] == "org.lwjgl" && parts[1].isNotBlank()) parts[2].takeIf { it.isNotBlank() } else null
@@ -85,10 +97,10 @@ object LwjglCompatibilityValidator {
                     ?: return false to "missing CallbackBridge.class"
                 val glfwBytes = zip.getInputStream(glfw).use { it.readBytes() }
                 val callbackBytes = zip.getInputStream(callback).use { it.readBytes() }
-                val glfwOk = glfwBytes.indexOf("glfwInit".toByteArray()) >= 0 &&
-                    glfwBytes.indexOf("glfwPollEvents".toByteArray()) >= 0
+                val glfwOk = containsAscii(glfwBytes, "glfwInit") &&
+                    containsAscii(glfwBytes, "glfwPollEvents")
                 val callbackOk = listOf("receiveCallback", "nativeSendData", "nativeSetInputReady")
-                    .all { callbackBytes.indexOf(it.toByteArray()) >= 0 }
+                    .all { containsAscii(callbackBytes, it) }
                 if (!glfwOk || !callbackOk) {
                     false to "required GLFW/CallbackBridge methods are missing"
                 } else {
