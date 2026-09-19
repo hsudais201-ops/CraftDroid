@@ -34,6 +34,7 @@ import com.example.ui.ContentSource
 import com.example.ui.LauncherScreen
 import com.example.ui.LauncherViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContentScreen(
     viewModel: LauncherViewModel,
