@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Apply the canonical CraftDroid icon/navigation contract after all late UI generation."""
 from pathlib import Path
+import re
 import sys
 
 UI_NAME = "DroidLauncherUiActivity.kt"
