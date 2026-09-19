@@ -36,7 +36,16 @@ class MinecraftInstaller(
         onStatus: (String) -> Unit
     ): Boolean = withContext(Dispatchers.IO) {
         try {
-            LauncherLogger.info("Starting installation for Minecraft $versionId...")
+            LauncherLogger.info("Starting installation for Minecraft " + versionId + "...")
+            installedVersionDao.insertInstalledVersion(
+                InstalledVersionEntity(
+                    versionId = versionId,
+                    type = "release",
+                    releaseTime = "",
+                    javaRequirement = 0,
+                    status = "INSTALLING"
+                )
+            )
             onStatus("Fetching version metadata...")
 
             // 1. Download & save Version JSON
@@ -151,8 +160,23 @@ class MinecraftInstaller(
             onStatus("Installation Complete")
             true
         } catch (e: Exception) {
-            LauncherLogger.error("Installation failed for $versionId: ${e.message}")
-            onStatus("Error: ${e.message}")
+            val error = e.message ?: e.javaClass.simpleName
+            val status = if (error.contains("SHA-1", ignoreCase = true)) "CHECKSUM_FAILED" else "FAILED"
+            runCatching {
+                installedVersionDao.insertInstalledVersion(
+                    InstalledVersionEntity(
+                        versionId = versionId,
+                        type = "release",
+                        releaseTime = "",
+                        javaRequirement = 0,
+                        isCorrupted = true,
+                        status = status,
+                        lastError = error
+                    )
+                )
+            }
+            LauncherLogger.error("Installation failed for " + versionId + ": " + error)
+            onStatus("Error: " + error)
             false
         }
     }
