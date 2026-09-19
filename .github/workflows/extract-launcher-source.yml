@@ -8,7 +8,7 @@ on:
       - '.github/workflows/extract-launcher-source.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   extract:
@@ -33,9 +33,25 @@ jobs:
             exit 1
           fi
           cp -a "$ROOT"/. /tmp/extracted-project/
+          # The archive contains CI workflow definitions. The Actions token used
+          # here can publish normal source but cannot create/update workflow files.
+          rm -rf /tmp/extracted-project/.github/workflows
           test -f /tmp/extracted-project/settings.gradle.kts
           test -f /tmp/extracted-project/app/build.gradle.kts
           test -f /tmp/extracted-project/app/src/main/AndroidManifest.xml
+
+      - name: Publish complete Android source branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan source-extracted
+          git rm -rf . || true
+          cp -a /tmp/extracted-project/. .
+          git add -A
+          git commit -m "Extract Android launcher source from archive"
+          git push --force origin HEAD:source-extracted
 
       - name: Package extracted source
         run: |
