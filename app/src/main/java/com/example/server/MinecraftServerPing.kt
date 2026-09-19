@@ -27,7 +27,7 @@ object MinecraftServerPing {
 
                 val statusPacket = readPacket(input) ?: error("No status response")
                 if (statusPacket.id != 0x00) error("Unexpected status packet " + statusPacket.id)
-                val statusJson = readString(statusPacket.data)
+                val statusJson = readString(statusPacket.data.inputStream())
                 val json = JSONObject(statusJson)
                 val players = json.optJSONObject("players")
                 val motd = flattenMotd(json.opt("description")).ifBlank { "No MOTD" }
