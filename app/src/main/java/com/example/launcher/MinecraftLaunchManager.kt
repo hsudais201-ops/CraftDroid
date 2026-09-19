@@ -222,8 +222,15 @@ class MinecraftLaunchManager(
                 }
                 LauncherLogger.info("Audio compatibility check passed: ${audioCheck.reason}")
 
+                val recoveredRenderer = com.example.logs.LaunchRecoveryPolicy.rendererFallbackFromPreviousCrash(
+                    fileSystem.rootDir,
+                    rendererBackend
+                )
+                if (recoveredRenderer != rendererBackend) {
+                    LauncherLogger.warn("Renderer recovery replaced the previous renderer choice after a graphics/native crash.")
+                }
                 val rendererDecision = com.example.renderer.RendererCompatibilityPolicy.choose(
-                    rendererBackend,
+                    recoveredRenderer,
                     rendererManager.gpuInfo,
                     versionDetail
                 )
