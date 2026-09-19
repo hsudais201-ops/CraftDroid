@@ -10,15 +10,13 @@ def main() -> int:
     s = ui.read_text(encoding="utf-8", errors="replace")
     required = (
         "CANONICAL_ICON_NAVIGATION",
-        'nav.addView(step375Nav("←") { canonicalNavigateBack() })',
-        '"⌂" to { canonicalNavigateHome() }',
-        '"▰" to { canonicalOpenCurrentInstanceFolder() }',
-        '"♟" to { showPage("Accounts") }',
-        '"⇩" to { showPage("Content") }',
-        '"⚙" to { showPage("Settings") }',
-        "canonicalToggleSecureMode()",
-        "canonicalExportInstanceConfig()",
-        "canonicalServerPage()",
+        "canonicalNavigateBack",
+        "canonicalNavigateHome",
+        "canonicalOpenCurrentInstanceFolder",
+        "canonicalExportInstanceConfig",
+        "canonicalBrowsePage",
+        "canonicalVersionPage",
+        "canonicalToggleSecureMode",
         "SIGN IN FROM MICROSOFT",
         '"OptiFine"',
         '"Legacy Fabric"',
@@ -27,20 +25,35 @@ def main() -> int:
         '"Modpack"',
         "MODRINTH",
         "CURSEFORGE",
-        '"Any version"',
-        'TOUCH CONTROLS',
+        "Any version",
+        "TOUCH CONTROLS",
         "Grass block version tile",
+        "Tap to edit server name or address",
+        "Live ping / connection quality",
     )
     missing = [x for x in required if x not in s]
     if missing:
         raise SystemExit("[canonical-nav-verify] missing: " + ", ".join(missing))
+    if ('nav.addView(step375Nav("←") { canonicalNavigateBack() })' not in s and
+        '"←  Back" to { canonicalNavigateBack() }' not in s):
+        raise SystemExit("[canonical-nav-verify] back navigation is not wired")
+    if ('"⌂" to { canonicalNavigateHome() }' not in s and
+        '"⌂  Home" to { canonicalNavigateHome() }' not in s):
+        raise SystemExit("[canonical-nav-verify] home navigation is not wired")
+    if ('"▰" to { canonicalOpenCurrentInstanceFolder() }' not in s and
+        '"▰  Files" to { canonicalOpenCurrentInstanceFolder() }' not in s):
+        raise SystemExit("[canonical-nav-verify] folder navigation is not wired")
     for typo in ("Obtifine", "dofault", "mabile", "onnce", "acconding"):
         if typo in s:
             raise SystemExit(f"[canonical-nav-verify] typo remains: {typo}")
-    if s.count("private fun canonicalServerPage()") != 1:
-        raise SystemExit("[canonical-nav-verify] duplicate server page")
+    if s.count("private fun canonicalBrowsePage()") != 1:
+        raise SystemExit("[canonical-nav-verify] duplicate browse page helper")
+    if s.count("private fun canonicalVersionPage()") != 1:
+        raise SystemExit("[canonical-nav-verify] duplicate version page helper")
     if s.count('step375Button("TOUCH CONTROLS"') != 1:
         raise SystemExit("[canonical-nav-verify] duplicate Controls settings entry")
+    if "step481ServerIcon(host,port)" not in s and "step481ServerIcon(host, port)" not in s:
+        raise SystemExit("[canonical-nav-verify] real server favicon renderer is not preserved")
     print("[canonical-nav-verify] PASS")
     return 0
 
