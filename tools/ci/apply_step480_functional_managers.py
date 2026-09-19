@@ -452,15 +452,10 @@ def main():
         actions.addView(step375Button("JAVA RUNTIME") { showPage("Java") },
             LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginStart = dp(8) })
         pageArea.addView(actions, LinearLayout.LayoutParams(-1, dp(46)))
-        if (!step375HasInstance()) {
-            val p = step375Panel(18)
-            p.addView(step375Text("SELECT AN INSTANCE FIRST", 20f, true))
-            p.addView(step375Text("Select an instance before installing so profiles remain isolated."))
-            p.addView(step375Button("SELECT INSTANCE", true) { showPage("Instances") },
-                LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(10) })
-            pageArea.addView(p, LinearLayout.LayoutParams(-1, dp(190)).apply { topMargin = dp(8) })
-            return
-        }
+        pageArea.addView(step375Text("INSTALL LOCATION · launcher Minecraft root", 11f, true).apply {
+            setTextColor(android.graphics.Color.rgb(86, 240, 177))
+            setPadding(dp(4), dp(9), 0, 0)
+        })
         val latest = MinecraftLatestVersionManager.getCached(this)
         if (!latest.isNullOrBlank()) pageArea.addView(step375Text("LATEST · " + latest, 11f, true).apply {
             setTextColor(android.graphics.Color.rgb(86, 240, 177))
