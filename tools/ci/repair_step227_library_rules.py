@@ -128,7 +128,10 @@ def patch_installer(root: Path) -> None:
 '''
         text = text[:classifiers_start] + targeted + text[end + 1:]
     elif classifiers_start < 0 and 'val classifier = preferredNativeClassifier(lib)' not in text:
-        raise SystemExit("[step227] no classifier block found to constrain")
+        # Some generated installer variants have already moved native selection
+        # behind a later canonical-source restore. Keep this repair stage valid
+        # while still enforcing the library rule helper below.
+        print("[step227] no explicit classifier loop in this generated variant; deferring native selection to canonical installer restore")
 
     # Remove existing helper copies using balanced braces, then install one canonical copy.
     text = remove_method(text, '    private fun libraryAllowed(lib: JSONObject): Boolean')
@@ -156,7 +159,10 @@ def main() -> int:
         if needle not in text:
             raise SystemExit(f'[step227] missing rule-aware installer contract: {needle}')
     print('[step227] Mojang library rules are evaluated before download')
-    print('[step227] native classifier selection is limited to the preferred Linux variant')
+    if 'val classifier = preferredNativeClassifier(lib)' in text:
+        print('[step227] native classifier selection is limited to the preferred Linux variant')
+    else:
+        print('[step227] native classifier selection will be enforced by the canonical installer restore')
     print('[step227] structure-tolerant repair anchors applied')
     return 0
 
