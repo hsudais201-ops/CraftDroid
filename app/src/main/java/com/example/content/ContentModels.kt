@@ -2,6 +2,8 @@ package com.example.content
 
 import com.example.launcher.MinecraftContentManager
 
+enum class ContentSource { MODRINTH, CURSEFORGE }
+
 enum class ContentType(
     val title: String,
     val projectType: String?,
