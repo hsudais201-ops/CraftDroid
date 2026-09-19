@@ -414,31 +414,36 @@ def patch_version_managers(root):
         ))
 
 def patch_input_and_logs(root):
-    def layout(s):
-        if "import com.example.logs.LauncherLogger" not in s:
-            s = s.replace("import org.json.JSONObject\n", "import org.json.JSONObject\nimport com.example.logs.LauncherLogger\n", 1)
-        return s.replace(
-            '''                try {
+    rel = root / "app/src/main/java/com/example/input/ControlLayout.kt"
+    if rel.is_file():
+        def layout(s):
+            if "import com.example.logs.LauncherLogger" not in s:
+                s = s.replace("import org.json.JSONObject\n", "import org.json.JSONObject\nimport com.example.logs.LauncherLogger\n", 1)
+            return s.replace(
+                '''                try {
                     list.add(TouchControl.fromJson(item))
                 } catch (_: Exception) {}''',
-            '''                try {
+                '''                try {
                     list.add(TouchControl.fromJson(item))
                 } catch (e: Exception) {
                     LauncherLogger.warn("Ignoring malformed touch control at index " + i + ": " + e.message)
                 }''',
-            1,
-        )
-    patch(root, "app/src/main/java/com/example/input/ControlLayout.kt", layout)
-    patch(root, "app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt", lambda s: s.replace(
-        '''        }.getOrDefault("")
+                1,
+            )
+        patch(root, "app/src/main/java/com/example/input/ControlLayout.kt", layout)
+
+    rel = root / "app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt"
+    if rel.is_file():
+        patch(root, "app/src/main/java/com/example/logs/MinecraftProcessMonitor.kt", lambda s: s.replace(
+            '''        }.getOrDefault("")
 
         if (tail.isNotEmpty()) {''',
-        '''        }.onFailure { LauncherLogger.warn("Could not compact Minecraft event log: " + it.message) }
+            '''        }.onFailure { LauncherLogger.warn("Could not compact Minecraft event log: " + it.message) }
             .getOrDefault("")
 
-        if (tail.isNotEmpty())''',
-        1,
-    ))
+        if (tail.isNotEmpty()) {''',
+            1,
+        ))
 
 def patch_manifest(root):
     patch(root, "app/src/main/AndroidManifest.xml", lambda s: s.replace('        android:largeHeap="true"\n', '', 1))
