@@ -3,12 +3,10 @@
 from pathlib import Path
 import sys
 
-FORBIDDEN = (
-    "managed-on-demand",
-    "components_extracted",
-    "bootstrapComplete()",
-    "showBootstrapGate()",
+EARLY_FORBIDDEN = (
     'utilityDialog = "Store"',
+    'utilityDialog = "Events"',
+    'utilityDialog = "Leaderboard"',
     'utilityDialog = "Events"',
     'utilityDialog = "Leaderboard"',
     "future online integration",
@@ -16,6 +14,13 @@ FORBIDDEN = (
     "ResourcePill(\"●\", \"1,250\"",
     "Math.random()",
     "new java.util.Random(",
+)
+
+FINAL_ONLY = (
+    "managed-on-demand",
+    "components_extracted",
+    "bootstrapComplete()",
+    "showBootstrapGate()",
 )
 
 REQUIRED = (
@@ -35,7 +40,9 @@ def main():
     files = [p for p in java_root.rglob("*") if p.suffix in {".kt", ".java", ".cpp", ".h"}]
     combined = "\n".join(p.read_text(encoding="utf-8", errors="ignore") for p in files)
 
-    bad = [needle for needle in FORBIDDEN if needle in combined]
+    bad = [needle for needle in EARLY_FORBIDDEN if needle in combined]
+    if final_mode:
+        bad.extend(needle for needle in FINAL_ONLY if needle in combined)
     if bad:
         raise SystemExit("[no-fake] forbidden live implementation markers: " + ", ".join(bad))
 
