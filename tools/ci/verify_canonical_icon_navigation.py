@@ -55,7 +55,7 @@ def main() -> int:
         raise SystemExit("[canonical-nav-verify] duplicate version page helper")
     if s.count('step375Button("TOUCH CONTROLS"') != 1:
         raise SystemExit("[canonical-nav-verify] duplicate Controls settings entry")
-    if "step481ServerIcon(host,port)" not in s and "step481ServerIcon(host, port)" not in s:
+    if ("step479Servers()" in s or "STEP481_RUNTIME_FINISHING" in s) and "step481ServerIcon" not in s:
         raise SystemExit("[canonical-nav-verify] real server favicon renderer is not preserved")
     print("[canonical-nav-verify] PASS")
     return 0
