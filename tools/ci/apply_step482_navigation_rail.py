@@ -161,6 +161,24 @@ BUILD = r'''    private fun buildUi() {
         val scroll = android.widget.ScrollView(this).apply {
             isFillViewport = true
             isVerticalScrollBarEnabled = false
+            var startY = 0f
+            var refreshing = false
+            setOnTouchListener { view, event ->
+                when (event.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        startY = event.rawY
+                        refreshing = false
+                    }
+                    android.view.MotionEvent.ACTION_UP -> {
+                        val dy = event.rawY - startY
+                        if (!refreshing && view.scrollY <= 0 && dy > dp(92)) {
+                            refreshing = true
+                            showPage(currentPage)
+                        }
+                    }
+                }
+                false
+            }
         }
         pageArea.orientation = LinearLayout.VERTICAL
         pageArea.setPadding(dp(2), dp(10), dp(2), dp(18))
