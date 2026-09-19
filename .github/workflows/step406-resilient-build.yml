@@ -392,6 +392,17 @@ jobs:
           set -euo pipefail
           python3 tools/ci/verify_canonical_icon_navigation.py droid-src
 
+      - name: Apply full codebase sweep repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_full_codebase_sweep.py droid-src
+
+      - name: Verify full codebase sweep repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_full_codebase_sweep.py droid-src
       - name: Apply Step 468 optimized Droid Launcher logo
         shell: bash
         run: |
