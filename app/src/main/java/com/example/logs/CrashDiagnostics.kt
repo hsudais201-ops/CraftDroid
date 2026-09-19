@@ -50,7 +50,7 @@ object CrashDiagnostics {
                 tail(bundle.launcherLog, "CRAFTDROID JVM OUTPUT")
             }
             out
-        }.getOrNull()
+        }.onFailure { LauncherLogger.error("Failed to write crash diagnostics: " + it.message) }.getOrNull()
     }
 
     private fun newest(dir: File, glob: String): File? {
