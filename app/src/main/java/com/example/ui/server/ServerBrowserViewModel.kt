@@ -31,7 +31,7 @@ class ServerBrowserViewModel(
     private val container: LauncherContainer,
     private val launcher: LauncherViewModel
 ) : ViewModel() {
-    private val store = ServerStore(container.appContext)
+    private val store = ServerStore(container.context)
     private val _state = MutableStateFlow(ServerBrowserUiState(servers = store.load()))
     val state: StateFlow<ServerBrowserUiState> = _state.asStateFlow()
 
