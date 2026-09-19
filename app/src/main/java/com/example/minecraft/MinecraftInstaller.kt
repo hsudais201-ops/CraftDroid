@@ -152,7 +152,9 @@ class MinecraftInstaller(
                     type = if (versionId.contains("w") || versionId.contains("pre") || versionId.contains("rc")) "snapshot" else "release",
                     releaseTime = System.currentTimeMillis().toString(),
                     javaRequirement = versionDetail.javaVersion.majorVersion,
-                    isCorrupted = false
+                    isCorrupted = false,
+                    status = "INSTALLED",
+                    clientSha1 = versionDetail.clientDownload.sha1
                 )
             )
 
