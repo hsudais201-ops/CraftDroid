@@ -99,16 +99,15 @@ class LwjglGlfwStubManager(
                     "nativeClipboard",
                     "nativeSetGrabbing"
                 )
-                val missing = requiredSymbols.filter { symbol ->
-                    callbackBytes.indexOf(symbol.toByteArray()) < 0
-                }
+                val callbackText = String(callbackBytes, Charsets.ISO_8859_1)
+                val missing = requiredSymbols.filter { symbol -> !callbackText.contains(symbol) }
                 if (missing.isNotEmpty()) {
                     return StubValidation(false, "CallbackBridge is missing: ${missing.joinToString()}")
                 }
 
                 val glfwBytes = zip.getInputStream(glfw).use { it.readBytes() }
-                if (glfwBytes.indexOf("glfwInit".toByteArray()) < 0 ||
-                    glfwBytes.indexOf("glfwPollEvents".toByteArray()) < 0) {
+                val glfwText = String(glfwBytes, Charsets.ISO_8859_1)
+                if (!glfwText.contains("glfwInit") || !glfwText.contains("glfwPollEvents")) {
                     return StubValidation(false, "GLFW class does not expose the expected Android stub API")
                 }
                 StubValidation(true, "compatible GLFW/CallbackBridge classes")
