@@ -20,7 +20,9 @@ data class LaunchConfig(
     val customJvmArgs: String = "",
     val resolutionWidth: Int = 1920,
     val resolutionHeight: Int = 1080,
-    val javaExecutable: File
+    val javaExecutable: File,
+    val serverHost: String? = null,
+    val serverPort: Int? = null
 )
 
 data class LaunchCommand(
@@ -165,6 +167,15 @@ class LaunchCommandBuilder(
                 "--userType", if (config.isOfflineAccount) "legacy" else "msa",
                 "--versionType", "release"
             ))
+        }
+
+        if (!config.serverHost.isNullOrBlank() && config.serverPort != null &&
+            args.none { it == "--server" }
+        ) {
+            args.add("--server")
+            args.add(config.serverHost)
+            args.add("--port")
+            args.add(config.serverPort.toString())
         }
 
         val javaHome = config.javaExecutable.parentFile?.parentFile
