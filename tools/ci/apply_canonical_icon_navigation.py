@@ -337,37 +337,36 @@ def patch_build_ui(source: str) -> str:
 def patch_show_page(source: str) -> str:
     start, end = method_span(source, "    private fun showPage(page: String)")
     block = source[start:end]
-    old = '''        currentPage = page
-        pageArea.removeAllViews()'''
-    compact = '''        currentPage=page;pageArea.removeAllViews()'''
-    new = '''        if (page == "Home") {
+
+    if "canonicalPageHistory" not in block:
+        marker = "pageArea.removeAllViews()"
+        pos = block.find(marker)
+        if pos < 0:
+            raise SystemExit("[canonical-nav] showPage state anchor missing")
+        history = '''        if (page == "Home" || page == "Game") {
             canonicalPageHistory.clear()
-        } else if (!canonicalBackNavigation && page != currentPage && currentPage != "FirstRun" && page != "FirstRun") {
+        } else if (!canonicalBackNavigation && page != currentPage && page != "FirstRun") {
             canonicalPageHistory.addLast(currentPage)
         }
-        currentPage = page
-        pageArea.removeAllViews()'''
-    if old in block:
-        block = block.replace(old, new, 1)
-    elif compact in block:
-        compact_new = '''        if(page=="Home"){canonicalPageHistory.clear()}else if(!canonicalBackNavigation && page!=currentPage && currentPage!="FirstRun" && page!="FirstRun"){canonicalPageHistory.addLast(currentPage)}
-        currentPage=page;pageArea.removeAllViews()'''
-        block = block.replace(compact, compact_new, 1)
-    elif "canonicalPageHistory" not in block:
-        raise SystemExit("[canonical-nav] showPage state anchor missing")
+'''
+        line_start = block.rfind("\n", 0, pos) + 1
+        block = block[:line_start] + history + block[line_start:]
 
     block = block.replace('"Content","Downloads"->step479Content()', '"Content","Downloads"->canonicalBrowsePage()')
     block = block.replace('"Content", "Downloads" -> step479Content()', '"Content", "Downloads" -> canonicalBrowsePage()')
     block = block.replace('"Content" -> step375Content()', '"Content" -> canonicalBrowsePage()')
     block = block.replace('"Versions"->step479Versions()', '"Versions"->canonicalVersionPage()')
 
-    if '"Versions"->canonicalVersionPage()' not in block and '"Versions" -> canonicalVersionPage()' not in block:
-        if 'else->step479Content()' in block:
-            block = block.replace('else->step479Content()', '"Versions"->canonicalVersionPage()\n            else->canonicalBrowsePage()', 1)
-        elif 'else -> step375Content()' in block:
-            block = block.replace('else -> step375Content()', '"Versions" -> canonicalVersionPage()\n            else -> canonicalBrowsePage()', 1)
-        elif 'else->canonicalBrowsePage()' not in block and 'else -> canonicalBrowsePage()' not in block:
-            raise SystemExit("[canonical-nav] no showPage version/default route anchor")
+    if '"Content"->canonicalBrowsePage()' not in block and '"Content" -> canonicalBrowsePage()' not in block and '"Content","Downloads"->canonicalBrowsePage()' not in block:
+        if 'else->aboutPage()' in block:
+            block = block.replace('else->aboutPage()', '"Content"->canonicalBrowsePage()\n            "Downloads"->canonicalBrowsePage()\n            "Versions"->canonicalVersionPage()\n            else->aboutPage()', 1)
+        elif 'else -> aboutPage()' in block:
+            block = block.replace('else -> aboutPage()', '"Content" -> canonicalBrowsePage()\n            "Downloads" -> canonicalBrowsePage()\n            "Versions" -> canonicalVersionPage()\n            else -> aboutPage()', 1)
+    elif '"Versions"->canonicalVersionPage()' not in block and '"Versions" -> canonicalVersionPage()' not in block:
+        if 'else->aboutPage()' in block:
+            block = block.replace('else->aboutPage()', '"Versions"->canonicalVersionPage()\n            else->aboutPage()', 1)
+        elif 'else -> aboutPage()' in block:
+            block = block.replace('else -> aboutPage()', '"Versions" -> canonicalVersionPage()\n            else -> aboutPage()', 1)
 
     return source[:start] + block + source[end:]
 
