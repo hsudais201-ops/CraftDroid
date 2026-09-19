@@ -25,6 +25,8 @@ data class ContentUiState(
     val categories: List<String> = emptyList(),
     val query: String = "",
     val category: String? = null,
+    val categoryId: Int? = null,
+    val categoryIds: Map<String, Int> = emptyMap(),
     val loader: String? = null,
     val loading: Boolean = true,
     val refreshing: Boolean = false,
@@ -49,7 +51,7 @@ class ContentBrowserViewModel(private val container: LauncherContainer) : ViewMo
     }
 
     fun selectType(type: ContentType) {
-        _state.value = _state.value.copy(type = type, items = emptyList(), loading = true, error = null, category = null, hasMore = true)
+        _state.value = _state.value.copy(type = type, items = emptyList(), loading = true, error = null, category = null, categoryId = null, categoryIds = emptyMap(), hasMore = true)
         refresh()
     }
 
@@ -64,7 +66,8 @@ class ContentBrowserViewModel(private val container: LauncherContainer) : ViewMo
     }
 
     fun setCategory(value: String?) {
-        _state.value = _state.value.copy(category = value, items = emptyList(), loading = true, error = null, hasMore = true)
+        val id = value?.let { _state.value.categoryIds[it] }
+        _state.value = _state.value.copy(category = value, categoryId = id, items = emptyList(), loading = true, error = null, hasMore = true)
         refresh()
     }
 
@@ -86,16 +89,26 @@ class ContentBrowserViewModel(private val container: LauncherContainer) : ViewMo
                                 current.query,
                                 version,
                                 current.loader,
-                                null,
+                                current.categoryId,
                                 0
                             )
                         }
                     }
                 }
-                val categories = page.items.flatMap { it.categories }.distinct().sorted().take(12)
+                val curseCategories = if (current.source == ContentSource.CURSEFORGE) {
+                    val proxy = container.settingsRepository.settingsFlow.first().curseForgeProxyUrl
+                    getCurseForge(proxy).categories(current.type)
+                } else emptyList()
+                val categories = if (curseCategories.isNotEmpty()) {
+                    curseCategories.map { it.name }.distinct().sorted().take(30)
+                } else {
+                    page.items.flatMap { it.categories }.distinct().sorted().take(12)
+                }
+                val categoryIds = curseCategories.associate { it.name to it.id }
                 _state.value = _state.value.copy(
                     items = page.items,
                     categories = categories,
+                    categoryIds = categoryIds,
                     loading = false,
                     refreshing = false,
                     hasMore = page.hasMore,
@@ -127,7 +140,7 @@ class ContentBrowserViewModel(private val container: LauncherContainer) : ViewMo
                                 current.query,
                                 version,
                                 current.loader,
-                                null,
+                                current.categoryId,
                                 current.items.size
                             )
                         }
