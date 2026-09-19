@@ -32,6 +32,8 @@ enum class LauncherScreen {
     SETTINGS,
     LOGS,
     GAME_PLAY,
+    CONTENT,
+    SERVERS,
     CUSTOMIZE_CONTROLS
 }
 
@@ -387,6 +389,33 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
             container.touchInputManager.resetCurrentProfileToDefault()
             container.touchInputManager.resetToDefaults()
             container.settingsRepository.updateCustomButtonLayout("")
+        }
+    }
+
+    fun cancelDownload() {
+        container.downloadManager.cancel()
+    }
+
+    fun installLoader(minecraftVersion: String, loader: String, loaderVersion: String) {
+        viewModelScope.launch {
+            try {
+                when (loader.lowercase()) {
+                    "fabric" -> {
+                        val result = container.fabricLoaderInstaller.install(minecraftVersion, loaderVersion)
+                        if (!result.success) error(result.error ?: "Fabric installation failed")
+                    }
+                    "forge", "neoforge" -> {
+                        val result = container.forgeNeoForgeInstaller.prepare(loader, minecraftVersion, loaderVersion)
+                        if (!result.success) error(result.error ?: "Loader installation failed")
+                    }
+                    else -> error("Unsupported loader: $loader")
+                }
+                _downloadStatusText.value = loader + " " + loaderVersion + " installed"
+                container.versionManager.fetchVersions()
+            } catch (t: Throwable) {
+                _downloadStatusText.value = loader + " installation failed: " + (t.message ?: "unknown error")
+                LauncherLogger.error(_downloadStatusText.value)
+            }
         }
     }
 
