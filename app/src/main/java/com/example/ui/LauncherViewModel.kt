@@ -358,6 +358,10 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
         }
     }
 
+    fun updateJavaMajorOverride(major: Int?) {
+        viewModelScope.launch { container.settingsRepository.updateJavaMajorOverride(major) }
+    }
+
     fun updateJvmArgs(args: String) {
         viewModelScope.launch {
             container.settingsRepository.updateJvmArgs(args)
