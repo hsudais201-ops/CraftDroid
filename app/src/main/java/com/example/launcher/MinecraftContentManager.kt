@@ -4,6 +4,8 @@ import android.content.Context
 import com.example.filesystem.MinecraftFileSystem
 import java.io.File
 import java.io.FileOutputStream
+import java.net.URL
+import java.security.MessageDigest
 import java.util.zip.ZipFile
 
 object MinecraftContentManager {
