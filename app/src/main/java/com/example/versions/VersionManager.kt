@@ -221,7 +221,7 @@ class VersionManager(
         val summary = _versionsList.value.find { it.id == versionId }
         val url = summary?.url ?: "https://piston-meta.mojang.com/v1/packages/${versionId}/${versionId}.json"
         LauncherLogger.info("Starting automated repair for $versionId...")
-        installer.installVersion(versionId, url, onProgress, onStatus)
+        installer.installVersion(versionId, url, summary?.sha1?.takeIf { it.isNotBlank() }, onProgress, onStatus)
     }
 
     suspend fun deleteVersion(versionId: String): Boolean = withContext(Dispatchers.IO) {
