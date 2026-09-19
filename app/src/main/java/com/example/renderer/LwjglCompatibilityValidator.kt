@@ -70,6 +70,18 @@ object LwjglCompatibilityValidator {
         return Result(true, versions, "LWJGL Java artifacts are internally consistent; $mode selected")
     }
 
+    private fun containsAscii(bytes: ByteArray, token: String): Boolean {
+        val needle = token.toByteArray(Charsets.UTF_8)
+        if (needle.isEmpty() || needle.size > bytes.size) return false
+        outer@ for (i in 0..(bytes.size - needle.size)) {
+            for (j in needle.indices) {
+                if (bytes[i + j] != needle[j]) continue@outer
+            }
+            return true
+        }
+        return false
+    }
+
     private fun coordinateVersion(name: String): String? {
         val parts = name.split(':')
         return if (parts.size >= 3 && parts[0] == "org.lwjgl" && parts[1].isNotBlank()) parts[2].takeIf { it.isNotBlank() } else null
