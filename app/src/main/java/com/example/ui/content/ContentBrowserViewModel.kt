@@ -4,8 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.content.ContentItem
+import com.example.content.ContentSource
 import com.example.content.ContentType
 import com.example.content.ModrinthRepository
+import com.example.content.CurseForgeRepository
 import com.example.core.LauncherContainer
 import com.example.logs.LauncherLogger
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +20,7 @@ import kotlinx.coroutines.withContext
 
 data class ContentUiState(
     val type: ContentType = ContentType.MOD,
+    val source: ContentSource = ContentSource.MODRINTH,
     val items: List<ContentItem> = emptyList(),
     val categories: List<String> = emptyList(),
     val query: String = "",
@@ -32,11 +35,16 @@ data class ContentUiState(
 )
 
 class ContentBrowserViewModel(private val container: LauncherContainer) : ViewModel() {
-    private val repository = ModrinthRepository(container.context)
+    private val modrinth = ModrinthRepository(container.context)
     private val _state = MutableStateFlow(ContentUiState())
     val state: StateFlow<ContentUiState> = _state.asStateFlow()
 
     init { refresh() }
+
+    fun setSource(source: ContentSource) {
+        _state.value = _state.value.copy(source = source, items = emptyList(), loading = true, error = null, hasMore = true)
+        refresh()
+    }
 
     fun selectType(type: ContentType) {
         _state.value = _state.value.copy(type = type, items = emptyList(), loading = true, error = null, category = null, hasMore = true)
@@ -60,7 +68,22 @@ class ContentBrowserViewModel(private val container: LauncherContainer) : ViewMo
             try {
                 val version = container.settingsRepository.settingsFlow.first().selectedVersionId
                 val page = withContext(Dispatchers.IO) {
-                    repository.search(current.type, current.query, version, current.category, 0)
+                    when (current.source) {
+                        ContentSource.MODRINTH -> modrinth.search(
+                            current.type, current.query, version, current.category, 0
+                        )
+                        ContentSource.CURSEFORGE -> {
+                            val proxy = container.settingsRepository.settingsFlow.first().curseForgeProxyUrl
+                            CurseForgeRepository(container.context, container.okHttpClient, proxy).search(
+                                current.type,
+                                current.query,
+                                version,
+                                current.loaders.firstOrNull(),
+                                null,
+                                0
+                            )
+                        }
+                    }
                 }
                 val categories = page.items.flatMap { it.categories }.distinct().sorted().take(12)
                 _state.value = _state.value.copy(
@@ -86,7 +109,22 @@ class ContentBrowserViewModel(private val container: LauncherContainer) : ViewMo
             try {
                 val version = container.settingsRepository.settingsFlow.first().selectedVersionId
                 val page = withContext(Dispatchers.IO) {
-                    repository.search(current.type, current.query, version, current.category, current.items.size)
+                    when (current.source) {
+                        ContentSource.MODRINTH -> modrinth.search(
+                            current.type, current.query, version, current.category, current.items.size
+                        )
+                        ContentSource.CURSEFORGE -> {
+                            val proxy = container.settingsRepository.settingsFlow.first().curseForgeProxyUrl
+                            CurseForgeRepository(container.context, container.okHttpClient, proxy).search(
+                                current.type,
+                                current.query,
+                                version,
+                                current.loaders.firstOrNull(),
+                                null,
+                                current.items.size
+                            )
+                        }
+                    }
                 }
                 _state.value = _state.value.copy(
                     items = _state.value.items + page.items,
@@ -105,13 +143,23 @@ class ContentBrowserViewModel(private val container: LauncherContainer) : ViewMo
             _state.value = _state.value.copy(installingId = item.id, message = null, error = null)
             try {
                 val version = container.settingsRepository.settingsFlow.first().selectedVersionId
-                withContext(Dispatchers.IO) { repository.install(item, version) }
+                withContext(Dispatchers.IO) {
+                    when (currentSource()) {
+                        ContentSource.MODRINTH -> modrinth.install(item, version)
+                        ContentSource.CURSEFORGE -> {
+                            val proxy = container.settingsRepository.settingsFlow.first().curseForgeProxyUrl
+                            CurseForgeRepository(container.context, container.okHttpClient, proxy).install(item, version)
+                        }
+                    }
+                }
                 _state.value = _state.value.copy(installingId = null, message = item.name + " installed")
             } catch (t: Throwable) {
                 _state.value = _state.value.copy(installingId = null, error = "Install failed: " + (t.message ?: "unknown error"))
             }
         }
     }
+
+    private fun currentSource(): ContentSource = _state.value.source
 
     fun clearMessage() {
         _state.value = _state.value.copy(message = null)
