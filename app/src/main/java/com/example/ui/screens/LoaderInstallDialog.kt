@@ -51,7 +51,7 @@ fun LoaderInstallDialog(
                         modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable)
                     )
                     ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        listOf("Fabric", "Forge", "NeoForge").forEach { option ->
+                        listOf("Fabric", "Quilt", "Forge", "NeoForge").forEach { option ->
                             DropdownMenuItem(text = { Text(option) }, onClick = { loader = option; expanded = false })
                         }
                     }
