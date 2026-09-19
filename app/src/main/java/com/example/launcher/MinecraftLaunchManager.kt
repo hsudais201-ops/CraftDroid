@@ -72,7 +72,9 @@ class MinecraftLaunchManager(
         uuid: String,
         ramMb: Int,
         rendererBackend: RendererBackend,
-        customJvmArgs: String
+        customJvmArgs: String,
+        serverHost: String? = null,
+        serverPort: Int? = null
     ) {
         // Never cancel/replace an existing launch job while an embedded JVM is
         // active. JLI_Launch runs inside this process (not as a child Process),
@@ -279,7 +281,9 @@ class MinecraftLaunchManager(
                     isOfflineAccount = isOfflineAccount,
                     ramMb = ramMb,
                     customJvmArgs = customJvmArgs,
-                    javaExecutable = javaRuntime.javaExecutable
+                    javaExecutable = javaRuntime.javaExecutable,
+                    serverHost = serverHost,
+                    serverPort = serverPort
                 )
 
                 val nativeLwjglCheck = com.example.renderer.NativeLwjglCompatibilityManager.validate(
