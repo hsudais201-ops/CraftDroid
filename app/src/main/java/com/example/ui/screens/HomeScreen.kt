@@ -393,7 +393,7 @@ private fun RowScope.QuickAction(label: String, icon: androidx.compose.ui.graphi
     val hovered by interaction.collectIsHoveredAsState()
     val scale = when { pressed -> 0.94f; hovered -> 1.04f; else -> 1f }
     Surface(
-        modifier = graphicsScale(scale).clickable(interactionSource = interaction, indication = null, onClick = onClick),
+        modifier = Modifier.graphicsScale(scale).clickable(interactionSource = interaction, indication = null, onClick = onClick),
         shape = RoundedCornerShape(17.dp),
         color = Color.White.copy(alpha = .045f),
         tonalElevation = 1.dp
