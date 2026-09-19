@@ -177,9 +177,7 @@ class VersionManager(
                     if (objs != null) {
                         totalAssets = objs.length()
                         val keys = objs.keys()
-                        var sampleCount = 0
-                        while (keys.hasNext() && sampleCount < 50) { // check sample for speed
-                            sampleCount++
+                        while (keys.hasNext()) {
                             val hash = objs.getJSONObject(keys.next()).getString("hash")
                             val assetFile = fileSystem.getAssetObjectFile(hash)
                             if (!assetFile.exists() || assetFile.length() == 0L) {
@@ -219,8 +217,9 @@ class VersionManager(
         onStatus: (String) -> Unit
     ): Boolean = withContext(Dispatchers.IO) {
         val summary = _versionsList.value.find { it.id == versionId }
-        val url = summary?.url ?: "https://piston-meta.mojang.com/v1/packages/${versionId}/${versionId}.json"
-        LauncherLogger.info("Starting automated repair for $versionId...")
+        val url = summary?.url
+            ?: throw IllegalStateException("No Mojang version-manifest URL is available; refresh the version list before repairing it")
+        LauncherLogger.info("Starting automated repair for " + versionId + "...")
         installer.installVersion(versionId, url, onProgress, onStatus)
     }
 
