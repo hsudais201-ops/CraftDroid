@@ -344,6 +344,18 @@ jobs:
           set -euo pipefail
           python3 tools/ci/verify_step460_ui_polish.py droid-src
 
+      - name: Apply canonical icon and navigation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/apply_canonical_icon_navigation.py droid-src
+
+      - name: Verify canonical icon and navigation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/verify_canonical_icon_navigation.py droid-src
+
       - name: Apply Step 461 real logo and memory hardening
         shell: bash
         run: |
