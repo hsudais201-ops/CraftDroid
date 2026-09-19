@@ -567,28 +567,56 @@ def ensure_extra_helpers(source: str) -> str:
     }
 
     private fun canonicalVersionPage() {
-        pageArea.addView(step375Title("Minecraft Versions", "Vanilla releases · grass-block version entries"))
-        val versions = listOf("26.3","26.2","26.1.2","26.1.1","1.21.11","1.21.10","1.21.9","1.20.6","1.20.4")
-        versions.forEach { version ->
-            val installed = MinecraftVersionInstallManager.isInstalled(this, version)
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(9), dp(7), dp(9), dp(7))
-                background = step460Surface(48)
+        pageArea.addView(step375Title("Minecraft Versions", "Live Mojang manifest · releases and Java requirements"))
+        val loading = step375Text("Loading versions from Mojang…", 13f)
+        pageArea.addView(loading, LinearLayout.LayoutParams(-1, dp(52)))
+        java.util.concurrent.Executors.newSingleThreadExecutor().execute {
+            try {
+                val connection = java.net.URL("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json").openConnection() as java.net.HttpURLConnection
+                connection.connectTimeout = 7000
+                connection.readTimeout = 15000
+                connection.setRequestProperty("Accept", "application/json")
+                if (connection.responseCode !in 200..299) throw java.io.IOException("Mojang manifest HTTP " + connection.responseCode)
+                val root = org.json.JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+                connection.disconnect()
+                val versionsArray = root.getJSONArray("versions")
+                val releases = mutableListOf<String>()
+                for (i in 0 until versionsArray.length()) {
+                    val item = versionsArray.getJSONObject(i)
+                    if (item.optString("type") == "release") {
+                        releases.add(item.getString("id"))
+                    }
+                }
+                runOnUiThread {
+                    pageArea.removeView(loading)
+                    releases.forEach { version ->
+                        val installed = MinecraftVersionInstallManager.isInstalled(this, version)
+                        val row = LinearLayout(this).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                            setPadding(dp(9), dp(7), dp(9), dp(7))
+                            background = step460Surface(48)
+                        }
+                        row.addView(
+                            step460MiniBadge("🌿").apply { contentDescription = "Grass block version tile" },
+                            LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(9) }
+                        )
+                        row.addView(step375Text(version, 16f, true), LinearLayout.LayoutParams(0, dp(52), 1f))
+                        row.addView(step375Button(
+                            if (installed) "SELECT" else "INSTALL", installed
+                        ) {
+                            saveMinecraftVersion(version)
+                            if (installed) showPage("Home") else installMinecraftVersion(version)
+                        }, LinearLayout.LayoutParams(dp(112), dp(44)))
+                        pageArea.addView(row, LinearLayout.LayoutParams(-1, dp(68)).apply { topMargin = dp(7) })
+                    }
+                }
+            } catch (t: Throwable) {
+                runOnUiThread {
+                    pageArea.removeView(loading)
+                    pageArea.addView(step375Text("Could not load the Mojang version manifest: " + (t.message ?: "network error"), 13f))
+                }
             }
-            row.addView(
-                step460MiniBadge("🌿").apply { contentDescription = "Grass block version tile" },
-                LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(9) }
-            )
-            row.addView(step375Text(version, 16f, true), LinearLayout.LayoutParams(0, dp(52), 1f))
-            row.addView(step375Button(
-                if (installed) "SELECT" else "INSTALL", installed
-            ) {
-                saveMinecraftVersion(version)
-                if (installed) showPage("Home") else installMinecraftVersion(version)
-            }, LinearLayout.LayoutParams(dp(112), dp(44)))
-            pageArea.addView(row, LinearLayout.LayoutParams(-1, dp(68)).apply { topMargin = dp(7) })
         }
     }
 '''
