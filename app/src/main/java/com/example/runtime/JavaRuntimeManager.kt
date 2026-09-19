@@ -272,21 +272,23 @@ class JavaRuntimeManager(
                 .header("User-Agent", "CraftDroid-Launcher/1.4")
             if (resumeBytes > 0L) builder.header("Range", "bytes=" + resumeBytes + "-")
             val response = okHttpClient.newCall(builder.build()).execute()
+            var retry = false
             response.use {
                 if (it.code == 416 && resumeBytes > 0L) {
                     destination.delete()
-                    if (attempt < 2) continue
-                    error("HTTP 416 after runtime download resume reset")
+                    retry = true
+                } else {
+                    if (!it.isSuccessful) error("HTTP " + it.code)
+                    val body = it.body ?: error("Empty runtime download")
+                    val append = resumeBytes > 0L && it.code == 206
+                    FileOutputStream(destination, append).use { out ->
+                        body.byteStream().use { input -> input.copyTo(out) }
+                        out.fd.sync()
+                    }
+                    return
                 }
-                if (!it.isSuccessful) error("HTTP " + it.code)
-                val body = it.body ?: error("Empty runtime download")
-                val append = resumeBytes > 0L && it.code == 206
-                FileOutputStream(destination, append).use { out ->
-                    body.byteStream().use { input -> input.copyTo(out) }
-                    out.fd.sync()
-                }
-                return
             }
+            if (!retry || attempt >= 2) error("HTTP 416 after runtime download resume reset")
         }
         error("Runtime download exhausted retry attempts")
     }
