@@ -86,6 +86,10 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
                 val request = requestBuilder.build()
 
                 okHttpClient.newCall(request).execute().use { response ->
+                    if (response.code == 416 && resumeBytes > 0L) {
+                        tempFile.delete()
+                        throw IOException("HTTP 416; partial download reset for ${task.name}")
+                    }
                     if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
                     val body = response.body ?: throw IOException("Empty body")
 
@@ -181,6 +185,10 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
                                 val request = requestBuilder.build()
 
                                 okHttpClient.newCall(request).execute().use { response ->
+                                    if (response.code == 416 && resumeBytes > 0L) {
+                                        tempFile.delete()
+                                        throw IOException("HTTP 416; partial download reset for ${task.name}")
+                                    }
                                     if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
                                     val body = response.body ?: throw IOException("Empty body")
 
