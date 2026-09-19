@@ -141,6 +141,9 @@ class LauncherCoreUnitTest {
         """.trimIndent()
 
         val detail = parser.parseVersionDetail(sampleJson)
+        val dummyClient = fileSystem.getVersionJarFile(detail.id)
+        dummyClient.parentFile?.mkdirs()
+        dummyClient.writeBytes(ByteArray(100) { it.toByte() })
         val dummyJava = File(context.filesDir, "dummy_java")
 
         val config = LaunchConfig(
