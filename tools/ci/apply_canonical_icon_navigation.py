@@ -123,8 +123,8 @@ HELPERS = r'''
         val payload = buildString {
             appendLine("CraftDroid instance export")
             appendLine("Instance: $instance")
-            appendLine("Minecraft: \${selectedMinecraftVersion()}")
-            appendLine("Loader: \${getSharedPreferences("droid_launcher_canonical_ui", MODE_PRIVATE).getString("selected_loader", "Vanilla")}")
+            appendLine("Minecraft: ${selectedMinecraftVersion()}")
+            appendLine("Loader: ${getSharedPreferences("droid_launcher_canonical_ui", MODE_PRIVATE).getString("selected_loader", "Vanilla")}")
         }
         try {
             val send = android.content.Intent(android.content.Intent.ACTION_SEND)
@@ -318,7 +318,7 @@ def patch_home(source: str) -> str:
             LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginStart = dp(7) })
         pageArea.addView(homeActions, LinearLayout.LayoutParams(-1, dp(54)))
         pageArea.addView(step375Button(
-            if (step375HasInstance()) "INSTANCE  ·  \${step375SelectedInstance()}" else "INSTANCE  ·  Select an instance"
+            if (step375HasInstance()) "INSTANCE  ·  ${step375SelectedInstance()}" else "INSTANCE  ·  Select an instance"
         ) { showPage("Instances") }, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(7) })
 '''
     block = block[:line_end] + insert + block[line_end:]
