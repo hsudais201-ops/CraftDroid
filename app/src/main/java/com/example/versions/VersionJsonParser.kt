@@ -256,21 +256,6 @@ class VersionJsonParser {
         return LibraryArtifact(path = path, sha1 = "", size = 0L, url = url)
     }
 
-    private fun inferJavaVersion(versionId: String): Int {
-        val normalized = versionId.trim().removePrefix("v")
-        val parts = normalized.split('.', '-', '+').mapNotNull { it.toIntOrNull() }
-        val first = parts.getOrNull(0) ?: 1
-        val second = parts.getOrNull(1) ?: 0
-        val patch = parts.getOrNull(2) ?: 0
-
-        if (first >= 26) return 25
-
-        return when {
-            first == 1 && second >= 21 -> 21
-            first == 1 && second == 20 && patch >= 5 -> 21
-            first == 1 && second in 17..20 -> if (second == 17) 16 else 17
-            first == 1 && second <= 16 -> 8
-            else -> 8
-        }
-    }
+    private fun inferJavaVersion(versionId: String): Int =
+        MinecraftJavaRequirements.requiredMajor(versionId)
 }
