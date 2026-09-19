@@ -162,21 +162,26 @@ class ModrinthClient(private val http: OkHttpClient) {
 
     private suspend fun requestBody(url: String): String {
         for (attempt in 0 until 3) {
-            val r = Request.Builder().url(url).header("Accept", "application/json")
+            val request = Request.Builder().url(url).header("Accept", "application/json")
                 .header("User-Agent", "CraftDroid-Launcher/2.5").build()
-            http.newCall(r).execute().use { response ->
-                if (response.code == 429) {
-                    val retryAfter = response.header("Retry-After")?.toLongOrNull()?.coerceIn(1L, 30L) ?: ((attempt + 1L) * 2L)
+            val response = http.newCall(request).execute()
+            var retry = false
+            var result: String? = null
+            response.use {
+                if (it.code == 429) {
+                    val retryAfter = it.header("Retry-After")?.toLongOrNull()?.coerceIn(1L, 30L) ?: ((attempt + 1L) * 2L)
                     delay(retryAfter * 1000L)
-                    continue
+                    retry = true
+                } else {
+                    if (!it.isSuccessful) throw IOException("Modrinth HTTP " + it.code + " for " + url)
+                    result = it.body?.string() ?: throw IOException("Modrinth returned an empty response")
                 }
-                if (!response.isSuccessful) throw IOException("Modrinth HTTP " + response.code + " for " + url)
-                return response.body?.string() ?: throw IOException("Modrinth returned an empty response")
             }
+            if (retry) continue
+            return result!!
         }
         throw IOException("Modrinth rate limit persisted after 3 attempts")
     }
-
     private suspend fun getArray(url: String): JSONArray {
         val cached = responseCache[url]?.takeIf { System.currentTimeMillis() - it.first < cacheTtlMs }?.second
         if (cached != null) return JSONArray(cached)
