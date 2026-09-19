@@ -361,51 +361,57 @@ def patch_filesystem(root):
     patch(root, rel, f)
 
 def patch_version_managers(root):
-    patch(root, "app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt", lambda s: s.replace(
-        '''        } catch (_: Throwable) {
+    rel = root / "app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt"
+    if rel.is_file():
+        patch(root, "app/src/main/java/com/example/launcher/MinecraftVersionInstallManager.kt", lambda s: s.replace(
+            '''        } catch (_: Throwable) {
             State.NOT_INSTALLED
         }''',
-        '''        } catch (e: Throwable) {
+            '''        } catch (e: Throwable) {
             com.example.logs.LauncherLogger.warn("Could not read Minecraft install state for " + safeVersion + ": " + e.message)
             State.NOT_INSTALLED
         }''',
-        1,
-    ).replace(
-        '''        } catch (_: Throwable) {
+            1,
+        ).replace(
+            '''        } catch (_: Throwable) {
             false
         }
     }
 
     private fun libraryAllowed''',
-        '''        } catch (e: Throwable) {
+            '''        } catch (e: Throwable) {
             com.example.logs.LauncherLogger.warn("Minecraft launch-readiness check failed for " + version + ": " + e.message)
             false
         }
     }
 
     private fun libraryAllowed''',
-        1,
-    ))
-    def latest(s):
-        if "import com.example.logs.LauncherLogger" not in s:
-            s = s.replace("import org.json.JSONObject\n", "import org.json.JSONObject\nimport com.example.logs.LauncherLogger\n", 1)
-        return s.replace(
-            '''            val latest = try { fetch() } catch (_: Throwable) { null }''',
-            '''            val latest = try { fetch() } catch (e: Throwable) {
+            1,
+        ))
+    rel = root / "app/src/main/java/com/example/launcher/MinecraftLatestVersionManager.kt"
+    if rel.is_file():
+        def latest(s):
+            if "import com.example.logs.LauncherLogger" not in s:
+                s = s.replace("import org.json.JSONObject\n", "import org.json.JSONObject\nimport com.example.logs.LauncherLogger\n", 1)
+            return s.replace(
+                '''            val latest = try { fetch() } catch (_: Throwable) { null }''',
+                '''            val latest = try { fetch() } catch (e: Throwable) {
                 LauncherLogger.warn("Minecraft latest-version refresh failed: " + e.message)
                 null
             }''',
-            1,
-        )
-    patch(root, "app/src/main/java/com/example/launcher/MinecraftLatestVersionManager.kt", latest)
-    patch(root, "app/src/main/java/com/example/launcher/DroidLauncherUpdateManager.kt", lambda s: s.replace(
-        '''            val result = try { fetchLatest() } catch (_: Throwable) { null }''',
-        '''            val result = try { fetchLatest() } catch (e: Throwable) {
+                1,
+            )
+        patch(root, "app/src/main/java/com/example/launcher/MinecraftLatestVersionManager.kt", latest)
+    rel = root / "app/src/main/java/com/example/launcher/DroidLauncherUpdateManager.kt"
+    if rel.is_file():
+        patch(root, "app/src/main/java/com/example/launcher/DroidLauncherUpdateManager.kt", lambda s: s.replace(
+            '''            val result = try { fetchLatest() } catch (_: Throwable) { null }''',
+            '''            val result = try { fetchLatest() } catch (e: Throwable) {
                 com.example.logs.LauncherLogger.warn("Launcher update check failed: " + e.message)
                 null
             }''',
-        1,
-    ))
+            1,
+        ))
 
 def patch_input_and_logs(root):
     def layout(s):
