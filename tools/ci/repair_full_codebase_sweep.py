@@ -414,7 +414,8 @@ def validate(root):
         "app/src/main/res/xml/backup_rules.xml": ("mc_secure_auth.xml",),
         "app/src/main/res/xml/data_extraction_rules.xml": ("mc_secure_auth.xml",),
         "app/src/main/java/com/example/minecraft/MinecraftInstaller.kt": ("installation is incomplete", "asset index could not be parsed"),
-        "app/src/main/java/com/example/downloader/DownloadManager.kt": ("executeTrusted", "Only HTTPS downloads are allowed", "followRedirects(false)"),
+        "app/src/main/java/com/example/downloader/HashVerifier.kt": ("file.length() <= 0L",),
+        "app/src/main/java/com/example/downloader/DownloadManager.kt": ("executeTrusted", "Only HTTPS downloads are allowed", "followRedirects(false)", "sizeValid"),
         "app/src/main/java/com/example/filesystem/MinecraftFileSystem.kt": ("Invalid asset hash",),
         "app/src/main/java/com/example/input/ControlLayout.kt": ("Ignoring malformed touch control",),
     }
