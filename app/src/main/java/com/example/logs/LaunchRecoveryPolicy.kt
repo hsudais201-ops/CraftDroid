@@ -27,7 +27,7 @@ object LaunchRecoveryPolicy {
     }
 
     fun rendererFallbackFromPreviousCrash(rootDir: File, requested: RendererBackend): RendererBackend {
-        val latest = CrashDiagnostics.findLatestHotSpotError(rootDir) ?: return requested
+        val latest = rootDir.listFiles()?.filter { it.isFile && it.name.startsWith("hs_err_pid") && it.name.endsWith(".log") }?.maxByOrNull { it.lastModified() } ?: return requested
         val text = runCatching { latest.readText() }.getOrDefault("").lowercase()
         if (text.isBlank()) return requested
 
