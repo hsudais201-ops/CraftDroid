@@ -33,7 +33,7 @@ import kotlinx.coroutines.SupervisorJob
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
-class LauncherContainer private constructor(context: Context) {
+class LauncherContainer internal constructor(context: Context) {
 
     val context: Context = context.applicationContext
 
