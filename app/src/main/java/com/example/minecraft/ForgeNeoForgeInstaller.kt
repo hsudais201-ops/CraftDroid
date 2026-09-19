@@ -294,7 +294,7 @@ class ForgeNeoForgeInstaller(
         if (installEntry == null && versionEntry == null) {
             val legacy = looksLikeLegacyJarMod(zip)
             return@use if (legacy) {
-                InstallerInspection(ForgeInstallerFormat.LEGACY_JAR_MOD, null,
+                InstallerInspection(ForgeInstallerFormat.LEGACY_PROFILE, null,
                     "legacy Forge jar-mod/universal installer without launcher profile")
             } else {
                 InstallerInspection(ForgeInstallerFormat.UNSUPPORTED, null,
