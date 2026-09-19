@@ -314,7 +314,7 @@ class MinecraftLaunchManager(
                 }
                 LauncherLogger.info("Native LWJGL ABI check passed: ${nativeLwjglCheck.details}")
 
-                val preferLwjgl3 = lwjglProfile.apiFamily == com.example.renderer.LwjglRuntimeProfile.ApiFamily.LWJGL3_NATIVE_GLFW
+                val preferLwjgl3 = lwjglProfile.family == com.example.renderer.LwjglRuntimeProfile.ApiFamily.LWJGL3_NATIVE_GLFW
                 val selectedGlfwName = listOf("libglfw.so", "libglfw3.so").firstOrNull {
                     File(nativeStack.directory, it).isFile
                 }
