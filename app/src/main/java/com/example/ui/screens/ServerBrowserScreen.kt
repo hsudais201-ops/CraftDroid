@@ -49,7 +49,7 @@ import com.example.ui.theme.UiTokens
 @Composable
 fun ServerBrowserScreen(viewModel: LauncherViewModel) {
     val vm: ServerBrowserViewModel = viewModel(
-        factory = ServerBrowserViewModel.Factory(LauncherContainer.get(viewModel.container.appContext), viewModel)
+        factory = ServerBrowserViewModel.Factory(LauncherContainer.get(viewModel.container.context), viewModel)
     )
     val state by vm.state.collectAsState()
     var showAdd by remember { mutableStateOf(false) }
