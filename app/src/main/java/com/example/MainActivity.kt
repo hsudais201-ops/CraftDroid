@@ -113,14 +113,15 @@ fun MainAppContent(viewModel: LauncherViewModel) {
     val homeUiState by viewModel.homeUiState.collectAsState()
     val settings by viewModel.settings.collectAsState()
     val versions by viewModel.versions.collectAsState()
-    var welcomeDismissed by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    val welcomeDismissedState = androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    val welcomeDismissed = welcomeDismissedState.value
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val hasInstalledVersion = versions.any { it.isInstalled }
     val onboardingRequired = !settings.onboardingComplete && !hasInstalledVersion
 
     LaunchedEffect(onboardingRequired) {
-        if (!onboardingRequired) welcomeDismissed = true
+        if (!onboardingRequired) welcomeDismissedState.value = true
     }
 
     LaunchedEffect(launchState) {
