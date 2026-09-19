@@ -7,6 +7,7 @@ on:
       - 'CraftDroid_Launcher_2.4_GitHubActions_Step153.zip'
       - '.github/workflows/extract-launcher-source.yml'
       - 'tools/ci/repair_full_codebase_sweep.py'
+      - 'tools/ci/repair_full_sweep_live_paths.py'
 
 permissions:
   contents: write
