@@ -239,6 +239,11 @@ def patch_installer(root):
     patch(root, rel, f)
 
 def patch_downloads(root):
+    patch(root, "app/src/main/java/com/example/downloader/HashVerifier.kt", lambda text: text.replace(
+        "        if (expectedSha1.isNullOrBlank()) return true // No hash provided, verify size > 0",
+        "        if (file.length() <= 0L) return false\n        if (expectedSha1.isNullOrBlank()) return true",
+        1,
+    ))
     rel = "app/src/main/java/com/example/downloader/DownloadManager.kt"
     def f(s):
         if MARKER not in s:
@@ -311,6 +316,30 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
                                 if (!task.expectedSha1.isNullOrBlank()) {
                                     if (!HashVerifier.verifySha1(tempFile, task.expectedSha1)) {''',
             1,
+        )
+        s = re.sub(
+            r'''        if \(task\.destination\.exists\(\) && task\.destination\.length\(\) > 0\) \{\n            if \(!verifyHash \|\| HashVerifier\.verifySha1\(task\.destination, task\.expectedSha1\)\) \{\n                return@withContext true\n            \}\n        \}''',
+            '''        if (task.destination.exists() && task.destination.length() > 0) {
+            val sizeValid = task.size <= 0L || task.destination.length() == task.size
+            if (sizeValid && (!verifyHash || HashVerifier.verifySha1(task.destination, task.expectedSha1))) {
+                return@withContext true
+            }
+        }''',
+            s,
+            count=1,
+        )
+        s = re.sub(
+            r'''                        if \(task\.destination\.exists\(\) && task\.destination\.length\(\) > 0\) \{\n                            if \(task\.expectedSha1\.isNullOrBlank\(\) \|\| HashVerifier\.verifySha1\(task\.destination, task\.expectedSha1\)\) \{\n                                completedCount\.incrementAndGet\(\)\n                                downloadedBytesCounter\.addAndGet\(task\.destination\.length\(\)\)\n                                return@withPermit true\n                            \}\n                        \}''',
+            '''                        if (task.destination.exists() && task.destination.length() > 0) {
+                            val sizeValid = task.size <= 0L || task.destination.length() == task.size
+                            if (sizeValid && (task.expectedSha1.isNullOrBlank() || HashVerifier.verifySha1(task.destination, task.expectedSha1))) {
+                                completedCount.incrementAndGet()
+                                downloadedBytesCounter.addAndGet(task.destination.length())
+                                return@withPermit true
+                            }
+                        }''',
+            s,
+            count=1,
         )
         return s
     patch(root, rel, f)
