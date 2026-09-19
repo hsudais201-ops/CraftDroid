@@ -85,7 +85,7 @@ class ForgeNeoForgeInstaller(
             if (!downloaded) throw IOException("Failed to download $normalized installer $loaderVersion")
 
             val installerInfo = inspectInstaller(installerFile)
-            if (installerInfo.format == ForgeInstallerFormat.LEGACY_JAR_MOD) {
+            if (installerInfo.format == ForgeInstallerFormat.LEGACY_PROFILE) {
                 return@withContext installLegacyJarMod(
                     normalized, minecraftVersion, loaderVersion, installerFile, vanillaJar, vanillaJson
                 )
