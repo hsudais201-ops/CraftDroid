@@ -31,6 +31,7 @@ enum class ContentSource { MODRINTH, CURSEFORGE }
 data class ContentBrowserState(
     val source: ContentSource = ContentSource.MODRINTH,
     val projectType: String = "mod",
+    val loader: String? = null,
     val query: String = "",
     val modrinthResults: List<ContentProject> = emptyList(),
     val curseForgeResults: List<CurseForgeSearchResult> = emptyList(),
@@ -171,6 +172,18 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
         _contentBrowser.value = _contentBrowser.value.copy(projectType = type, error = null)
     }
 
+    fun updateContentLoader(loader: String?) {
+        _contentBrowser.value = _contentBrowser.value.copy(loader = loader, error = null)
+    }
+
+    private fun curseForgeLoaderType(loader: String?): Int? = when (loader?.lowercase()) {
+        "forge" -> 1
+        "fabric" -> 4
+        "quilt" -> 5
+        "neoforge" -> 6
+        else -> null
+    }
+
     fun updateContentSource(source: ContentSource) {
         _contentBrowser.value = _contentBrowser.value.copy(
             source = source,
@@ -191,7 +204,8 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
                     val results = container.modrinthClient.search(
                         query = request.query,
                         gameVersion = gameVersion,
-                        projectType = request.projectType
+                        projectType = request.projectType,
+                        loader = request.loader
                     )
                     _contentBrowser.value = request.copy(
                         isLoading = false,
@@ -215,6 +229,7 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
                     val results = container.curseForgeClient.search(
                         query = request.query,
                         gameVersion = gameVersion,
+                        loaderType = curseForgeLoaderType(request.loader),
                         categoryIds = categoryIds
                     )
                     _contentBrowser.value = request.copy(
@@ -245,13 +260,14 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
                     container.contentInstallManager.installModrinthVersion(
                         projectId = projectId,
                         minecraftVersion = gameVersion,
-                        loader = null,
+                        loader = request.loader,
                         destinationDir = destination
                     )
                 } else {
                     val file = container.curseForgeClient.latestCompatibleFile(
                         modId = projectId.toLong(),
-                        gameVersion = gameVersion
+                        gameVersion = gameVersion,
+                        loaderType = curseForgeLoaderType(request.loader)
                     )
                     when (projectType.lowercase()) {
                         "worlds" -> container.contentInstallManager.installCurseForgeWorld(projectId.toLong(), file.id)
