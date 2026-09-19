@@ -200,6 +200,28 @@ class VersionManager(
         val javaInstalled = javaRuntimeManager.getBestRuntime(requiredJava) != null
         val canLaunch = isJsonValid && isJarValid && missingLibs == 0 && javaInstalled
 
+        val stored = installedVersionDao.getInstalledVersion(versionId)
+        if (stored != null) {
+            when {
+                !isJsonValid || !isJarValid || missingLibs > 0 || missingAssets > 0 -> {
+                    installedVersionDao.updateInstallStatus(
+                        versionId = versionId,
+                        status = if (missingLibs == 0 && missingAssets == 0 && !isJarValid) "CHECKSUM_FAILED" else "NEEDS_UPDATE",
+                        corrupted = true,
+                        error = "Integrity check failed: json=$isJsonValid jar=$isJarValid missingLibraries=$missingLibs missingAssets=$missingAssets"
+                    )
+                }
+                stored.status != "CHECKSUM_FAILED" -> {
+                    installedVersionDao.updateInstallStatus(
+                        versionId = versionId,
+                        status = "INSTALLED",
+                        corrupted = false,
+                        error = null
+                    )
+                }
+            }
+        }
+
         VersionRepairStatus(
             versionId = versionId,
             isJsonValid = isJsonValid,
