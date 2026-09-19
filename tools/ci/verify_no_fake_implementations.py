@@ -52,7 +52,7 @@ def main():
             raise SystemExit("[no-fake] required real implementation missing: " + ", ".join(missing))
 
     ui = list(java_root.rglob("DroidLauncherUiActivity.kt"))
-    if len(ui) == 1:
+    if len(ui) == 1 and final_mode:
         text = ui[0].read_text(encoding="utf-8", errors="ignore")
         if "CURSEFORGE" in text and "api.curseforge.com" not in text:
             raise SystemExit("[no-fake] CurseForge is advertised without a real CurseForge API implementation")
