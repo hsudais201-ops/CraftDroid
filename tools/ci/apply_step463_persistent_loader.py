@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Step 463: wire the polished loader UI to persistent per-instance state."""
 from pathlib import Path
+import subprocess
 import sys
 
 UI_NAME = "DroidLauncherUiActivity.kt"
@@ -177,6 +178,10 @@ def main() -> int:
         source = source[:start] + block + source[end:]
 
     ui.write_text(source, encoding="utf-8")
+    premium = Path.cwd() / "tools/ci/apply_step479_premium_ui.py"
+    if not premium.is_file():
+        raise SystemExit("[step479] premium UI script missing")
+    subprocess.run([sys.executable, str(premium), str(root)], check=True)
     print("[step463] loader cards now persist a real per-instance selection and reuse the existing selectedLoader state when available")
     return 0
 
