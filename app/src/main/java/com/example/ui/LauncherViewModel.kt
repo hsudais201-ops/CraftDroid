@@ -286,9 +286,15 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
                             container.contentInstallManager.installCurseForgeModpack(archive, java.io.File(container.fileSystem.rootDir, "profiles/" + projectId))
                             archive.delete()
                         }
-                        "resource packs" -> container.contentInstallManager.installCurseForgeFile(projectId.toLong(), file.id, container.fileSystem.resourcePacksDir)
-                        "shaders" -> container.contentInstallManager.installCurseForgeFile(projectId.toLong(), file.id, container.fileSystem.shaderPacksDir)
-                        else -> container.contentInstallManager.installCurseForgeFile(projectId.toLong(), file.id, container.fileSystem.modsDir)
+                        "resource packs" -> container.contentInstallManager.installCurseForgeFile(
+                            projectId.toLong(), file.id, container.fileSystem.resourcePacksDir, gameVersion, curseForgeLoaderType(request.loader)
+                        )
+                        "shaders" -> container.contentInstallManager.installCurseForgeFile(
+                            projectId.toLong(), file.id, container.fileSystem.shaderPacksDir, gameVersion, curseForgeLoaderType(request.loader)
+                        )
+                        else -> container.contentInstallManager.installCurseForgeFile(
+                            projectId.toLong(), file.id, container.fileSystem.modsDir, gameVersion, curseForgeLoaderType(request.loader)
+                        )
                     }
                 }
                 _contentBrowser.value = _contentBrowser.value.copy(isLoading = false, status = "Install completed successfully")
