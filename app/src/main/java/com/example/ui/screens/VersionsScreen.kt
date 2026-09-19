@@ -91,7 +91,10 @@ fun VersionsScreen(
                 }
             },
             actions = {
-                IconButton(onClick = { viewModel.container.appScope.run { viewModel.container.versionManager.run { viewModel.installSelectedVersion() } } }) {
+                IconButton(
+                    onClick = { viewModel.refreshVersions() },
+                    modifier = Modifier.testTag("refresh_versions")
+                ) {
                     Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh Versions")
                 }
             },
