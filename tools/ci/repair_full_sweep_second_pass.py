@@ -54,13 +54,48 @@ def patch_home(root):
         s=s.replace('var utilityDialog by remember { mutableStateOf<String?>(null) }\n','',1)
         # Remove the entire fake Store/Events/Leaderboard quick-access dialog block if still present.
         s=re.sub(r'\n\s*utilityDialog\?\.let \{ name ->[\\s\\S]*?\n\s*\}\n\s*\n\s*\}', '\n        }\n', s, count=1)
-        # Remove synthetic resource/currency surface deterministically.
-        marker='            // Resource strip:'
-        end_marker='            // Primary launch card'
-        start=s.find(marker)
-        end=s.find(end_marker,start) if start >= 0 else -1
-        if start >= 0 and end > start:
-            s=s[:start]+s[end:]
+        # Remove the synthetic resource/currency surface even if late generators
+        # change whitespace/comments. Locate the real Surface( call enclosing
+        # the hardcoded values, then delete that balanced Compose call.
+        needle='ResourcePill("●", "1,250"'
+        hit=s.find(needle)
+        if hit >= 0:
+            surface=s.rfind("Surface(", 0, hit)
+            if surface < 0:
+                raise SystemExit("[second-pass] fake resource values found but enclosing Surface() is missing")
+            depth=0
+            quote=False
+            escaped=False
+            i=surface
+            while i < len(s):
+                c=s[i]
+                if quote:
+                    if escaped:
+                        escaped=False
+                    elif c == "\\\\":
+                        escaped=True
+                    elif c == '"':
+                        quote=False
+                    i += 1
+                    continue
+                if c == '"':
+                    quote=True
+                    i += 1
+                    continue
+                if c == '(':
+                    depth += 1
+                elif c == ')':
+                    depth -= 1
+                    if depth == 0:
+                        line_start=s.rfind("\\n",0,surface)+1
+                        line_end=s.find("\\n",i)
+                        if line_end < 0:
+                            line_end=len(s)
+                        else:
+                            line_end += 1
+                        s=s[:line_start]+s[line_end:]
+                        break
+                i += 1
         return s
     patch(root,rel,f)
 
