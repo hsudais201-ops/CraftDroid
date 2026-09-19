@@ -24,7 +24,6 @@ def main() -> int:
         '"NeoForge"',
         '"Modpack"',
         "MODRINTH",
-        "CURSEFORGE",
         "Any version",
         "TOUCH CONTROLS",
         "Grass block version tile",
