@@ -208,7 +208,14 @@ HELPERS = r'''
                     } else {
                         results.forEach { b ->
                             pageArea.addView(
-                                step480RemoteCard(type, b.getString("id"), b.getString("name"), b.getString("desc"), b.getString("versions"), b.getString("icon")),
+                                step480RemoteCard(
+                                    type,
+                                    b.getString("id") ?: "",
+                                    b.getString("name") ?: "",
+                                    b.getString("desc") ?: "",
+                                    b.getString("versions") ?: "",
+                                    b.getString("icon") ?: ""
+                                ),
                                 LinearLayout.LayoutParams(-1, dp(104)).apply { topMargin = dp(7) }
                             )
                         }
