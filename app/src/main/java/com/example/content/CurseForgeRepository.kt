@@ -11,6 +11,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.URL
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Secure CurseForge integration boundary.
@@ -23,6 +24,14 @@ class CurseForgeRepository(
     private val client: OkHttpClient,
     private val proxyBaseUrl: String
 ) {
+    companion object {
+        private const val GAME_ID = 432
+        private const val CACHE_TTL_MS = 60_000L
+    }
+
+    private data class CacheEntry(val expiresAt: Long, val value: Any)
+    private val cache = ConcurrentHashMap<String, CacheEntry>()
+
     fun isConfigured(): Boolean = proxyBaseUrl.trim().startsWith("https://")
 
     suspend fun search(
@@ -37,18 +46,15 @@ class CurseForgeRepository(
         require(isConfigured()) {
             "CurseForge source is not configured. Set a HTTPS CurseForge proxy URL."
         }
-        val classId = when (type) {
-            ContentType.MOD -> 6
-            ContentType.MODPACK -> 4471
-            ContentType.RESOURCE_PACK -> 12
-            ContentType.SHADER -> 6552
-            ContentType.WORLD -> 17
-        }
+        val cacheKey = "search:" + type.name + ":" + query + ":" + gameVersion + ":" + loader + ":" + categoryId + ":" + offset + ":" + limit
+        cached<ContentPage>(cacheKey)?.let { return it }
+
         val url = Uri.parse(proxyBaseUrl.trimEnd('/') + "/search").buildUpon()
+            .appendQueryParameter("gameId", GAME_ID.toString())
+            .appendQueryParameter("contentType", type.name.lowercase())
             .appendQueryParameter("query", query)
             .appendQueryParameter("gameVersion", gameVersion.orEmpty())
             .appendQueryParameter("loader", loader.orEmpty())
-            .appendQueryParameter("classId", classId.toString())
             .appendQueryParameter("categoryId", categoryId?.toString().orEmpty())
             .appendQueryParameter("index", offset.toString())
             .appendQueryParameter("pageSize", limit.toString())
@@ -75,9 +81,10 @@ class CurseForgeRepository(
                             ?.takeIf { it.isNotBlank() }?.let(::add)
                     }
                 }
+                val latestFileId = item.optLong("latestFileId", -1L)
                 add(
                     ContentItem(
-                        id = item.optLong("id").toString(),
+                        id = item.optLong("id").toString() + "/" + if (latestFileId > 0L) latestFileId else "latest",
                         type = type,
                         name = item.optString("name").ifBlank { item.optString("slug") },
                         description = item.optString("summary"),
@@ -90,12 +97,44 @@ class CurseForgeRepository(
                 )
             }
         }
-        return ContentPage(items, offset, items.size == limit)
+        return ContentPage(items, offset, items.size == limit).also {
+            cache[cacheKey] = CacheEntry(System.currentTimeMillis() + CACHE_TTL_MS, it)
+        }
     }
 
-    private fun fileInfo(modId: Long, fileId: Long, gameVersion: String): JSONObject {
+    suspend fun categories(type: ContentType? = null): List<ContentCategory> {
+        require(isConfigured()) {
+            "CurseForge source is not configured. Set a HTTPS CurseForge proxy URL."
+        }
+        val key = "categories:" + (type?.name ?: "ALL")
+        cached<List<ContentCategory>>(key)?.let { return it }
+        val url = Uri.parse(proxyBaseUrl.trimEnd('/') + "/categories").buildUpon()
+            .appendQueryParameter("gameId", GAME_ID.toString())
+            .appendQueryParameter("contentType", type?.name?.lowercase().orEmpty())
+            .build().toString()
+        val root = client.newCall(
+            Request.Builder().url(url).header("User-Agent", "DroidLauncher/2.4").build()
+        ).execute().use { response ->
+            if (!response.isSuccessful) error("CurseForge categories lookup failed (HTTP " + response.code + ")")
+            JSONObject(response.body?.string().orEmpty())
+        }
+        val data = root.optJSONArray("data") ?: JSONArray()
+        val result = buildList {
+            for (i in 0 until data.length()) {
+                val item = data.optJSONObject(i) ?: continue
+                if (item.optBoolean("isClass")) continue
+                val id = item.optLong("id", -1L)
+                val name = item.optString("name").trim()
+                if (id >= 0 && name.isNotBlank()) add(ContentCategory(id.toString(), name))
+            }
+        }
+        cache[key] = CacheEntry(System.currentTimeMillis() + CACHE_TTL_MS, result)
+        return result
+    }
+
+    private fun fileInfo(modId: Long, fileId: String, gameVersion: String): JSONObject {
         val url = Uri.parse(
-            proxyBaseUrl.trimEnd('/') + "/file/" + modId + "/" + fileId
+            proxyBaseUrl.trimEnd('/') + "/file/" + modId + "/" + Uri.encode(fileId)
         ).buildUpon()
             .appendQueryParameter("gameVersion", gameVersion)
             .build().toString()
@@ -118,17 +157,8 @@ class CurseForgeRepository(
         val parts = item.id.split('/', limit = 2)
         val modId = parts.firstOrNull()?.toLongOrNull()
             ?: error("Invalid CurseForge project id: " + item.id)
-        val fileId = if (parts.size == 2) {
-            parts[1].toLongOrNull()
-        } else {
-            null
-        }
-
-        val info = if (fileId != null) {
-            fileInfo(modId, fileId, gameVersion)
-        } else {
-            throw IllegalStateException("CurseForge item requires a resolved file id before installation")
-        }
+        val fileId = parts.getOrNull(1)?.ifBlank { null } ?: "latest"
+        val info = fileInfo(modId, fileId, gameVersion)
 
         val downloadUrl = info.optString("downloadUrl")
         if (!downloadUrl.startsWith("https://")) {
@@ -190,33 +220,68 @@ class CurseForgeRepository(
                 "modpacks/curseforge/" + name
             ).apply { mkdirs() }
             val base = root.canonicalFile
+            val gameVersion = manifest.optJSONObject("minecraft")?.optString("version").orEmpty()
 
-            zip.entries().asSequence()
-                .filter { it.name.startsWith("overrides/") }
-                .forEach { entry ->
-                    val relative = entry.name.removePrefix("overrides/")
-                    if (relative.isBlank()) return@forEach
-                    val target = File(root, relative).canonicalFile
-                    require(
-                        target.path == base.path ||
-                            target.path.startsWith(base.path + File.separator)
-                    ) { "Unsafe CurseForge override path" }
-
-                    if (entry.isDirectory) {
-                        target.mkdirs()
-                    } else {
-                        target.parentFile?.mkdirs()
-                        zip.getInputStream(entry).use { input ->
-                            FileOutputStream(target).use { output -> input.copyTo(output) }
-                        }
+            zip.entries().asSequence().filter { it.name.startsWith("overrides/") }.forEach { entry ->
+                val relative = entry.name.removePrefix("overrides/")
+                if (relative.isBlank()) return@forEach
+                val target = File(root, relative).canonicalFile
+                require(target.path == base.path || target.path.startsWith(base.path + File.separator)) {
+                    "Unsafe CurseForge override path"
+                }
+                if (entry.isDirectory) target.mkdirs() else {
+                    target.parentFile?.mkdirs()
+                    zip.getInputStream(entry).use { input ->
+                        FileOutputStream(target).use { output -> input.copyTo(output) }
                     }
                 }
+            }
+
+            val files = manifest.optJSONArray("files") ?: JSONArray()
+            for (i in 0 until files.length()) {
+                val file = files.optJSONObject(i) ?: continue
+                if (!file.optBoolean("required", true)) continue
+                val projectId = file.optLong("projectID", -1L)
+                val fileId = file.optLong("fileID", -1L)
+                if (projectId <= 0L || fileId <= 0L) continue
+                val info = fileInfo(projectId, fileId.toString(), gameVersion)
+                val url = info.optString("downloadUrl")
+                if (!url.startsWith("https://")) {
+                    val page = info.optString("websiteUrl")
+                    throw IllegalStateException(
+                        if (page.isNotBlank()) "CurseForge modpack dependency requires browser download: " + page
+                        else "CurseForge modpack dependency has no direct download"
+                    )
+                }
+                val fileName = info.optString("fileName").ifBlank { fileId.toString() + ".jar" }
+                val target = File(root, "mods/" + fileName).canonicalFile
+                require(target.path.startsWith(base.path + File.separator)) { "Unsafe CurseForge manifest path" }
+                val temp = File(context.cacheDir, "cf-pack-" + System.nanoTime() + ".part")
+                try {
+                    downloadVerified(url, temp, info.optLong("fileLength", -1L), info.optString("sha1").ifBlank { null })
+                    target.parentFile?.mkdirs()
+                    if (!temp.renameTo(target)) temp.copyTo(target, overwrite = true)
+                } finally {
+                    temp.delete()
+                }
+            }
 
             File(root, "manifest.json").writeText(manifest.toString(2))
             archive.copyTo(File(root, "pack.zip"), overwrite = true)
             return root
         }
     }
+
+    private fun <T> cached(key: String): T? {
+        val hit = cache[key] ?: return null
+        if (hit.expiresAt <= System.currentTimeMillis()) {
+            cache.remove(key, hit)
+            return null
+        }
+        @Suppress("UNCHECKED_CAST")
+        return hit.value as T
+    }
+
 
     private fun jsonStringArray(obj: JSONObject, key: String): List<String> {
         val a = obj.optJSONArray(key) ?: return emptyList()
