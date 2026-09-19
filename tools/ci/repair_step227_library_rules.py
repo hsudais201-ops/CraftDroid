@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Step 227: make Mojang library downloads rule-aware."""
+"""Step 227: make Mojang library downloads rule-aware and Android-native bounded."""
 from pathlib import Path
+import re
 import sys
 
 
@@ -11,63 +12,32 @@ def find_one(root: Path, name: str) -> Path:
     return matches[0]
 
 
-def patch_installer(root: Path) -> None:
-    path = find_one(root / "app/src/main/java", "MinecraftVersionInstallManager.kt")
-    text = path.read_text(encoding="utf-8")
+def find_matching_brace(text: str, opening: int) -> int:
+    depth = 0
+    quote = None
+    escaped = False
+    for i in range(opening, len(text)):
+        ch = text[i]
+        if quote:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == quote:
+                quote = None
+            continue
+        if ch in ('"', "'"):
+            quote = ch
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
 
-    old = '''                val lib = libraries.optJSONObject(i) ?: continue
-                val libDownloads = lib.optJSONObject("downloads") ?: continue
-                val artifact = libDownloads.optJSONObject("artifact")
-                if (artifact != null) {
-                    val path = artifact.optString("path")
-                    if (path.isNotBlank()) {
-                        tasks += taskFromDownload(root, File(root, "libraries/$path"), artifact, "Library $path")
-                    }
-                }
-                val classifiers = libDownloads.optJSONObject("classifiers")
-                if (classifiers != null) {
-                    val keys = classifiers.keys()
-                    while (keys.hasNext()) {
-                        val classifier = keys.next()
-                        val entry = classifiers.optJSONObject(classifier) ?: continue
-                        val path = entry.optString("path")
-                        if (path.isNotBlank()) {
-                            tasks += taskFromDownload(root, File(root, "libraries/$path"), entry, "Native library $path")
-                        }
-                    }
-                }
-'''
-    new = '''                val lib = libraries.optJSONObject(i) ?: continue
-                if (!libraryAllowed(lib)) continue
-                val libDownloads = lib.optJSONObject("downloads") ?: continue
-                val artifact = libDownloads.optJSONObject("artifact")
-                if (artifact != null) {
-                    val path = artifact.optString("path")
-                    if (path.isNotBlank()) {
-                        tasks += taskFromDownload(root, File(root, "libraries/$path"), artifact, "Library $path")
-                    }
-                }
-                val classifiers = libDownloads.optJSONObject("classifiers")
-                if (classifiers != null) {
-                    val classifier = preferredNativeClassifier(lib)
-                    if (!classifier.isNullOrBlank()) {
-                        val entry = classifiers.optJSONObject(classifier)
-                        if (entry != null) {
-                            val path = entry.optString("path")
-                            if (path.isNotBlank()) {
-                                tasks += taskFromDownload(root, File(root, "libraries/$path"), entry, "Native library $path")
-                            }
-                        }
-                    }
-                }
-'''
-    if old in text:
-        text = text.replace(old, new, 1)
-    elif 'if (!libraryAllowed(lib)) continue' not in text:
-        raise SystemExit('[step227] library download block not found')
 
-    if 'private fun libraryAllowed(lib: JSONObject): Boolean' not in text:
-        helper = r'''
+HELPERS = r'''
     private fun libraryAllowed(lib: JSONObject): Boolean {
         val rules = lib.optJSONArray("rules") ?: return true
         var allowed = false
@@ -97,16 +67,76 @@ def patch_installer(root: Path) -> None:
         }
     }
 '''
-        pos = text.rfind('\n}')
-        if pos < 0:
-            raise SystemExit('[step227] installer class closing brace not found')
-        text = text[:pos] + helper + text[pos:]
 
-    path.write_text(text, encoding='utf-8')
+
+def patch_installer(root: Path) -> None:
+    path = find_one(root / "app/src/main/java", "MinecraftVersionInstallManager.kt")
+    text = path.read_text(encoding="utf-8")
+
+    lib_marker = '                val lib = libraries.optJSONObject(i) ?: continue'
+    if lib_marker not in text:
+        raise SystemExit("[step227] library loop marker not found")
+    if 'if (!libraryAllowed(lib)) continue' not in text:
+        text = text.replace(
+            lib_marker,
+            lib_marker + '\n                if (!libraryAllowed(lib)) continue',
+            1,
+        )
+
+    # Replace the body of the first classifiers block inside the installer loop
+    # using brace matching rather than brittle whitespace-sensitive text.
+    classifiers_start = text.find('                val classifiers = libDownloads.optJSONObject("classifiers")')
+    if classifiers_start >= 0:
+        if_start = text.find("if (classifiers != null)", classifiers_start)
+        if if_start < 0:
+            raise SystemExit("[step227] classifiers condition missing")
+        opening = text.find("{", if_start)
+        end = find_matching_brace(text, opening) if opening >= 0 else -1
+        if end < 0:
+            raise SystemExit("[step227] classifiers block braces are unbalanced")
+        targeted = '''                val classifiers = libDownloads.optJSONObject("classifiers")
+                if (classifiers != null) {
+                    val classifier = preferredNativeClassifier(lib)
+                    if (!classifier.isNullOrBlank()) {
+                        val entry = classifiers.optJSONObject(classifier)
+                        if (entry != null) {
+                            val path = entry.optString("path")
+                            if (path.isNotBlank()) {
+                                tasks += taskFromDownload(
+                                    root,
+                                    File(root, "libraries/$path"),
+                                    entry,
+                                    "Native library $path"
+                                )
+                            }
+                        }
+                    }
+                }
+'''
+        text = text[:classifiers_start] + targeted + text[end + 1:]
+    elif 'val nativeClassifier = preferredNativeClassifier(lib)' not in text:
+        raise SystemExit("[step227] no classifier block found to constrain")
+
+    # Keep exactly one copy of the helper block.
+    for signature in (
+        r'(?ms)^    private fun libraryAllowed(lib: JSONObject): Boolean {.*?^    }
+
+',
+        r'(?ms)^    private fun preferredNativeClassifier(lib: JSONObject): String? {.*?^    }
+
+',
+    ):
+        text = re.sub(signature, '', text, count=1)
+
+    pos = text.rfind('\n}')
+    if pos < 0:
+        raise SystemExit("[step227] installer class closing brace not found")
+    text = text[:pos] + HELPERS + text[pos:]
+    path.write_text(text, encoding="utf-8")
 
 
 def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else 'droid-src').resolve()
+    root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
     installer = find_one(root / 'app/src/main/java', 'MinecraftVersionInstallManager.kt')
     patch_installer(root)
     text = installer.read_text(encoding='utf-8')
@@ -114,12 +144,14 @@ def main() -> int:
         'if (!libraryAllowed(lib)) continue',
         'private fun libraryAllowed(lib: JSONObject): Boolean',
         'private fun preferredNativeClassifier(lib: JSONObject): String?',
+        'val classifier = preferredNativeClassifier(lib)',
         'System.getProperty("os.arch", "")',
     ):
         if needle not in text:
             raise SystemExit(f'[step227] missing rule-aware installer contract: {needle}')
     print('[step227] Mojang library rules are evaluated before download')
     print('[step227] native classifier selection is limited to the preferred Linux variant')
+    print('[step227] structure-tolerant repair anchors applied')
     return 0
 
 
