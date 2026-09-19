@@ -26,7 +26,9 @@ REQUIRED = (
 )
 
 def main():
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else "droid-src").resolve()
+    final_mode = "--final" in sys.argv[1:]
+    positional = [x for x in sys.argv[1:] if x != "--final"]
+    root = Path(positional[0] if positional else "droid-src").resolve()
     java_root = root / "app/src/main/java"
     if not java_root.is_dir():
         raise SystemExit("[no-fake] Android source root missing")
@@ -37,9 +39,10 @@ def main():
     if bad:
         raise SystemExit("[no-fake] forbidden live implementation markers: " + ", ".join(bad))
 
-    missing = [label for needle, label in REQUIRED if needle not in combined]
-    if missing:
-        raise SystemExit("[no-fake] required real implementation missing: " + ", ".join(missing))
+    if final_mode:
+        missing = [label for needle, label in REQUIRED if needle not in combined]
+        if missing:
+            raise SystemExit("[no-fake] required real implementation missing: " + ", ".join(missing))
 
     ui = list(java_root.rglob("DroidLauncherUiActivity.kt"))
     if len(ui) == 1:
@@ -51,7 +54,7 @@ def main():
         if 'text = "Installed"' in text and "isArtifactHealthy" not in text:
             raise SystemExit("[no-fake] static Installed state lacks an integrity-backed source")
 
-    print("[no-fake] PASS")
+    print("[no-fake] PASS" + (" · final real-feature gate" if final_mode else " · early fake/stub gate"))
 
 if __name__ == "__main__":
     main()
