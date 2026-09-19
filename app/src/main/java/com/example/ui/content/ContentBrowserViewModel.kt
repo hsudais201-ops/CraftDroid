@@ -119,7 +119,7 @@ class ContentBrowserViewModel(private val container: LauncherContainer) : ViewMo
                                 current.type,
                                 current.query,
                                 version,
-                                current.loaders.firstOrNull(),
+                                null,
                                 null,
                                 current.items.size
                             )
