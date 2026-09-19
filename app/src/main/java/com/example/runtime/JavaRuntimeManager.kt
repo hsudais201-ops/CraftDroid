@@ -265,17 +265,31 @@ class JavaRuntimeManager(
     }
 
     private fun download(url: String, destination: File) {
-        val request = Request.Builder().url(url)
-            .header("User-Agent", "CraftDroid-Launcher/1.3")
-            .build()
-        okHttpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) error("HTTP ${response.code}")
-            val body = response.body ?: error("Empty runtime download")
-            destination.parentFile?.mkdirs()
-            FileOutputStream(destination).use { out -> body.byteStream().use { it.copyTo(out) } }
+        destination.parentFile?.mkdirs()
+        for (attempt in 0 until 3) {
+            val resumeBytes = if (destination.isFile) destination.length() else 0L
+            val builder = Request.Builder().url(url)
+                .header("User-Agent", "CraftDroid-Launcher/1.4")
+            if (resumeBytes > 0L) builder.header("Range", "bytes=" + resumeBytes + "-")
+            val response = okHttpClient.newCall(builder.build()).execute()
+            response.use {
+                if (it.code == 416 && resumeBytes > 0L) {
+                    destination.delete()
+                    if (attempt < 2) continue
+                    error("HTTP 416 after runtime download resume reset")
+                }
+                if (!it.isSuccessful) error("HTTP " + it.code)
+                val body = it.body ?: error("Empty runtime download")
+                val append = resumeBytes > 0L && it.code == 206
+                FileOutputStream(destination, append).use { out ->
+                    body.byteStream().use { input -> input.copyTo(out) }
+                    out.fd.sync()
+                }
+                return
+            }
         }
+        error("Runtime download exhausted retry attempts")
     }
-
     private fun verifySha256(file: File, expected: String): Boolean {
         val digest = MessageDigest.getInstance("SHA-256")
         FileInputStream(file).use { input ->
