@@ -43,6 +43,7 @@ import com.example.ui.LauncherViewModel
 import com.example.ui.components.RepairDialog
 import com.example.ui.screens.AccountsScreen
 import com.example.ui.screens.CustomizeControlsScreen
+import com.example.ui.screens.ContentScreen
 import com.example.ui.screens.GameLaunchOverlay
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.LogsScreen
@@ -148,6 +149,13 @@ fun MainAppContent(viewModel: LauncherViewModel) {
                         modifier = Modifier.testTag("nav_versions")
                     )
                     NavigationBarItem(
+                        selected = currentScreen == LauncherScreen.CONTENT,
+                        onClick = { viewModel.navigateTo(LauncherScreen.CONTENT) },
+                        icon = { Icon(Icons.Default.Info, contentDescription = "Content") },
+                        label = { Text("Content") },
+                        modifier = Modifier.testTag("nav_content")
+                    )
+                    NavigationBarItem(
                         selected = currentScreen == LauncherScreen.PROFILES,
                         onClick = { viewModel.navigateTo(LauncherScreen.PROFILES) },
                         icon = { Icon(Icons.Default.Build, contentDescription = "Profiles") },
@@ -190,6 +198,7 @@ fun MainAppContent(viewModel: LauncherViewModel) {
             when (currentScreen) {
                 LauncherScreen.HOME -> HomeScreen(viewModel = viewModel)
                 LauncherScreen.VERSIONS -> VersionsScreen(viewModel = viewModel)
+                LauncherScreen.CONTENT -> ContentScreen(viewModel = viewModel)
                 LauncherScreen.PROFILES -> ProfilesScreen(viewModel = viewModel)
                 LauncherScreen.ACCOUNTS -> AccountsScreen(viewModel = viewModel)
                 LauncherScreen.SETTINGS -> SettingsScreen(viewModel = viewModel)
