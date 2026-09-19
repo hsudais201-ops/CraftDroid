@@ -14,6 +14,8 @@ EARLY_FORBIDDEN = (
     "ResourcePill(\"●\", \"1,250\"",
     "Math.random()",
     "new java.util.Random(",
+    'listOf("26.3","26.2","26.1.2"',
+    'listOf("26.3", "26.2", "26.1.2"',
 )
 
 FINAL_ONLY = (
