@@ -34,7 +34,7 @@ data class ProcessorRunResult(
 )
 
 enum class ForgeInstallerFormat {
-    V1, V2, LEGACY_PROFILE, UNSUPPORTED
+    V1, V2, LEGACY_PROFILE, LEGACY_JAR_MOD, UNSUPPORTED
 }
 
 data class LoaderBootstrapResult(
