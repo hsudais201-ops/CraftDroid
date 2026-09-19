@@ -247,6 +247,7 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
     }
 
     fun installContent(projectId: String, isCurseForge: Boolean, projectType: String) {
+        val request = _contentBrowser.value
         viewModelScope.launch {
             _contentBrowser.value = _contentBrowser.value.copy(isLoading = true, error = null, status = "Resolving compatible files…")
             try {
