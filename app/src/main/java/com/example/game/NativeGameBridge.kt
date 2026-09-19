@@ -326,8 +326,15 @@ object NativeGameBridge {
     /** Embedded JVM bridge state: 0=IDLE, 1=STARTING, 2=RUNNING, 3=STOPPING, 4=EXITED (terminal after JLI_Launch returns). */
     fun javaState(): Int = if (loaded) runCatching { nativeGetJavaState() }.getOrDefault(0) else 0
 
+    fun probeVulkan(): String = if (loaded) {
+        runCatching { nativeProbeVulkan() }.getOrElse { "UNAVAILABLE: " + (it.message ?: it.javaClass.simpleName) }
+    } else {
+        "UNAVAILABLE: JNI unavailable"
+    }
+
     fun isLoaded(): Boolean = loaded
 
+    private external fun nativeProbeVulkan(): String
     private external fun nativeLoadLibrary(path: String): Boolean
     private external fun nativeValidateNativeStack(directory: String, preferLwjgl3: Boolean, selectedGlfwName: String?): String
     private external fun nativeValidateGlfwHandshake(requireCallbackBridge: Boolean, preferLwjgl3: Boolean, selectedGlfwName: String?): String
