@@ -2,12 +2,14 @@ package com.example.content
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
 
 data class ContentProject(
     val id: String,
@@ -34,6 +36,8 @@ data class ContentVersion(
 )
 
 class ModrinthClient(private val http: OkHttpClient) {
+    private val responseCache = ConcurrentHashMap<String, Pair<Long, String>>()
+    private val cacheTtlMs = 5 * 60 * 1000L
     companion object {
         const val BASE_URL = "https://api.modrinth.com/v2"
         private val ALLOWED_TYPES = setOf("mod", "modpack", "resourcepack", "shader", "datapack", "plugin")
@@ -148,22 +152,37 @@ class ModrinthClient(private val http: OkHttpClient) {
     private fun strings(a: JSONArray?): List<String> =
         if (a == null) emptyList() else buildList { for (i in 0 until a.length()) add(a.optString(i)) }
 
-    private fun getObject(url: String): JSONObject {
-        val r = Request.Builder().url(url).header("Accept", "application/json")
-            .header("User-Agent", "CraftDroid-Launcher/2.5").build()
-        http.newCall(r).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("Modrinth HTTP " + response.code + " for " + url)
-            return JSONObject(response.body?.string() ?: throw IOException("Modrinth returned an empty response"))
-        }
+    private suspend fun getObject(url: String): JSONObject {
+        val cached = responseCache[url]?.takeIf { System.currentTimeMillis() - it.first < cacheTtlMs }?.second
+        if (cached != null) return JSONObject(cached)
+        val body = requestBody(url)
+        responseCache[url] = System.currentTimeMillis() to body
+        return JSONObject(body)
     }
 
-    private fun getArray(url: String): JSONArray {
-        val r = Request.Builder().url(url).header("Accept", "application/json")
-            .header("User-Agent", "CraftDroid-Launcher/2.5").build()
-        http.newCall(r).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("Modrinth HTTP " + response.code + " for " + url)
-            return JSONArray(response.body?.string() ?: throw IOException("Modrinth returned an empty response"))
+    private suspend fun requestBody(url: String): String {
+        for (attempt in 0 until 3) {
+            val r = Request.Builder().url(url).header("Accept", "application/json")
+                .header("User-Agent", "CraftDroid-Launcher/2.5").build()
+            http.newCall(r).execute().use { response ->
+                if (response.code == 429) {
+                    val retryAfter = response.header("Retry-After")?.toLongOrNull()?.coerceIn(1L, 30L) ?: ((attempt + 1L) * 2L)
+                    delay(retryAfter * 1000L)
+                    continue
+                }
+                if (!response.isSuccessful) throw IOException("Modrinth HTTP " + response.code + " for " + url)
+                return response.body?.string() ?: throw IOException("Modrinth returned an empty response")
+            }
         }
+        throw IOException("Modrinth rate limit persisted after 3 attempts")
+    }
+
+    private suspend fun getArray(url: String): JSONArray {
+        val cached = responseCache[url]?.takeIf { System.currentTimeMillis() - it.first < cacheTtlMs }?.second
+        if (cached != null) return JSONArray(cached)
+        val body = requestBody(url)
+        responseCache[url] = System.currentTimeMillis() to body
+        return JSONArray(body)
     }
 
     private fun enc(v: String): String = URLEncoder.encode(v, "UTF-8")
