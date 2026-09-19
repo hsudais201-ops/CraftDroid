@@ -25,6 +25,7 @@ data class ContentUiState(
     val categories: List<String> = emptyList(),
     val query: String = "",
     val category: String? = null,
+    val loader: String? = null,
     val loading: Boolean = true,
     val refreshing: Boolean = false,
     val loadingMore: Boolean = false,
@@ -36,6 +37,7 @@ data class ContentUiState(
 
 class ContentBrowserViewModel(private val container: LauncherContainer) : ViewModel() {
     private val modrinth = ModrinthRepository(container.context)
+    private val curseForgeRepositories = mutableMapOf<String, CurseForgeRepository>()
     private val _state = MutableStateFlow(ContentUiState())
     val state: StateFlow<ContentUiState> = _state.asStateFlow()
 
@@ -56,6 +58,11 @@ class ContentBrowserViewModel(private val container: LauncherContainer) : ViewMo
         refresh()
     }
 
+    fun setLoader(value: String?) {
+        _state.value = _state.value.copy(loader = value, items = emptyList(), loading = true, error = null, hasMore = true)
+        refresh()
+    }
+
     fun setCategory(value: String?) {
         _state.value = _state.value.copy(category = value, items = emptyList(), loading = true, error = null, hasMore = true)
         refresh()
@@ -70,15 +77,15 @@ class ContentBrowserViewModel(private val container: LauncherContainer) : ViewMo
                 val page = withContext(Dispatchers.IO) {
                     when (current.source) {
                         ContentSource.MODRINTH -> modrinth.search(
-                            current.type, current.query, version, current.category, 0
+                            current.type, current.query, version, current.category, current.loader, 0
                         )
                         ContentSource.CURSEFORGE -> {
                             val proxy = container.settingsRepository.settingsFlow.first().curseForgeProxyUrl
-                            CurseForgeRepository(container.context, container.okHttpClient, proxy).search(
+                            getCurseForge(proxy).search(
                                 current.type,
                                 current.query,
                                 version,
-                                null,
+                                current.loader,
                                 null,
                                 0
                             )
@@ -111,15 +118,15 @@ class ContentBrowserViewModel(private val container: LauncherContainer) : ViewMo
                 val page = withContext(Dispatchers.IO) {
                     when (current.source) {
                         ContentSource.MODRINTH -> modrinth.search(
-                            current.type, current.query, version, current.category, current.items.size
+                            current.type, current.query, version, current.category, current.loader, current.items.size
                         )
                         ContentSource.CURSEFORGE -> {
                             val proxy = container.settingsRepository.settingsFlow.first().curseForgeProxyUrl
-                            CurseForgeRepository(container.context, container.okHttpClient, proxy).search(
+                            getCurseForge(proxy).search(
                                 current.type,
                                 current.query,
                                 version,
-                                null,
+                                current.loader,
                                 null,
                                 current.items.size
                             )
@@ -148,7 +155,7 @@ class ContentBrowserViewModel(private val container: LauncherContainer) : ViewMo
                         ContentSource.MODRINTH -> modrinth.install(item, version)
                         ContentSource.CURSEFORGE -> {
                             val proxy = container.settingsRepository.settingsFlow.first().curseForgeProxyUrl
-                            CurseForgeRepository(container.context, container.okHttpClient, proxy).install(item, version)
+                            getCurseForge(proxy).install(item, version)
                         }
                     }
                 }
@@ -160,6 +167,9 @@ class ContentBrowserViewModel(private val container: LauncherContainer) : ViewMo
     }
 
     private fun currentSource(): ContentSource = _state.value.source
+
+    private fun getCurseForge(proxy: String): CurseForgeRepository =
+        curseForgeRepositories.getOrPut(proxy) { CurseForgeRepository(container.context, container.okHttpClient, proxy) }
 
     fun clearMessage() {
         _state.value = _state.value.copy(message = null)
