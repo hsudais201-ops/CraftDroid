@@ -271,15 +271,18 @@ object MinecraftVersionInstallManager {
                         tasks += taskFromDownload(root, File(root, "libraries/$path"), artifact, "Library $path")
                     }
                 }
-                val classifiers = libDownloads.optJSONObject("classifiers")
-                if (classifiers != null) {
-                    val keys = classifiers.keys()
-                    while (keys.hasNext()) {
-                        val classifier = keys.next()
-                        val entry = classifiers.optJSONObject(classifier) ?: continue
+                val nativeClassifier = preferredNativeClassifier(lib)
+                if (!nativeClassifier.isNullOrBlank()) {
+                    val entry = libDownloads.optJSONObject("classifiers")?.optJSONObject(nativeClassifier)
+                    if (entry != null) {
                         val path = entry.optString("path")
                         if (path.isNotBlank()) {
-                            tasks += taskFromDownload(root, File(root, "libraries/$path"), entry, "Native library $path")
+                            tasks += taskFromDownload(
+                                root,
+                                File(root, "libraries/$path"),
+                                entry,
+                                "Native library $path"
+                            )
                         }
                     }
                 }
