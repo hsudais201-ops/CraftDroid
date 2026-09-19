@@ -2,12 +2,14 @@ package com.example.content
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
 
 data class CurseForgeSearchResult(
     val id: Long,
@@ -34,6 +36,8 @@ data class CurseForgeFile(
 )
 
 class CurseForgeClient(private val http: OkHttpClient, private val proxyBaseUrl: String) {
+    private val responseCache = ConcurrentHashMap<String, Pair<Long, String>>()
+    private val cacheTtlMs = 5 * 60 * 1000L
     companion object { const val GAME_ID = 432 }
 
     private fun requireProxy() {
@@ -145,13 +149,25 @@ class CurseForgeClient(private val http: OkHttpClient, private val proxyBaseUrl:
         )
     }
 
-    private fun getJson(url: String): JSONObject {
-        val r = Request.Builder().url(url).header("Accept", "application/json")
-            .header("User-Agent", "CraftDroid-Launcher/2.5").build()
-        http.newCall(r).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("CurseForge HTTP " + response.code + " for " + url)
-            return JSONObject(response.body?.string() ?: throw IOException("CurseForge returned an empty response"))
+    private suspend fun getJson(url: String): JSONObject {
+        val cached = responseCache[url]?.takeIf { System.currentTimeMillis() - it.first < cacheTtlMs }?.second
+        if (cached != null) return JSONObject(cached)
+        for (attempt in 0 until 3) {
+            val r = Request.Builder().url(url).header("Accept", "application/json")
+                .header("User-Agent", "CraftDroid-Launcher/2.5").build()
+            http.newCall(r).execute().use { response ->
+                if (response.code == 429) {
+                    val retryAfter = response.header("Retry-After")?.toLongOrNull()?.coerceIn(1L, 30L) ?: ((attempt + 1L) * 2L)
+                    delay(retryAfter * 1000L)
+                    continue
+                }
+                if (!response.isSuccessful) throw IOException("CurseForge HTTP " + response.code + " for " + url)
+                val body = response.body?.string() ?: throw IOException("CurseForge returned an empty response")
+                responseCache[url] = System.currentTimeMillis() to body
+                return JSONObject(body)
+            }
         }
+        throw IOException("CurseForge rate limit persisted after 3 attempts")
     }
 
     private fun strings(a: JSONArray?): List<String> =
