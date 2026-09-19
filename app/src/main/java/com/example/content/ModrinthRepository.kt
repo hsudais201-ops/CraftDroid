@@ -99,7 +99,7 @@ class ModrinthRepository(private val context: Context) {
         return null
     }
 
-    private fun installVersionRecursive(
+    private suspend fun installVersionRecursive(
         type: ContentType,
         versionId: String,
         gameVersion: String,
