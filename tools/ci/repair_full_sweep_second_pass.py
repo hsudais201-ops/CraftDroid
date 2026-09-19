@@ -54,9 +54,13 @@ def patch_home(root):
         s=s.replace('var utilityDialog by remember { mutableStateOf<String?>(null) }\n','',1)
         # Remove the entire fake Store/Events/Leaderboard quick-access dialog block if still present.
         s=re.sub(r'\n\s*utilityDialog\?\.let \{ name ->[\\s\\S]*?\n\s*\}\n\s*\n\s*\}', '\n        }\n', s, count=1)
-        # Remove synthetic resource/currency surface.
-        s=re.sub(r'\n\s*// Resource strip: launcher-local resources are presentation-only[\s\S]*?(?=\n\s*// Primary launch card)',
-                 '\n            // Primary launch card', s, count=1)
+        # Remove synthetic resource/currency surface deterministically.
+        marker='            // Resource strip:'
+        end_marker='            // Primary launch card'
+        start=s.find(marker)
+        end=s.find(end_marker,start) if start >= 0 else -1
+        if start >= 0 and end > start:
+            s=s[:start]+s[end:]
         return s
     patch(root,rel,f)
 
