@@ -37,11 +37,14 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.PullToRefreshBox
 import androidx.compose.material3.Text
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,7 +61,6 @@ import com.example.launcher.MinecraftContentManager
 import com.example.ui.LauncherViewModel
 import com.example.ui.content.ContentBrowserViewModel
 import com.example.ui.theme.UiTokens
-import kotlinx.coroutines.flow.snapshotFlow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,6 +69,7 @@ fun ContentBrowserScreen(viewModel: LauncherViewModel) {
     val vm: ContentBrowserViewModel = viewModel(factory = ContentBrowserViewModel.Factory(container))
     val state by vm.state.collectAsState()
     val listState = rememberLazyListState()
+    val pullState = rememberPullRefreshState(state.refreshing, vm::refresh)
     var search by remember { mutableStateOf("") }
 
     val worldPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -171,10 +174,10 @@ fun ContentBrowserScreen(viewModel: LauncherViewModel) {
             AssistChip(onClick = vm::clearMessage, label = { Text(message) })
         }
 
-        PullToRefreshBox(
-            isRefreshing = state.refreshing,
-            onRefresh = vm::refresh,
-            modifier = Modifier.fillMaxSize()
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pullRefresh(pullState)
         ) {
             when {
                 state.loading && state.items.isEmpty() -> {
@@ -196,7 +199,7 @@ fun ContentBrowserScreen(viewModel: LauncherViewModel) {
                 }
                 state.items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        "Nothing found. Try another search or pull to refresh.",
+                        "Nothing found. Try another search or pull down to refresh.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -274,6 +277,6 @@ fun ContentBrowserScreen(viewModel: LauncherViewModel) {
                     }
                 }
             }
-        }
-    }
+            PullRefreshIndicator(state.refreshing, pullState, Modifier.align(Alignment.TopCenter))
+        }    }
 }
