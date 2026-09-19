@@ -261,6 +261,6 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
                 LauncherLogger.warn("Resumable download attempt $attempt failed for ${task.name}: ${e.message}")
             }
         }
-        false
+        return false
     }
 }
