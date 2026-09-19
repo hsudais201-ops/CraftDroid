@@ -56,8 +56,8 @@ class VersionJsonParser {
         val assets = root.optString("assets", null)
         val logging = root.optJSONObject("logging")?.optJSONObject("client")?.let { client ->
             val file = client.optJSONObject("file")
-            val id = client.optString("argument", "${path}")
-                .removePrefix("${")
+            val id = client.optString("argument", "\${path}")
+                .removePrefix("\${")
                 .removeSuffix("}")
                 .ifBlank { "client" }
             if (file != null) {
