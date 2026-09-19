@@ -309,6 +309,7 @@ def patch_show_page(source: str) -> str:
     block = source[start:end]
     old = '''        currentPage = page
         pageArea.removeAllViews()'''
+    compact = '''        currentPage=page;pageArea.removeAllViews()'''
     new = '''        if (page == "Home") {
             canonicalPageHistory.clear()
         } else if (!canonicalBackNavigation && page != currentPage && currentPage != "FirstRun" && page != "FirstRun") {
@@ -318,6 +319,12 @@ def patch_show_page(source: str) -> str:
         pageArea.removeAllViews()'''
     if old in block:
         block = block.replace(old, new, 1)
+    elif compact in block:
+        compact_new = '''        if(page=="Home"){canonicalPageHistory.clear()}else if(!canonicalBackNavigation && page!=currentPage && currentPage!="FirstRun" && page!="FirstRun"){canonicalPageHistory.addLast(currentPage)}
+        currentPage=page;pageArea.removeAllViews()'''
+        block = block.replace(compact, compact_new, 1)
+    elif "canonicalPageHistory" not in block:
+        raise SystemExit("[canonical-nav] showPage state anchor missing")
 
     block = block.replace('"Content","Downloads"->step479Content()', '"Content","Downloads"->canonicalBrowsePage()')
     block = block.replace('"Content", "Downloads" -> step479Content()', '"Content", "Downloads" -> canonicalBrowsePage()')
@@ -325,13 +332,13 @@ def patch_show_page(source: str) -> str:
     block = block.replace('"Versions"->step479Versions()', '"Versions"->canonicalVersionPage()')
 
     if '"Versions"->canonicalVersionPage()' not in block and '"Versions" -> canonicalVersionPage()' not in block:
-        block = block.replace('else->step479Content()', ' "Versions"->canonicalVersionPage()\n            else->canonicalBrowsePage()', 1)
-        block = block.replace('else -> step375Content()', ' "Versions" -> canonicalVersionPage()\n            else -> canonicalBrowsePage()', 1)
+        if 'else->step479Content()' in block:
+            block = block.replace('else->step479Content()', '"Versions"->canonicalVersionPage()\n            else->canonicalBrowsePage()', 1)
+        elif 'else -> step375Content()' in block:
+            block = block.replace('else -> step375Content()', '"Versions" -> canonicalVersionPage()\n            else -> canonicalBrowsePage()', 1)
+        elif 'else->canonicalBrowsePage()' not in block and 'else -> canonicalBrowsePage()' not in block:
+            raise SystemExit("[canonical-nav] no showPage version/default route anchor")
 
-    if 'canonicalSecureMode' in block and 'canonicalPageHistory' in block:
-        return source[:start] + block + source[end:]
-    if old not in block:
-        raise SystemExit("[canonical-nav] showPage state anchor missing")
     return source[:start] + block + source[end:]
 
 def patch_home(source: str) -> str:
