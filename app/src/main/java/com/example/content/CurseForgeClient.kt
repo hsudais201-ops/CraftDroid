@@ -23,6 +23,8 @@ data class CurseForgeSearchResult(
     val allowDistribution: Boolean
 )
 
+data class CurseForgeCategory(val id: Int, val name: String, val classId: Int?, val parentId: Int?)
+
 data class CurseForgeFile(
     val id: Long,
     val modId: Long,
@@ -49,6 +51,23 @@ class CurseForgeClient(private val http: OkHttpClient, private val proxyBaseUrl:
     suspend fun categories(): JSONArray = withContext(Dispatchers.IO) {
         requireProxy()
         getJson(proxyBaseUrl + "/v1/categories?gameId=" + GAME_ID).optJSONArray("data") ?: JSONArray()
+    }
+
+    suspend fun categoryList(): List<CurseForgeCategory> = withContext(Dispatchers.IO) {
+        val data = categories()
+        buildList {
+            for (i in 0 until data.length()) {
+                val item = data.optJSONObject(i) ?: continue
+                add(
+                    CurseForgeCategory(
+                        id = item.optInt("id"),
+                        name = item.optString("name"),
+                        classId = item.optInt("classId", -1).takeIf { it >= 0 },
+                        parentId = item.optInt("parentId", -1).takeIf { it >= 0 }
+                    )
+                )
+            }
+        }
     }
 
     suspend fun search(query: String = "", gameVersion: String? = null, loaderType: Int? = null, classId: Int? = null, categoryIds: List<Int> = emptyList(), index: Int = 0): List<CurseForgeSearchResult> =
