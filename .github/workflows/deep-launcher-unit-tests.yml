@@ -1,0 +1,26 @@
+name: Deep launcher unit tests
+
+on:
+  pull_request:
+    branches:
+      - source-extracted
+      - main
+  push:
+    branches:
+      - deep-runtime-render-content-2026-09
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run JVM unit tests
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
