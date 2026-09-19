@@ -153,23 +153,28 @@ class CurseForgeClient(private val http: OkHttpClient, private val proxyBaseUrl:
         val cached = responseCache[url]?.takeIf { System.currentTimeMillis() - it.first < cacheTtlMs }?.second
         if (cached != null) return JSONObject(cached)
         for (attempt in 0 until 3) {
-            val r = Request.Builder().url(url).header("Accept", "application/json")
+            val request = Request.Builder().url(url).header("Accept", "application/json")
                 .header("User-Agent", "CraftDroid-Launcher/2.5").build()
-            http.newCall(r).execute().use { response ->
-                if (response.code == 429) {
-                    val retryAfter = response.header("Retry-After")?.toLongOrNull()?.coerceIn(1L, 30L) ?: ((attempt + 1L) * 2L)
+            val response = http.newCall(request).execute()
+            var retry = false
+            var result: String? = null
+            response.use {
+                if (it.code == 429) {
+                    val retryAfter = it.header("Retry-After")?.toLongOrNull()?.coerceIn(1L, 30L) ?: ((attempt + 1L) * 2L)
                     delay(retryAfter * 1000L)
-                    continue
+                    retry = true
+                } else {
+                    if (!it.isSuccessful) throw IOException("CurseForge HTTP " + it.code + " for " + url)
+                    result = it.body?.string() ?: throw IOException("CurseForge returned an empty response")
                 }
-                if (!response.isSuccessful) throw IOException("CurseForge HTTP " + response.code + " for " + url)
-                val body = response.body?.string() ?: throw IOException("CurseForge returned an empty response")
-                responseCache[url] = System.currentTimeMillis() to body
-                return JSONObject(body)
             }
+            if (retry) continue
+            val body = result!!
+            responseCache[url] = System.currentTimeMillis() to body
+            return JSONObject(body)
         }
         throw IOException("CurseForge rate limit persisted after 3 attempts")
     }
-
     private fun strings(a: JSONArray?): List<String> =
         if (a == null) emptyList() else buildList { for (i in 0 until a.length()) add(a.optString(i)) }
 
