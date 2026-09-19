@@ -2,6 +2,7 @@
 #include <android/native_window_jni.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#include <vulkan/vulkan.h>
 #include <GLES2/gl2.h>
 #include <android/log.h>
 #include <android/input.h>
@@ -1723,6 +1724,131 @@ Java_com_example_game_NativeGameBridge_nativeLaunchJava(JNIEnv* env, jclass,
     if (oldErr >= 0) { dup2(oldErr, STDERR_FILENO); close(oldErr); }
     if (logFd >= 0) close(logFd);
     return rc;
+}
+
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_example_game_NativeGameBridge_nativeProbeVulkan(JNIEnv* env, jclass) {
+    auto makeResult = [&](const std::string& value) -> jstring {
+        return env->NewStringUTF(value.c_str());
+    };
+
+    void* handle = dlopen("libvulkan.so", RTLD_NOW | RTLD_LOCAL);
+    if (!handle) {
+        return makeResult("UNAVAILABLE: libvulkan.so could not be loaded");
+    }
+
+    auto getProc = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(handle, "vkGetInstanceProcAddr"));
+    if (!getProc) {
+        dlclose(handle);
+        return makeResult("UNAVAILABLE: vkGetInstanceProcAddr missing");
+    }
+
+    auto enumInstanceVersion = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
+        getProc(nullptr, "vkEnumerateInstanceVersion"));
+    uint32_t instanceVersion = VK_API_VERSION_1_0;
+    if (enumInstanceVersion) {
+        enumInstanceVersion(&instanceVersion);
+    }
+
+    VkApplicationInfo appInfo{};
+    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    appInfo.pApplicationName = "CraftDroid";
+    appInfo.applicationVersion = 1;
+    appInfo.pEngineName = "CraftDroid";
+    appInfo.engineVersion = 1;
+    appInfo.apiVersion = VK_API_VERSION_1_0;
+
+    VkInstanceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    createInfo.pApplicationInfo = &appInfo;
+
+    auto createInstance = reinterpret_cast<PFN_vkCreateInstance>(
+        getProc(nullptr, "vkCreateInstance"));
+    if (!createInstance) {
+        dlclose(handle);
+        return makeResult("UNAVAILABLE: vkCreateInstance missing");
+    }
+
+    VkInstance instance = VK_NULL_HANDLE;
+    VkResult createResult = createInstance(&createInfo, nullptr, &instance);
+    if (createResult != VK_SUCCESS || instance == VK_NULL_HANDLE) {
+        dlclose(handle);
+        return makeResult("UNAVAILABLE: vkCreateInstance failed=" + std::to_string(static_cast<int>(createResult)));
+    }
+
+    auto destroyInstance = reinterpret_cast<PFN_vkDestroyInstance>(
+        getProc(instance, "vkDestroyInstance"));
+    auto enumeratePhysicalDevices = reinterpret_cast<PFN_vkEnumeratePhysicalDevices>(
+        getProc(instance, "vkEnumeratePhysicalDevices"));
+    auto getPhysicalDeviceProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(
+        getProc(instance, "vkGetPhysicalDeviceProperties"));
+    auto enumerateDeviceExtensions = reinterpret_cast<PFN_vkEnumerateDeviceExtensionProperties>(
+        getProc(instance, "vkEnumerateDeviceExtensionProperties"));
+
+    if (!destroyInstance || !enumeratePhysicalDevices || !getPhysicalDeviceProperties || !enumerateDeviceExtensions) {
+        if (destroyInstance) destroyInstance(instance, nullptr);
+        dlclose(handle);
+        return makeResult("UNAVAILABLE: Vulkan physical-device entry points missing");
+    }
+
+    uint32_t count = 0;
+    if (enumeratePhysicalDevices(instance, &count, nullptr) != VK_SUCCESS || count == 0) {
+        destroyInstance(instance, nullptr);
+        dlclose(handle);
+        return makeResult("UNAVAILABLE: no Vulkan physical devices");
+    }
+
+    std::vector<VkPhysicalDevice> devices(count);
+    if (enumeratePhysicalDevices(instance, &count, devices.data()) != VK_SUCCESS || count == 0) {
+        destroyInstance(instance, nullptr);
+        dlclose(handle);
+        return makeResult("UNAVAILABLE: failed to enumerate Vulkan physical devices");
+    }
+
+    VkPhysicalDeviceProperties properties{};
+    getPhysicalDeviceProperties(devices[0], &properties);
+    const uint32_t deviceVersion = properties.apiVersion;
+    const uint32_t effectiveVersion = std::min(instanceVersion, deviceVersion);
+
+    uint32_t extensionCount = 0;
+    enumerateDeviceExtensions(devices[0], nullptr, &extensionCount, nullptr);
+    std::vector<VkExtensionProperties> extensions(extensionCount);
+    if (extensionCount > 0) {
+        enumerateDeviceExtensions(devices[0], nullptr, &extensionCount, extensions.data());
+    }
+
+    bool dynamicRendering = effectiveVersion >= VK_API_VERSION_1_3;
+    bool pushDescriptors = false;
+    std::string gpuName = properties.deviceName;
+
+    for (const auto& ext : extensions) {
+        const std::string name = ext.extensionName;
+        if (name == "VK_KHR_dynamic_rendering") dynamicRendering = true;
+        if (name == "VK_KHR_push_descriptor") pushDescriptors = true;
+    }
+
+    const bool supported = effectiveVersion >= VK_API_VERSION_1_2 &&
+        dynamicRendering && pushDescriptors;
+
+    std::string result =
+        std::string(supported ? "SUPPORTED" : "UNSUPPORTED") +
+        ";instance=" + std::to_string(VK_VERSION_MAJOR(instanceVersion)) + "." +
+        std::to_string(VK_VERSION_MINOR(instanceVersion)) + "." +
+        std::to_string(VK_VERSION_PATCH(instanceVersion)) +
+        ";device=" + std::to_string(VK_VERSION_MAJOR(deviceVersion)) + "." +
+        std::to_string(VK_VERSION_MINOR(deviceVersion)) + "." +
+        std::to_string(VK_VERSION_PATCH(deviceVersion)) +
+        ";effective=" + std::to_string(VK_VERSION_MAJOR(effectiveVersion)) + "." +
+        std::to_string(VK_VERSION_MINOR(effectiveVersion)) + "." +
+        std::to_string(VK_VERSION_PATCH(effectiveVersion)) +
+        ";dynamic=" + std::to_string(dynamicRendering ? 1 : 0) +
+        ";push=" + std::to_string(pushDescriptors ? 1 : 0) +
+        ";gpu=" + gpuName;
+
+    destroyInstance(instance);
+    dlclose(handle);
+    return makeResult(result);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
