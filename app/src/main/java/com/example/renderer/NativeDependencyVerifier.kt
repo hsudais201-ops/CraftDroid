@@ -75,7 +75,7 @@ object NativeDependencyVerifier {
     private fun neededLibraries(file: File): List<String> = RandomAccessFile(file, "r").use { raf ->
         val header = ByteArray(64)
         raf.readFully(header)
-        require(byte(header[0]) == 0x7f && header[1] == 'E'.code.toByte() && header[2] == 'L'.code.toByte() && header[3] == 'F'.code.toByte()) { "not ELF" }
+        require((header[0].toInt() and 0xff) == 0x7f && header[1] == 'E'.code.toByte() && header[2] == 'L'.code.toByte() && header[3] == 'F'.code.toByte()) { "not ELF" }
         require(header[5].toInt() and 0xff == 1) { "only little-endian ELF is supported" }
         val clazz = header[4].toInt() and 0xff
         require(clazz == 1 || clazz == 2) { "unsupported ELF class $clazz" }
