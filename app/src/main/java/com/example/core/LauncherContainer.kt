@@ -114,6 +114,10 @@ class LauncherContainer private constructor(context: Context) {
     val fabricLoaderInstaller: com.example.minecraft.FabricLoaderInstaller by lazy {
         com.example.minecraft.FabricLoaderInstaller(fileSystem, downloadManager, okHttpClient)
     }
+
+    val quiltLoaderInstaller: com.example.minecraft.QuiltLoaderInstaller by lazy {
+        com.example.minecraft.QuiltLoaderInstaller(fileSystem, downloadManager, okHttpClient)
+    }
     val forgeNeoForgeInstaller: com.example.minecraft.ForgeNeoForgeInstaller by lazy {
         com.example.minecraft.ForgeNeoForgeInstaller(fileSystem, downloadManager, okHttpClient, javaManager)
     }
