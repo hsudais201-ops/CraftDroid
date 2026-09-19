@@ -91,8 +91,13 @@ class MinecraftFileSystem(private val context: Context) {
 
     fun cleanNativesTemp() {
         try {
-            nativesTempDir.deleteRecursively()
+            if (nativesTempDir.exists() && !nativesTempDir.deleteRecursively()) {
+                throw IllegalStateException("Could not delete native temp directory: " + nativesTempDir.absolutePath)
+            }
             nativesTempDir.mkdirs()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            com.example.logs.LauncherLogger.warn("Native temp cleanup failed: " + e.message)
+            throw e
+        }
     }
 }
