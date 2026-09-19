@@ -63,7 +63,7 @@ import kotlinx.coroutines.flow.snapshotFlow
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContentBrowserScreen(viewModel: LauncherViewModel) {
-    val container = LauncherContainer.get(viewModel.container.appContext)
+    val container = LauncherContainer.get(viewModel.container.context)
     val vm: ContentBrowserViewModel = viewModel(factory = ContentBrowserViewModel.Factory(container))
     val state by vm.state.collectAsState()
     val listState = rememberLazyListState()
@@ -71,7 +71,7 @@ fun ContentBrowserScreen(viewModel: LauncherViewModel) {
 
     val worldPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val context = viewModel.container.appContext
+        val context = viewModel.container.context
         runCatching {
             val temp = java.io.File(context.cacheDir, "world-import-" + System.nanoTime() + ".zip")
             context.contentResolver.openInputStream(uri)?.use { input ->
