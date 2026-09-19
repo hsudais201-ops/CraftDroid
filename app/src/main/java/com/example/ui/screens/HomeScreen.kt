@@ -30,14 +30,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Leaderboard
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -98,7 +95,6 @@ fun HomeScreen(
     val showAuthRequiredDialog by viewModel.showAuthRequiredDialog.collectAsState()
     val scrollState = rememberScrollState()
     var showSkinManager by remember { mutableStateOf(false) }
-    var utilityDialog by remember { mutableStateOf<String?>(null) }
 
     val playInteraction = remember { MutableInteractionSource() }
     val playPressed by playInteraction.collectIsPressedAsState()
@@ -158,11 +154,11 @@ fun HomeScreen(
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(contentAlignment = Alignment.TopEnd) {
-                        IconButton(onClick = { utilityDialog = "Notifications" }, modifier = Modifier.testTag("notifications_button")) {
-                            Icon(Icons.Default.Info, "Notifications")
-                        }
-                        NotificationBadge(2)
+                    IconButton(
+                        onClick = { viewModel.navigateTo(LauncherScreen.LOGS) },
+                        modifier = Modifier.testTag("logs_button")
+                    ) {
+                        Icon(Icons.Default.Info, "Logs")
                     }
                     if (uiState.selectedAccount != null) {
                         IconButton(onClick = { showSkinManager = true }, modifier = Modifier.testTag("home_skin_button")) {
@@ -175,14 +171,23 @@ fun HomeScreen(
                 }
             }
 
-            // Resource strip: launcher-local resources are presentation-only and ready for a future store service.
-            Surface(shape = RoundedCornerShape(18.dp), color = Color.White.copy(alpha = .045f), tonalElevation = 0.dp) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    ResourcePill("●", "1,250", "Coins", Color(0xFFFFD54F))
-                    Spacer(Modifier.width(8.dp))
-                    ResourcePill("◆", "320", "Gems", primaryAccent)
-                    Spacer(Modifier.weight(1f))
-                    ResourcePill("⚡", "100", "Energy", Color(0xFFB9FF73))
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = Color.White.copy(alpha = .045f),
+                tonalElevation = 0.dp
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("STORAGE", style = MaterialTheme.typography.labelSmall, color = muted)
+                        Text(uiState.availableStorage + " free", fontWeight = FontWeight.Bold)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("VERSION", style = MaterialTheme.typography.labelSmall, color = muted)
+                        Text(uiState.selectedVersionId, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
@@ -277,13 +282,16 @@ fun HomeScreen(
                 }
             }
 
-            // Secondary game-style action row.
-            Text("QUICK ACCESS", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Black, letterSpacing = 1.5.sp), color = accent)
+            Text(
+                "QUICK ACCESS",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Black, letterSpacing = 1.5.sp),
+                color = accent
+            )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                QuickAction("Settings", Icons.Default.Settings) { viewModel.navigateTo(LauncherScreen.SETTINGS) }
-                QuickAction("Store", Icons.Default.Store) { utilityDialog = "Store" }
-                QuickAction("Events", Icons.Default.Event) { utilityDialog = "Events" }
-                QuickAction("Ranks", Icons.Default.Leaderboard) { utilityDialog = "Leaderboard" }
+                QuickAction("Versions", Icons.Default.Build) { viewModel.navigateTo(LauncherScreen.VERSIONS) }
+                QuickAction("Content", Icons.Default.Info) { viewModel.navigateTo(LauncherScreen.CONTENT) }
+                QuickAction("Controls", Icons.Default.PlayArrow) { viewModel.navigateTo(LauncherScreen.CUSTOMIZE_CONTROLS) }
+                QuickAction("Logs", Icons.Default.Info) { viewModel.navigateTo(LauncherScreen.LOGS) }
                 QuickAction("Profile", Icons.Default.Person) { viewModel.navigateTo(LauncherScreen.ACCOUNTS) }
             }
 
@@ -348,41 +356,11 @@ fun HomeScreen(
                 )
             }
 
-            utilityDialog?.let { name ->
-                AlertDialog(
-                    onDismissRequest = { utilityDialog = null },
-                    title = { Text(name, fontWeight = FontWeight.Black) },
-                    text = { Text(if (name == "Notifications") "You have 2 launcher notifications. Store, events and leaderboard services are ready for future online integration." else "$name is part of the premium CraftDroid shell. Online content integration can be connected without changing the launcher navigation.") },
-                    confirmButton = { Button(onClick = { utilityDialog = null }) { Text("OK") } }
-                )
-            }
         }
     }
 
     if (showSkinManager && uiState.selectedAccount != null) {
         SkinManagerDialog(account = uiState.selectedAccount!!, viewModel = viewModel, onDismiss = { showSkinManager = false })
-    }
-}
-
-@Composable
-private fun ResourcePill(icon: String, value: String, label: String, color: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(icon, color = color, fontWeight = FontWeight.Black, fontSize = 15.sp)
-        Spacer(Modifier.width(5.dp))
-        Column {
-            Text(value, fontWeight = FontWeight.Black, fontSize = 12.sp)
-            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun NotificationBadge(count: Int) {
-    Box(
-        Modifier.size(if (count > 9) 20.dp else 17.dp).clip(CircleShape).background(MaterialTheme.colorScheme.error),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(if (count > 9) "9+" else count.toString(), color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Black)
     }
 }
 
