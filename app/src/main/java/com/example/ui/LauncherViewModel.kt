@@ -288,20 +288,42 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
         }
     }
 
+    fun refreshVersions() {
+        viewModelScope.launch {
+            try {
+                _downloadStatusText.value = "Refreshing Minecraft versions…"
+                container.versionManager.fetchVersions()
+                _downloadStatusText.value = ""
+            } catch (e: Exception) {
+                LauncherLogger.error("Version refresh failed: " + e.message)
+                _downloadStatusText.value = "Version refresh failed: " + (e.message ?: "network error")
+            }
+        }
+    }
+
     fun installSelectedVersion() {
         val current = homeUiState.value
         val vId = current.selectedVersionId
         val summary = versions.value.find { it.id == vId }
-        val url = summary?.url ?: "https://piston-meta.mojang.com/v1/packages/${vId}/${vId}.json"
+        val url = summary?.url ?: run {
+            _downloadStatusText.value = "Version metadata is unavailable. Refresh the version list first."
+            LauncherLogger.error("Cannot install " + vId + ": version manifest URL is missing")
+            return
+        }
 
         viewModelScope.launch {
-            container.installer.installVersion(
-                versionId = vId,
-                versionJsonUrl = url,
-                onProgress = {},
-                onStatus = { _downloadStatusText.value = it }
-            )
-            container.versionManager.fetchVersions()
+            try {
+                container.installer.installVersion(
+                    versionId = vId,
+                    versionJsonUrl = url,
+                    onProgress = {},
+                    onStatus = { _downloadStatusText.value = it }
+                )
+                container.versionManager.fetchVersions()
+            } catch (e: Exception) {
+                LauncherLogger.error("Version installation failed for " + vId + ": " + e.message)
+                _downloadStatusText.value = "Installation failed: " + (e.message ?: "unknown error")
+            }
         }
     }
 
