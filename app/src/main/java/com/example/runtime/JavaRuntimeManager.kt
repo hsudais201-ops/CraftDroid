@@ -253,14 +253,14 @@ class JavaRuntimeManager(
         // Java 8 is a real Android JRE published for all four supported ABIs.
         // Its dedicated release exposes machine-readable SHA-256 digests.
         if (major !in SUPPORTED_MAJORS) return null
-        if (major == 25 && arch == "x86") return null // upstream does not publish it
         val fileName = "jre$major-android-$arch.tar.xz"
         val tag = JRE_TAGS[major] ?: return null
+        val sha = JRE_SHA256["$major/$arch"]?.takeIf { it.length == 64 } ?: return null
         return RuntimePackage(
             major = major,
             arch = arch,
             url = JRE_BASE + tag + "/" + fileName,
-            sha256 = JRE_SHA256["$major/$arch"]?.takeIf { it.length == 64 }
+            sha256 = sha
         )
     }
 
@@ -367,8 +367,9 @@ class JavaRuntimeManager(
 
     suspend fun installRuntime(majorVersion: Int, onStatus: (String) -> Unit): Boolean = withContext(Dispatchers.IO) {
         try {
-            val pkg = packageFor(majorVersion, getArch())
-                ?: throw IllegalStateException("No Android JRE package for Java $majorVersion/${getArch()}")
+            val arch = getArch()
+            val pkg = packageFor(majorVersion, arch)
+                ?: throw IllegalStateException("No verified Android OpenJDK " + majorVersion + " package is published for ABI " + arch + ". The launcher refuses to install an unverified or desktop-only runtime.")
 
             val downloadDir = File(fileSystem.runtimeDir, "downloads")
             val archive = File(downloadDir, "jre-$majorVersion-${pkg.arch}.tar.xz")
