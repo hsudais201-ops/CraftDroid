@@ -29,7 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.content.ContentProject
-import com.example.content.ContentSource
+import com.example.ui.ContentSource
 import com.example.ui.LauncherScreen
 import com.example.ui.LauncherViewModel
 
