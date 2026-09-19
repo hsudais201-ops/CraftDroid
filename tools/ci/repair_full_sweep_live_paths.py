@@ -297,6 +297,30 @@ def patch_real_state_defaults(root):
     if (root / rel).is_file():
         def version_manager(text):
             text = text.replace(
+                '''                        var sampleCount = 0
+                        while (keys.hasNext() && sampleCount < 50) { // check sample for speed
+                            sampleCount++
+                            val hash = objs.getJSONObject(keys.next()).getString("hash")
+                            val assetFile = fileSystem.getAssetObjectFile(hash)
+                            if (!assetFile.exists() || assetFile.length() == 0L) {
+                                missingAssets++
+                            }
+                        }''',
+                '''                        while (keys.hasNext()) {
+                            val hash = objs.getJSONObject(keys.next()).getString("hash")
+                            val assetFile = fileSystem.getAssetObjectFile(hash)
+                            if (!assetFile.exists() || assetFile.length() == 0L) {
+                                missingAssets++
+                            }
+                        }''',
+                1,
+            )
+            text = text.replace(
+                'val canLaunch = isJsonValid && isJarValid && missingLibs == 0 && javaInstalled',
+                'val canLaunch = isJsonValid && isJarValid && missingLibs == 0 && missingAssets == 0 && javaInstalled',
+                1,
+            )
+            text = text.replace(
                 'val isInstalled = fileSystem.getVersionJarFile(id).exists() && fileSystem.getVersionJsonFile(id).exists()',
                 'val isInstalled = isInstalledAndHealthy(id)',
                 1,
