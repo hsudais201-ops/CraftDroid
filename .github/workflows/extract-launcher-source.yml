@@ -39,6 +39,12 @@ jobs:
           test -f /tmp/extracted-project/settings.gradle.kts
           test -f /tmp/extracted-project/app/build.gradle.kts
           test -f /tmp/extracted-project/app/src/main/AndroidManifest.xml
+      - name: Apply full codebase sweep repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_full_codebase_sweep.py /tmp/extracted-project
+
 
       - name: Publish complete Android source branch
         shell: bash
