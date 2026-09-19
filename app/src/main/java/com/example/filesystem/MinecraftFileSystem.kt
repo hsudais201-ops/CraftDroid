@@ -11,6 +11,8 @@ import java.io.File
  */
 class MinecraftFileSystem(private val context: Context) {
 
+    val appContext: Context get() = context.applicationContext
+
     val rootDir: File by lazy {
         // Prefer external files dir (Android/data/com.../files/Minecraft) for ample storage,
         // fallback to internal files dir if external is unavailable.
