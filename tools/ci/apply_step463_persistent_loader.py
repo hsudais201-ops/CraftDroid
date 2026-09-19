@@ -194,6 +194,11 @@ def main() -> int:
     subprocess.run([sys.executable, str(functional), str(root)], check=True)
     subprocess.run([sys.executable, str(functional_verifier), str(root)], check=True)
 
+    finisher = Path.cwd() / "tools/ci/apply_step481_runtime_finishing.py"
+    if not finisher.is_file():
+        raise SystemExit("[step481] runtime finishing script missing")
+    subprocess.run([sys.executable, str(finisher), str(root)], check=True)
+
     print("[step463] loader cards now persist a real per-instance selection and reuse the existing selectedLoader state when available")
     return 0
 
