@@ -104,7 +104,7 @@ class ContentBrowserViewModel(private val container: LauncherContainer) : ViewMo
                 } else {
                     page.items.flatMap { it.categories }.distinct().sorted().take(12)
                 }
-                val categoryIds = curseCategories.associate { it.name to it.id }
+                val categoryIds = curseCategories.mapNotNull { category -> category.id.toIntOrNull()?.let { category.name to it } }.toMap()
                 _state.value = _state.value.copy(
                     items = page.items,
                     categories = categories,
