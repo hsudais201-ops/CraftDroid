@@ -47,6 +47,15 @@ class ElyByAccountProvider(
         const val TOKEN_URL = "https://account.ely.by/api/oauth2/v1/token"
         const val PROFILE_URL = "https://account.ely.by/api/account/v1/info"
         const val DEFAULT_SCOPES = "account_info minecraft_server_session offline_access"
+        @JvmStatic
+        fun buildAuthorizationUrl(clientId: String = DEFAULT_CLIENT_ID, redirectUri: String = DEFAULT_REDIRECT_URI): String {
+            return AUTH_URL + "?client_id=" + URLEncoder.encode(clientId, "UTF-8") +
+                "&response_type=code" +
+                "&redirect_uri=" + URLEncoder.encode(redirectUri, "UTF-8") +
+                "&scope=" + URLEncoder.encode(DEFAULT_SCOPES, "UTF-8") +
+                "&prompt=consent"
+        }
+
     }
 
     override val providerType: AccountProviderType = AccountProviderType.ELY_BY
