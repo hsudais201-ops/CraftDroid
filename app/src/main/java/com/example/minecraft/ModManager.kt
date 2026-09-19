@@ -49,7 +49,11 @@ class ModManager(private val fileSystem: MinecraftFileSystem) {
         } else {
             File(fileSystem.modsDir, mod.fileName.removeSuffix(".disabled"))
         }
-        file.renameTo(newFile)
+        val renamed = file.renameTo(newFile)
+        if (!renamed) {
+            LauncherLogger.error("Failed to toggle mod file: " + mod.fileName)
+        }
+        renamed
     }
 
     suspend fun deleteMod(mod: ModItem): Boolean = withContext(Dispatchers.IO) {
@@ -84,6 +88,10 @@ class ModManager(private val fileSystem: MinecraftFileSystem) {
         } else {
             File(fileSystem.resourcePacksDir, rp.fileName.removeSuffix(".disabled"))
         }
-        file.renameTo(newFile)
+        val renamed = file.renameTo(newFile)
+        if (!renamed) {
+            LauncherLogger.error("Failed to toggle resource pack file: " + rp.fileName)
+        }
+        renamed
     }
 }
