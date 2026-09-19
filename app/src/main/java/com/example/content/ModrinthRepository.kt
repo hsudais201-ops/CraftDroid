@@ -75,7 +75,7 @@ class ModrinthRepository(private val context: Context) {
     }
 
     private fun selectCompatibleVersion(item: ContentItem, gameVersion: String): JSONObject? {
-        val url = "$base/project/" + item.id + "/version".toHttpUrl().newBuilder()
+        val url = (base + "/project/" + item.id + "/version").toHttpUrl().newBuilder()
             .addQueryParameter("game_versions", JSONArray().put(gameVersion).toString())
             .addQueryParameter("limit", "50")
             .addQueryParameter("featured", "true")
