@@ -255,8 +255,151 @@ def patch_logger(root):
         1,
     ))
 
+
+def patch_real_state_defaults(root):
+    rel = "app/src/main/java/com/example/auth/AccountProviderType.kt"
+    if (root / rel).is_file():
+        patch(root, rel, lambda text: text.replace(
+            'return entries.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: LOCAL_TEST',
+            'return entries.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: MICROSOFT',
+            1,
+        ))
+
+    rel = "app/src/main/java/com/example/settings/SettingsRepository.kt"
+    if (root / rel).is_file():
+        def settings(text):
+            text = text.replace('val selectedVersionId: String = "1.21.4"', 'val selectedVersionId: String = ""', 1)
+            text = text.replace('val enableLocalTestProfiles: Boolean = true', 'val enableLocalTestProfiles: Boolean = false', 1)
+            text = text.replace('selectedVersionId = prefs[Keys.SELECTED_VERSION] ?: "1.21.4"', 'selectedVersionId = prefs[Keys.SELECTED_VERSION] ?: ""', 1)
+            text = text.replace('enableLocalTestProfiles = prefs[Keys.ENABLE_LOCAL_TEST_PROFILES] ?: true', 'enableLocalTestProfiles = prefs[Keys.ENABLE_LOCAL_TEST_PROFILES] ?: false', 1)
+            return text
+        patch(root, rel, settings)
+
+    rel = "app/src/main/java/com/example/ui/LauncherViewModel.kt"
+    if (root / rel).is_file():
+        def vm(text):
+            text = text.replace('val selectedVersionId: String = "1.21.4"', 'val selectedVersionId: String = ""', 1)
+            anchor = '''            container.versionManager.fetchVersions()
+            container.javaManager.refreshRuntimes()'''
+            repl = '''            val loadedVersions = container.versionManager.fetchVersions()
+            val configuredVersion = container.settingsRepository.settingsFlow.firstOrNull()?.selectedVersionId.orEmpty()
+            if (configuredVersion.isBlank() || loadedVersions.none { it.id == configuredVersion }) {
+                loadedVersions.firstOrNull()?.id?.let { container.settingsRepository.updateSelectedVersion(it) }
+            }
+            container.javaManager.refreshRuntimes()'''
+            text = text.replace(anchor, repl, 1)
+            if "import kotlinx.coroutines.flow.firstOrNull" not in text:
+                text = text.replace("import kotlinx.coroutines.flow.combine\n", "import kotlinx.coroutines.flow.combine\nimport kotlinx.coroutines.flow.firstOrNull\n", 1)
+            return text
+        patch(root, rel, vm)
+
+    rel = "app/src/main/java/com/example/ui/accounts/AddAccountDialog.kt"
+    if (root / rel).is_file():
+        def account_ui(text):
+            if "val settings by viewModel.settings.collectAsState()" not in text:
+                text = text.replace(
+                    "    val authState by viewModel.authState.collectAsState()\n",
+                    "    val authState by viewModel.authState.collectAsState()\n    val settings by viewModel.settings.collectAsState()\n",
+                    1,
+                )
+            text = text.replace(
+                '''                                ProviderSelectionView(
+                                    onSelectMicrosoft = {
+                                        viewModel.startMicrosoftLogin()
+                                        selectedMode = AddAccountMode.MICROSOFT_PROMPT
+                                    },
+                                    onSelectElyBy = {
+                                        selectedMode = AddAccountMode.ELY_BY_FORM
+                                    },
+                                    onSelectLocalTest = {
+                                        selectedMode = AddAccountMode.LOCAL_TEST_FORM
+                                    }
+                                )''',
+                '''                                ProviderSelectionView(
+                                    allowLocalTest = settings.enableLocalTestProfiles,
+                                    onSelectMicrosoft = {
+                                        viewModel.startMicrosoftLogin()
+                                        selectedMode = AddAccountMode.MICROSOFT_PROMPT
+                                    },
+                                    onSelectElyBy = {
+                                        selectedMode = AddAccountMode.ELY_BY_FORM
+                                    },
+                                    onSelectLocalTest = {
+                                        selectedMode = AddAccountMode.LOCAL_TEST_FORM
+                                    }
+                                )''',
+                1,
+            )
+            text = text.replace(
+                '''private fun ProviderSelectionView(
+    onSelectMicrosoft: () -> Unit,
+    onSelectElyBy: () -> Unit,
+    onSelectLocalTest: () -> Unit
+)''',
+                '''private fun ProviderSelectionView(
+    allowLocalTest: Boolean,
+    onSelectMicrosoft: () -> Unit,
+    onSelectElyBy: () -> Unit,
+    onSelectLocalTest: () -> Unit
+)''',
+                1,
+            )
+            local_start = text.find("        // 3. Local Test Profile Card")
+            if local_start >= 0:
+                block_end = text.find("        )\n    }\n}\n\n@Composable\nprivate fun ProviderCard", local_start)
+                if block_end > local_start:
+                    block = text[local_start:block_end]
+                    wrapped = "        if (allowLocalTest) {\n" + block + "        }\n"
+                    text = text[:local_start] + wrapped + text[block_end:]
+            return text
+        patch(root, rel, account_ui)
+
+    rel = "app/src/main/java/com/example/versions/VersionManager.kt"
+    if (root / rel).is_file():
+        def version_manager(text):
+            text = text.replace(
+                'val isInstalled = fileSystem.getVersionJarFile(id).exists() && fileSystem.getVersionJsonFile(id).exists()',
+                'val isInstalled = isInstalledAndHealthy(id)',
+                1,
+            )
+            text = text.replace(
+                '''                        isInstalled = true,
+                        javaRequirement = 21
+                    )''',
+                '''                        isInstalled = isInstalledAndHealthy(id),
+                        javaRequirement = runCatching {
+                            versionParser.parseVersionDetail(json.readText(Charsets.UTF_8)).javaVersion.majorVersion
+                        }.getOrDefault(21)
+                    )''',
+                1,
+            )
+            anchor = "    private suspend fun loadLocalVersions(): List<VersionSummary> {"
+            helper = '''    private fun isInstalledAndHealthy(versionId: String): Boolean {
+        return try {
+            val jsonFile = fileSystem.getVersionJsonFile(versionId)
+            val jarFile = fileSystem.getVersionJarFile(versionId)
+            if (!jsonFile.isFile || !jarFile.isFile) return false
+            val detail = versionParser.parseVersionDetail(jsonFile.readText(Charsets.UTF_8))
+            if (detail.clientDownload.size > 0L && jarFile.length() != detail.clientDownload.size) return false
+            if (detail.clientDownload.sha1.isNotBlank() &&
+                !HashVerifier.verifySha1(jarFile, detail.clientDownload.sha1)
+            ) return false
+            fileSystem.getAssetIndexFile(detail.assetIndex.id).isFile
+        } catch (e: Throwable) {
+            LauncherLogger.warn("Installed-version integrity check failed for " + versionId + ": " + e.message)
+            false
+        }
+    }
+
+'''
+            text = text.replace(anchor, helper + anchor, 1)
+            return text
+        patch(root, rel, version_manager)
+
+
 def main():
     root=Path(sys.argv[1] if len(sys.argv)>1 else "droid-src").resolve()
+    patch_real_state_defaults(root)
     patch_viewmodel(root)
     patch_version_manager(root)
     patch_versions_screen(root)
