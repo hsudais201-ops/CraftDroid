@@ -133,7 +133,7 @@ class VersionManager(
                         releaseTime = "Offline",
                         sha1 = "",
                         isInstalled = true,
-                        javaRequirement = 21
+                        javaRequirement = MinecraftJavaRequirements.requiredMajor(id)
                     )
                 )
             }
@@ -196,7 +196,7 @@ class VersionManager(
         }
 
         val requiredJava = runCatching { versionParser.parseVersionDetail(jsonFile.readText()).javaVersion.majorVersion }
-            .getOrDefault(21)
+            .getOrElse { MinecraftJavaRequirements.requiredMajor(versionId) }
         val javaInstalled = javaRuntimeManager.getBestRuntime(requiredJava) != null
         val canLaunch = isJsonValid && isJarValid && missingLibs == 0 && javaInstalled
 
