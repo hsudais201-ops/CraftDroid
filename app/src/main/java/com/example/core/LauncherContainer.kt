@@ -60,7 +60,7 @@ class LauncherContainer internal constructor(context: Context) {
 
     val database: AppDatabase by lazy {
         Room.databaseBuilder(context, AppDatabase::class.java, "minecraft_launcher.db")
-            .addMigrations(AppDatabase.MIGRATION_3_4)
+            .addMigrations(AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5)
             .fallbackToDestructiveMigration(dropAllTables = false)
             .build()
     }
