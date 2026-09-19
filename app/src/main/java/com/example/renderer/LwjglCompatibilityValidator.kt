@@ -85,10 +85,11 @@ object LwjglCompatibilityValidator {
                     ?: return false to "missing CallbackBridge.class"
                 val glfwBytes = zip.getInputStream(glfw).use { it.readBytes() }
                 val callbackBytes = zip.getInputStream(callback).use { it.readBytes() }
-                val glfwOk = glfwBytes.indexOf("glfwInit".toByteArray()) >= 0 &&
-                    glfwBytes.indexOf("glfwPollEvents".toByteArray()) >= 0
+                val glfwText = String(glfwBytes, Charsets.ISO_8859_1)
+                val callbackText = String(callbackBytes, Charsets.ISO_8859_1)
+                val glfwOk = glfwText.contains("glfwInit") && glfwText.contains("glfwPollEvents")
                 val callbackOk = listOf("receiveCallback", "nativeSendData", "nativeSetInputReady")
-                    .all { callbackBytes.indexOf(it.toByteArray()) >= 0 }
+                    .all { callbackText.contains(it) }
                 if (!glfwOk || !callbackOk) {
                     false to "required GLFW/CallbackBridge methods are missing"
                 } else {
