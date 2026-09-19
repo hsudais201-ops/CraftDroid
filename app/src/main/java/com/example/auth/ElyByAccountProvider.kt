@@ -56,7 +56,8 @@ class ElyByAccountProvider(
     /**
      * Builds the official Ely.by OAuth2 authorization URL to open in browser.
      */
-    fun buildAuthorizationUrl(
+    @JvmStatic
+        fun buildAuthorizationUrl(
         clientId: String = DEFAULT_CLIENT_ID,
         redirectUri: String = DEFAULT_REDIRECT_URI
     ): String {
