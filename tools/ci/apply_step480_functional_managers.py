@@ -126,6 +126,7 @@ HELPERS = r'''
         }
         val queryPrefs = getSharedPreferences("droid_launcher_ui", MODE_PRIVATE)
         val query = queryPrefs.getString("query_" + type, "") ?: ""
+        val pageOffset = queryPrefs.getInt("offset_" + type, 0).coerceAtLeast(0)
         pageArea.addView(step375Title(titleValue, "Real Modrinth discovery · search, thumbnails, compatibility and install"))
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val field = android.widget.EditText(this).apply {
@@ -135,7 +136,10 @@ HELPERS = r'''
         }
         controls.addView(field, LinearLayout.LayoutParams(0, dp(50), 1f))
         controls.addView(step375Button("SEARCH", true) {
-            queryPrefs.edit().putString("query_" + type, field.text.toString()).apply()
+            queryPrefs.edit()
+                .putString("query_" + type, field.text.toString())
+                .putInt("offset_" + type, 0)
+                .apply()
             showPage(type)
         }, LinearLayout.LayoutParams(dp(104), dp(46)).apply { marginStart = dp(7) })
         controls.addView(step375Button("REFRESH") { showPage(type) },
@@ -168,7 +172,7 @@ HELPERS = r'''
             try {
                 val q = java.net.URLEncoder.encode(query, "UTF-8")
                 val facets = java.net.URLEncoder.encode("[[\"project_type:" + projectType + "\"]]", "UTF-8")
-                val u = java.net.URL("https://api.modrinth.com/v2/search?limit=8&offset=0&query=" + q + "&facets=" + facets)
+                val u = java.net.URL("https://api.modrinth.com/v2/search?limit=8&offset=" + pageOffset + "&query=" + q + "&facets=" + facets)
                 val c = u.openConnection() as java.net.HttpURLConnection
                 c.connectTimeout = 7000
                 c.readTimeout = 10000
@@ -193,7 +197,7 @@ HELPERS = r'''
                 runOnUiThread {
                     if (isFinishing || currentPage != type) return@runOnUiThread
                     while (pageArea.childCount > 4) pageArea.removeViewAt(4)
-                    if (results.isEmpty()) {
+                    if (results.isEmpty() && pageOffset == 0) {
                         val empty = step375Panel(18)
                         empty.gravity = Gravity.CENTER
                         empty.addView(step375Text("No results", 19f, true))
@@ -208,7 +212,31 @@ HELPERS = r'''
                                 LinearLayout.LayoutParams(-1, dp(104)).apply { topMargin = dp(7) }
                             )
                         }
-                        pageArea.addView(step375Text("Showing real Modrinth results · use Search for pagination by query.", 10f).apply {
+                        val totalHits = org.json.JSONObject(json).optInt("total_hits", pageOffset + results.size)
+                        val nav = LinearLayout(this@DroidLauncherUiActivity).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                        }
+                        if (pageOffset > 0) {
+                            nav.addView(step375Button("PREVIOUS") {
+                                queryPrefs.edit().putInt("offset_" + type, (pageOffset - 8).coerceAtLeast(0)).apply()
+                                showPage(type)
+                            }, LinearLayout.LayoutParams(0, dp(46), 1f))
+                        }
+                        if (pageOffset + results.size < totalHits) {
+                            nav.addView(step375Button("NEXT") {
+                                queryPrefs.edit().putInt("offset_" + type, pageOffset + results.size).apply()
+                                showPage(type)
+                            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply {
+                                if (pageOffset > 0) marginStart = dp(8)
+                            })
+                        }
+                        if (nav.childCount > 0) {
+                            pageArea.addView(nav, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(8) })
+                        }
+                        pageArea.addView(step375Text(
+                            "Showing real Modrinth results · page " + ((pageOffset / 8) + 1),
+                            10f
+                        ).apply {
                             setTextColor(android.graphics.Color.argb(155, 200, 220, 230))
                             setPadding(dp(4), dp(8), 0, 0)
                         })
