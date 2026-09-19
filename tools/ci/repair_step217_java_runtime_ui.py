@@ -100,12 +100,14 @@ def main() -> int:
     }
 
     private fun runtimeStatus(runtime: String): String {
-        val prefs = getSharedPreferences("droid_launcher", MODE_PRIVATE)
-        val validated = prefs.getString("validated_java_runtime", "") ?: ""
+        val major = runtime.removePrefix("Internal-").toIntOrNull() ?: return "Unavailable"
+        val manager = com.example.core.LauncherContainer.get(this).javaManager
+        val actual = manager.runtimes.value.firstOrNull { it.majorVersion == major }
         return when {
-            validated == runtime -> "Validated"
-            runtime == "Internal-17" || runtime == "Internal-21" || runtime == "Internal-25" -> "Available / auto-prepared"
-            else -> "Compatibility profile"
+            actual == null -> "Unavailable"
+            actual.isValid && actual.isInstalled -> "Ready · smoke-tested"
+            actual.isInstalled -> "Installed · validation failed"
+            else -> "Not installed"
         }
     }
 
