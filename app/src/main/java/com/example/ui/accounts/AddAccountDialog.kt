@@ -241,7 +241,7 @@ fun AddAccountDialog(
                                     onCodeChange = { elyByCodeInput = it },
                                     onOpenBrowser = {
                                         val elyProvider = viewModel.container.elyByProvider
-                                        val url = elyProvider.buildAuthorizationUrl()
+                                        val url = elyProvider.buildAuthorizationUrlForRuntime()
                                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                                         context.startActivity(intent)
                                     },
