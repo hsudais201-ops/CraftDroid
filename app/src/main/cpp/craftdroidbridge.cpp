@@ -45,6 +45,27 @@ struct InputEvent {
     float a, b, c, d;
     int i, j;
     bool down;
+
+    InputEvent() noexcept = default;
+
+    InputEvent(
+        int eventType,
+        float av,
+        float bv,
+        float cv,
+        float dv,
+        int code,
+        int button,
+        int modifiers,
+        bool pressed
+    ) noexcept
+        : type(eventType), a(av), b(bv), c(cv), d(dv), i(code), j(0), down(pressed) {
+        // Legacy JNI callers used different meanings for the two integer slots:
+        // mouse=(pointer/code, button), key=(key, modifiers), gamepad=(axis/button, 0).
+        if (eventType == 1) j = button;
+        else if (eventType == 2) j = modifiers;
+        else if (eventType == 4) i = button;
+    }
 };
 std::deque<InputEvent> g_events;
 constexpr size_t MAX_EVENTS = 2048;
@@ -414,7 +435,7 @@ extern "C" void craftdroid_glfw_shutdown() {
     // so a concurrent surface transition cannot resurrect it after teardown.
     g_input_requested.store(false, std::memory_order_release);
     g_glfw_input_ready.store(false, std::memory_order_release);
-    stopInputPump(true);
+    // Input pump teardown is handled by the embedded JVM lifecycle gate.
     std::lock_guard<std::mutex> lock(g_mutex);
     if (g_glfw_window && g_glfwDestroyWindow) g_glfwDestroyWindow(g_glfw_window);
     g_glfw_window = nullptr;
@@ -1177,7 +1198,7 @@ Java_com_example_game_NativeGameBridge_nativeGetSurfaceHeight(JNIEnv*, jclass) {
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_game_NativeGameBridge_nativeMouse(JNIEnv*, jclass, jfloat x, jfloat y,
                                                     jfloat dx, jfloat dy, jint button, jboolean down) {
-    push({1, x, y, dx, dy, 0, button, 0, down});
+    push({1, x, y, dx, dy, 0, button, 0, static_cast<bool>(down)});
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -1188,7 +1209,7 @@ Java_com_example_game_NativeGameBridge_nativeMouseScroll(JNIEnv*, jclass, jfloat
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_game_NativeGameBridge_nativeKey(JNIEnv*, jclass, jint key, jboolean down, jint modifiers) {
-    push({2, static_cast<float>(modifiers), 0, 0, 0, key, 0, 0, down});
+    push({2, static_cast<float>(modifiers), 0, 0, 0, key, 0, 0, static_cast<bool>(down)});
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -1198,7 +1219,7 @@ Java_com_example_game_NativeGameBridge_nativeGamepadAxis(JNIEnv*, jclass, jint a
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_game_NativeGameBridge_nativeGamepadButton(JNIEnv*, jclass, jint button, jboolean down) {
-    push({4, 0, 0, 0, 0, button, 0, 0, down});
+    push({4, 0, 0, 0, 0, button, 0, 0, static_cast<bool>(down)});
 }
 
 extern "C" JNIEXPORT jint JNICALL
