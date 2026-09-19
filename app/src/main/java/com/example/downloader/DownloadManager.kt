@@ -212,9 +212,15 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
                                 okHttpClient.newCall(request).execute().use { response ->
                                     if (response.code == 416 && resumeBytes > 0L) {
                                         tempFile.delete()
-                                        throw IOException("HTTP 416; partial download reset for ${task.name}")
+                                        val oldBytes = progressBytes.getAndSet(0L)
+                                        downloadedBytesCounter.addAndGet(-oldBytes)
+                                        throw IOException("HTTP 416; partial download reset for " + task.name)
                                     }
-                                    if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
+                                    if (!response.isSuccessful) throw IOException("HTTP " + response.code)
+                                    if (resumeBytes > 0L && response.code == 200) {
+                                        val oldBytes = progressBytes.getAndSet(0L)
+                                        downloadedBytesCounter.addAndGet(-oldBytes)
+                                    }
                                     val body = response.body ?: throw IOException("Empty body")
 
                                     val buffer = ByteArray(8192)
@@ -224,7 +230,7 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
                                             while (input.read(buffer).also { bytesRead = it } != -1) {
                                                 if (isCancelled) throw IOException("Cancelled")
                                                 output.write(buffer, 0, bytesRead)
-                                                val currentTaskTotal = progressBytes.addAndGet(bytesRead.toLong())
+                                                progressBytes.addAndGet(bytesRead.toLong())
                                                 val currentTotal = downloadedBytesCounter.addAndGet(bytesRead.toLong())
 
                                                 // Update speed calculation every 500ms
