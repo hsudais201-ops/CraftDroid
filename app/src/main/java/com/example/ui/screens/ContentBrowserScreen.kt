@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.content.ContentType
+import com.example.content.ContentSource
 import com.example.core.LauncherContainer
 import com.example.launcher.MinecraftContentManager
 import com.example.ui.LauncherViewModel
@@ -115,6 +116,18 @@ fun ContentBrowserScreen(viewModel: LauncherViewModel) {
         }
 
         Spacer(Modifier.height(12.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(ContentSource.entries) { source ->
+                FilterChip(
+                    selected = state.source == source,
+                    onClick = { vm.setSource(source) },
+                    label = { Text(if (source == ContentSource.MODRINTH) "Modrinth" else "CurseForge") }
+                )
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(ContentType.entries) { type ->
                 FilterChip(
