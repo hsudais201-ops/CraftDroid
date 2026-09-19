@@ -275,27 +275,27 @@ object NativeGameBridge {
 
     fun sendMouse(x: Float, y: Float, dx: Float, dy: Float, button: Int, down: Boolean) {
         if (!loaded) return
-        try { nativeMouse(x, y, dx, dy, button, down) } catch (_: Throwable) { }
+        try { nativeMouse(x, y, dx, dy, button, down) } catch (t: Throwable) { LauncherLogger.debug("Native mouse dispatch failed: ${t.message}") }
     }
 
     fun sendMouseScroll(horizontal: Float, vertical: Float) {
         if (!loaded) return
-        try { nativeMouseScroll(horizontal, vertical) } catch (_: Throwable) { }
+        try { nativeMouseScroll(horizontal, vertical) } catch (t: Throwable) { LauncherLogger.debug("Native mouse-scroll dispatch failed: ${t.message}") }
     }
 
     fun sendKey(key: Int, down: Boolean, modifiers: Int = 0) {
         if (!loaded) return
-        try { nativeKey(key, down, modifiers) } catch (_: Throwable) { }
+        try { nativeKey(key, down, modifiers) } catch (t: Throwable) { LauncherLogger.debug("Native key dispatch failed: ${t.message}") }
     }
 
     fun sendGamepad(axis: Int, value: Float) {
         if (!loaded) return
-        try { nativeGamepadAxis(axis, value) } catch (_: Throwable) { }
+        try { nativeGamepadAxis(axis, value) } catch (t: Throwable) { LauncherLogger.debug("Native gamepad-axis dispatch failed: ${t.message}") }
     }
 
     fun sendGamepadButton(button: Int, down: Boolean) {
         if (!loaded) return
-        try { nativeGamepadButton(button, down) } catch (_: Throwable) { }
+        try { nativeGamepadButton(button, down) } catch (t: Throwable) { LauncherLogger.debug("Native gamepad-button dispatch failed: ${t.message}") }
     }
 
     /** Returns [type,key/button,unused,down,a*1000,b*1000,c*1000,d*1000]. */
@@ -319,7 +319,7 @@ object NativeGameBridge {
     fun isJavaRunning(): Boolean = loaded && runCatching { nativeIsJavaRunning() }.getOrDefault(false)
 
     /** Embedded JVM bridge state: 0=IDLE, 1=STARTING, 2=RUNNING, 3=STOPPING, 4=EXITED (terminal after JLI_Launch returns). */
-    fun javaState(): Int = loaded && runCatching { nativeGetJavaState() }.getOrDefault(0)
+    fun javaState(): Int = if (loaded) runCatching { nativeGetJavaState() }.getOrDefault(0) else 0
 
     fun isLoaded(): Boolean = loaded
 
