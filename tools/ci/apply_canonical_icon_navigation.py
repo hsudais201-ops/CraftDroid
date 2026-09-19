@@ -668,10 +668,10 @@ def main() -> int:
     source = patch_content(source)
     source = patch_settings(source)
     source = normalize_copy(source)
-        # Remove any stale CurseForge labels/buttons left by older UI generators.
+    # Remove any stale CurseForge labels/buttons left by older UI generators.
     source = re.sub(r'(?mi)^.*(?:CURSEFORGE|CurseForge).*$\n?', '', source)
     source = source.replace("Modrinth + CurseForge", "Live Modrinth").replace("Modrinth + Curseforge", "Live Modrinth")
-ui.write_text(source, encoding="utf-8")
+    ui.write_text(source, encoding="utf-8")
 
     required = (
         "CANONICAL_ICON_NAVIGATION",
@@ -687,7 +687,6 @@ ui.write_text(source, encoding="utf-8")
         "NeoForge",
         "Modpack",
         "Modrinth",
-        "CurseForge",
         "Any version",
         "TOUCH CONTROLS",
         "SIGN IN FROM MICROSOFT",
