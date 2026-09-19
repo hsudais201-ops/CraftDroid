@@ -48,9 +48,10 @@ class NativeComponentManager(
         // Pin the known current TeamPojavLauncher native architecture.
         // Pin the known current upstream release instead of following `latest`.
         // `latest` can change its native ABI/backend without a CraftDroid update.
-        private val POJAV_APK_URLS = listOf(
-            "https://github.com/TeamPojavLauncher/PojavLauncher/releases/download/bhai-bhai/PojavLauncher-release.apk"
-        )
+        private const val POJAV_APK_URL =
+            "https://github.com/TeamPojavLauncher/PojavLauncher/releases/download/pojav-legacy/Pojavlauncher-release.apk"
+        private const val POJAV_APK_SHA256 =
+            "4772352ad7d97784fb4ccdd951759d22788e6e61fd82e61b85eeab16f69d320f"
         private const val MOBILEGLUES_APK =
             "https://github.com/MobileGL-Dev/MobileGlues-release/releases/download/V2.0.0/MobileGlues_2.0.0.apk"
         private const val MOBILEGLUES_SHA256 =
@@ -90,17 +91,20 @@ class NativeComponentManager(
         val pojavApk = File(stackRoot, "pojav-native.apk")
         var downloaded = false
         var lastError: Throwable? = null
-        for (url in POJAV_APK_URLS) {
-            try {
-                download(url, pojavApk)
-                downloaded = true
-                break
-            } catch (e: Throwable) {
-                lastError = e
-                LauncherLogger.warn("Native bridge mirror failed: ${e.message}")
+        try {
+            download(POJAV_APK_URL, pojavApk)
+            if (!sha256(pojavApk).equals(POJAV_APK_SHA256, true)) {
+                pojavApk.delete()
+                throw SecurityException("Pojav native bridge checksum verification failed")
             }
+            downloaded = true
+        } catch (e: Throwable) {
+            lastError = e
+            LauncherLogger.warn("Native bridge download failed: " + e.message)
         }
-        if (!downloaded) throw IllegalStateException("Could not download the Pojav native bridge: ${lastError?.message}")
+        if (!downloaded) {
+            throw IllegalStateException("Could not download the verified Pojav native bridge: " + lastError?.message)
+        }
 
         onStatus("Extracting GLFW/OpenGL/audio native libraries…")
         extractAbiLibraries(pojavApk, abi, target)
