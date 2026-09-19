@@ -151,6 +151,27 @@ fun ContentBrowserScreen(viewModel: LauncherViewModel) {
             Button(onClick = { vm.setQuery(search.trim()) }) { Text("Search") }
         }
 
+        if (state.type != ContentType.WORLD) {
+            Spacer(Modifier.height(8.dp))
+            val commonLoaders = listOf("fabric", "forge", "neoforge", "quilt")
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    FilterChip(
+                        selected = state.loader == null,
+                        onClick = { vm.setLoader(null) },
+                        label = { Text("Any loader") }
+                    )
+                }
+                items(commonLoaders) { loader ->
+                    FilterChip(
+                        selected = state.loader == loader,
+                        onClick = { vm.setLoader(loader) },
+                        label = { Text(loader.replaceFirstChar { it.uppercase() }) }
+                    )
+                }
+            }
+        }
+
         if (state.categories.isNotEmpty() && state.type != ContentType.WORLD) {
             Spacer(Modifier.height(8.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
