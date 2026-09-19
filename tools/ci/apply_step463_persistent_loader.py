@@ -199,6 +199,11 @@ def main() -> int:
         raise SystemExit("[step481] runtime finishing script missing")
     subprocess.run([sys.executable, str(finisher), str(root)], check=True)
 
+    rail = Path.cwd() / "tools/ci/apply_step482_navigation_rail.py"
+    if not rail.is_file():
+        raise SystemExit("[step482] navigation rail script missing")
+    subprocess.run([sys.executable, str(rail), str(root)], check=True)
+
     print("[step463] loader cards now persist a real per-instance selection and reuse the existing selectedLoader state when available")
     return 0
 
