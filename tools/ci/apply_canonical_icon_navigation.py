@@ -562,8 +562,7 @@ def ensure_extra_helpers(source: str) -> str:
         }
     }
 '''
-    return source.replace(anchor, extra + "
-" + anchor, 1)
+    return source.replace(anchor, extra + "\n" + anchor, 1)
 
 def patch_content(source: str) -> str:
     start, end = method_span(source, "    private fun step375Content()")
