@@ -56,7 +56,11 @@ HELPERS = r'''
     private val step480Executor = java.util.concurrent.Executors.newFixedThreadPool(2)
 
     private fun step480Run(block: () -> Unit) {
-        try { step480Executor.execute(block) } catch (_: Throwable) {}
+        try {
+            step480Executor.execute(block)
+        } catch (t: Throwable) {
+            LauncherLogger.error("Content/server worker could not be scheduled: " + (t.message ?: t.javaClass.simpleName))
+        }
     }
 
     private fun step480LoadIcon(urlText: String, target: android.widget.ImageView) {
