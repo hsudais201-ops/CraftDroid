@@ -417,6 +417,10 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
                         val result = container.forgeNeoForgeInstaller.prepare(loader, minecraftVersion, loaderVersion)
                         if (!result.success) error(result.error ?: "Loader installation failed")
                     }
+                    "quilt" -> {
+                        val result = container.quiltLoaderInstaller.install(minecraftVersion, loaderVersion)
+                        if (!result.success) error(result.error ?: "Quilt installation failed")
+                    }
                     else -> error("Unsupported loader: $loader")
                 }
                 _downloadStatusText.value = loader + " " + loaderVersion + " installed"
