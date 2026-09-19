@@ -293,67 +293,6 @@ def patch_real_state_defaults(root):
             return text
         patch(root, rel, vm)
 
-    rel = "app/src/main/java/com/example/ui/accounts/AddAccountDialog.kt"
-    if (root / rel).is_file():
-        def account_ui(text):
-            if "val settings by viewModel.settings.collectAsState()" not in text:
-                text = text.replace(
-                    "    val authState by viewModel.authState.collectAsState()\n",
-                    "    val authState by viewModel.authState.collectAsState()\n    val settings by viewModel.settings.collectAsState()\n",
-                    1,
-                )
-            text = text.replace(
-                '''                                ProviderSelectionView(
-                                    onSelectMicrosoft = {
-                                        viewModel.startMicrosoftLogin()
-                                        selectedMode = AddAccountMode.MICROSOFT_PROMPT
-                                    },
-                                    onSelectElyBy = {
-                                        selectedMode = AddAccountMode.ELY_BY_FORM
-                                    },
-                                    onSelectLocalTest = {
-                                        selectedMode = AddAccountMode.LOCAL_TEST_FORM
-                                    }
-                                )''',
-                '''                                ProviderSelectionView(
-                                    allowLocalTest = settings.enableLocalTestProfiles,
-                                    onSelectMicrosoft = {
-                                        viewModel.startMicrosoftLogin()
-                                        selectedMode = AddAccountMode.MICROSOFT_PROMPT
-                                    },
-                                    onSelectElyBy = {
-                                        selectedMode = AddAccountMode.ELY_BY_FORM
-                                    },
-                                    onSelectLocalTest = {
-                                        selectedMode = AddAccountMode.LOCAL_TEST_FORM
-                                    }
-                                )''',
-                1,
-            )
-            text = text.replace(
-                '''private fun ProviderSelectionView(
-    onSelectMicrosoft: () -> Unit,
-    onSelectElyBy: () -> Unit,
-    onSelectLocalTest: () -> Unit
-)''',
-                '''private fun ProviderSelectionView(
-    allowLocalTest: Boolean,
-    onSelectMicrosoft: () -> Unit,
-    onSelectElyBy: () -> Unit,
-    onSelectLocalTest: () -> Unit
-)''',
-                1,
-            )
-            local_start = text.find("        // 3. Local Test Profile Card")
-            if local_start >= 0:
-                block_end = text.find("        )\n    }\n}\n\n@Composable\nprivate fun ProviderCard", local_start)
-                if block_end > local_start:
-                    block = text[local_start:block_end]
-                    wrapped = "        if (allowLocalTest) {\n" + block + "        }\n"
-                    text = text[:local_start] + wrapped + text[block_end:]
-            return text
-        patch(root, rel, account_ui)
-
     rel = "app/src/main/java/com/example/versions/VersionManager.kt"
     if (root / rel).is_file():
         def version_manager(text):
