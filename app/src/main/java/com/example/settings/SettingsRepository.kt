@@ -21,6 +21,7 @@ data class LauncherSettings(
     val ramMb: Int = 2048,
     val renderer: RendererBackend = RendererBackend.AUTO,
     val customJvmArgs: String = "",
+    val javaMajorOverride: Int? = null,
     val fullScreen: Boolean = true,
     val maxFps: Int = 60,
     val touchOpacity: Float = 0.75f,
@@ -41,6 +42,7 @@ class SettingsRepository(private val context: Context) {
         val RAM_MB = intPreferencesKey("ram_mb")
         val RENDERER = stringPreferencesKey("renderer_backend")
         val JVM_ARGS = stringPreferencesKey("jvm_args")
+        val JAVA_MAJOR_OVERRIDE = intPreferencesKey("java_major_override")
         val FULLSCREEN = booleanPreferencesKey("fullscreen")
         val MAX_FPS = intPreferencesKey("max_fps")
         val TOUCH_OPACITY = floatPreferencesKey("touch_opacity")
@@ -64,6 +66,7 @@ class SettingsRepository(private val context: Context) {
                 RendererBackend.AUTO
             },
             customJvmArgs = prefs[Keys.JVM_ARGS] ?: "",
+            javaMajorOverride = (prefs[Keys.JAVA_MAJOR_OVERRIDE] ?: -1).takeIf { it > 0 },
             fullScreen = prefs[Keys.FULLSCREEN] ?: true,
             maxFps = prefs[Keys.MAX_FPS] ?: 60,
             touchOpacity = prefs[Keys.TOUCH_OPACITY] ?: 0.75f,
@@ -114,6 +117,12 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun updateJvmArgs(args: String) {
         context.dataStore.edit { it[Keys.JVM_ARGS] = args }
+    }
+
+    suspend fun updateJavaMajorOverride(major: Int?) {
+        context.dataStore.edit {
+            if (major == null) it.remove(Keys.JAVA_MAJOR_OVERRIDE) else it[Keys.JAVA_MAJOR_OVERRIDE] = major
+        }
     }
 
     suspend fun updateControls(opacity: Float, scale: Float, sens: Float, invertY: Boolean, virtualMouse: Boolean) {
