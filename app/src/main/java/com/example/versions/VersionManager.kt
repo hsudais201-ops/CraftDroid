@@ -81,11 +81,7 @@ class VersionManager(
                 val sha1 = v.getString("sha1")
 
                 val isInstalled = fileSystem.getVersionJarFile(id).exists() && fileSystem.getVersionJsonFile(id).exists()
-                val javaReq = when {
-                    id.startsWith("1.21") || id.startsWith("1.20.5") || id.startsWith("1.20.6") -> 21
-                    id.startsWith("1.17") || id.startsWith("1.18") || id.startsWith("1.19") || id.startsWith("1.20") -> 17
-                    else -> 8
-                }
+                val javaReq = MinecraftJavaVersionPolicy.requiredMajor(id)
 
                 if (includeSnapshots || type == "release") {
                     summaries.add(
