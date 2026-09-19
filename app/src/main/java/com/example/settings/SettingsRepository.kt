@@ -125,9 +125,9 @@ class SettingsRepository(private val context: Context) {
 
     fun safeMemoryPlan(requestedMb: Int): Pair<Int, Int> {
         val availableMb = getDeviceAvailableRamMb().coerceAtLeast(512)
-        val cap = (availableMb * 0.55f).toInt().coerceAtLeast(768).coerceAtMost(4096)
-        val maxRam = requestedMb.coerceIn(768, cap)
-        val minRam = (maxRam / 4).coerceIn(256, 768)
+        val cap = (availableMb * 0.55f).toInt().coerceIn(512, 4096)
+        val maxRam = requestedMb.coerceIn(512, cap)
+        val minRam = (maxRam / 4).coerceIn(256, 768).coerceAtMost(maxRam)
         return maxRam to minRam
     }
 
