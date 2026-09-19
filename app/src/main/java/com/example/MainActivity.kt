@@ -221,7 +221,7 @@ fun MainAppContent(viewModel: LauncherViewModel) {
                 OnboardingScreen(
                     viewModel = viewModel,
                     onContinue = {
-                        welcomeDismissed = true
+                        welcomeDismissedState.value = true
                         viewModel.navigateTo(LauncherScreen.VERSIONS)
                     }
                 )
