@@ -99,8 +99,28 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
           disable-animations: true
           script: |
-            set -e
+            set -euo pipefail
+            echo "Waiting for the Android emulator/ADB transport…"
+            for attempt in $(seq 1 60); do
+              if adb get-state >/dev/null 2>&1; then
+                break
+              fi
+              sleep 2
+            done
+            adb wait-for-device
+            for attempt in $(seq 1 60); do
+              BOOTED="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' | tr -d '\n' || true)"
+              if [ "$BOOTED" = "1" ]; then
+                break
+              fi
+              sleep 2
+            done
+            adb get-state
+            adb shell getprop ro.build.version.sdk
+            adb devices -l
+
             APK="$(find apk -name '*.apk' | head -1)"
+            test -n "$APK"
             adb install -r "$APK"
             adb shell pm clear com.craftdroid.launcher
             adb shell am force-stop com.craftdroid.launcher
