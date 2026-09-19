@@ -69,6 +69,14 @@ jobs:
       - name: Harden low-RAM memory settings
         run: python3 tools/ci/apply_step395_low_ram_memory_settings.py droid-src
 
+      - name: Reapply real-state and no-fake repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/repair_full_sweep_live_paths.py droid-src
+          python3 tools/ci/repair_full_sweep_second_pass.py droid-src
+          python3 tools/ci/verify_no_fake_implementations.py droid-src --final
+
       - name: Validate final source contracts
         shell: bash
         run: |
