@@ -1,0 +1,268 @@
+package com.example.versions
+
+import com.example.core.db.InstalledVersionDao
+import com.example.core.db.InstalledVersionEntity
+import com.example.downloader.DownloadManager
+import com.example.downloader.DownloadProgress
+import com.example.downloader.DownloadTask
+import com.example.downloader.HashVerifier
+import com.example.filesystem.MinecraftFileSystem
+import com.example.logs.LauncherLogger
+import com.example.minecraft.MinecraftInstaller
+import com.example.runtime.JavaRuntimeManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+import java.io.File
+import java.io.IOException
+
+data class VersionRepairStatus(
+    val versionId: String,
+    val isJsonValid: Boolean,
+    val isJarValid: Boolean,
+    val totalLibraries: Int,
+    val missingLibraries: Int,
+    val totalAssets: Int,
+    val missingAssets: Int,
+    val isJavaInstalled: Boolean,
+    val canLaunch: Boolean
+)
+
+// STEP_FULL_SWEEP_LIVE_FIXES
+
+class VersionManager(
+    private val fileSystem: MinecraftFileSystem,
+    private val installer: MinecraftInstaller,
+    private val versionParser: VersionJsonParser,
+    private val installedVersionDao: InstalledVersionDao,
+    private val downloadManager: DownloadManager,
+    private val okHttpClient: OkHttpClient,
+    private val javaRuntimeManager: JavaRuntimeManager
+) {
+
+    private val _versionsList = MutableStateFlow<List<VersionSummary>>(emptyList())
+    val versionsList: StateFlow<List<VersionSummary>> = _versionsList.asStateFlow()
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private var cachedManifest: VersionManifest? = null
+
+    suspend fun fetchVersions(includeSnapshots: Boolean = false): List<VersionSummary> = withContext(Dispatchers.IO) {
+        _isLoading.value = true
+        try {
+            LauncherLogger.info("Fetching official Minecraft version manifest...")
+            val request = Request.Builder()
+                .url("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
+                .header("Accept", "application/json")
+                .build()
+
+            val response = okHttpClient.newCall(request).execute()
+            if (!response.isSuccessful) throw IOException("Minecraft manifest request failed: HTTP " + response.code)
+            val declaredLength = response.body?.contentLength() ?: -1L
+            if (declaredLength > 8L * 1024L * 1024L) throw IOException("Minecraft manifest is unexpectedly large")
+            val body = response.body?.string() ?: throw IOException("Empty manifest response")
+
+            val root = JSONObject(body)
+            val latest = root.getJSONObject("latest")
+            val latestRelease = latest.getString("release")
+            val latestSnapshot = latest.getString("snapshot")
+
+            val versionsArr = root.getJSONArray("versions")
+            val summaries = mutableListOf<VersionSummary>()
+
+            for (i in 0 until versionsArr.length()) {
+                val v = versionsArr.getJSONObject(i)
+                val id = v.getString("id")
+                val type = v.getString("type")
+                val url = v.getString("url")
+                val time = v.getString("time")
+                val releaseTime = v.getString("releaseTime")
+                val sha1 = v.getString("sha1")
+
+                val isInstalled = isInstalledAndHealthy(id)
+                val javaReq = when {
+                    id.startsWith("26.") -> 25
+                    id.startsWith("1.20.5") || id.startsWith("1.20.6") || id.startsWith("1.21") -> 21
+                    id.startsWith("1.17") || id.startsWith("1.18") || id.startsWith("1.19") || id.startsWith("1.20") -> 17
+                    else -> 8
+                }
+
+                if (includeSnapshots || type == "release") {
+                    summaries.add(
+                        VersionSummary(
+                            id = id,
+                            type = type,
+                            url = url,
+                            time = time,
+                            releaseTime = releaseTime,
+                            sha1 = sha1,
+                            isInstalled = isInstalled,
+                            javaRequirement = javaReq
+                        )
+                    )
+                }
+            }
+
+            cachedManifest = VersionManifest(
+                latestRelease = latestRelease,
+                latestSnapshot = latestSnapshot,
+                versions = summaries
+            )
+            _versionsList.value = summaries
+            LauncherLogger.info("Loaded ${summaries.size} Minecraft versions from Mojang manifest.")
+            summaries
+        } catch (e: Exception) {
+            LauncherLogger.error("Failed to fetch versions manifest: ${e.message}")
+            // Fallback to locally installed versions if offline
+            loadLocalVersions()
+        } finally {
+            _isLoading.value = false
+        }
+    }
+
+    private fun isInstalledAndHealthy(versionId: String): Boolean {
+        return try {
+            val jsonFile = fileSystem.getVersionJsonFile(versionId)
+            val jarFile = fileSystem.getVersionJarFile(versionId)
+            if (!jsonFile.isFile || !jarFile.isFile) return false
+            val detail = versionParser.parseVersionDetail(jsonFile.readText(Charsets.UTF_8))
+            if (detail.clientDownload.size > 0L && jarFile.length() != detail.clientDownload.size) return false
+            if (detail.clientDownload.sha1.isNotBlank() &&
+                !HashVerifier.verifySha1(jarFile, detail.clientDownload.sha1)
+            ) return false
+            fileSystem.getAssetIndexFile(detail.assetIndex.id).isFile
+        } catch (e: Throwable) {
+            LauncherLogger.warn("Installed-version integrity check failed for " + versionId + ": " + e.message)
+            false
+        }
+    }
+
+    private suspend fun loadLocalVersions(): List<VersionSummary> {
+        val versionsDir = fileSystem.versionsDir
+        val localList = mutableListOf<VersionSummary>()
+        versionsDir.listFiles()?.filter { it.isDirectory }?.forEach { dir ->
+            val id = dir.name
+            val jar = File(dir, "$id.jar")
+            val json = File(dir, "$id.json")
+            if (jar.exists() && json.exists()) {
+                localList.add(
+                    VersionSummary(
+                        id = id,
+                        type = "release",
+                        url = "",
+                        time = "",
+                        releaseTime = "Offline",
+                        sha1 = "",
+                        isInstalled = isInstalledAndHealthy(id),
+                        javaRequirement = runCatching {
+                            versionParser.parseVersionDetail(json.readText(Charsets.UTF_8)).javaVersion.majorVersion
+                        }.getOrDefault(21)
+                    )
+                )
+            }
+        }
+        _versionsList.value = localList
+        return localList
+    }
+
+    suspend fun checkRepairStatus(versionId: String): VersionRepairStatus = withContext(Dispatchers.IO) {
+        val jsonFile = fileSystem.getVersionJsonFile(versionId)
+        val jarFile = fileSystem.getVersionJarFile(versionId)
+
+        var isJsonValid = false
+        var isJarValid = false
+        var totalLibs = 0
+        var missingLibs = 0
+        var totalAssets = 0
+        var missingAssets = 0
+
+        if (jsonFile.exists()) {
+            try {
+                val detail = versionParser.parseVersionDetail(jsonFile.readText())
+                isJsonValid = true
+                isJarValid = jarFile.exists() && jarFile.length() > 0
+
+                totalLibs = detail.libraries.size
+                for (lib in detail.libraries) {
+                    val art = lib.artifact
+                    if (art != null) {
+                        val libFile = File(fileSystem.librariesDir, art.path)
+                        if (!libFile.exists() || libFile.length() == 0L) {
+                            missingLibs++
+                        }
+                    }
+                }
+
+                val indexFile = fileSystem.getAssetIndexFile(detail.assetIndex.id)
+                if (indexFile.exists()) {
+                    val root = JSONObject(indexFile.readText())
+                    val objs = root.optJSONObject("objects")
+                    if (objs != null) {
+                        totalAssets = objs.length()
+                        val keys = objs.keys()
+                        while (keys.hasNext()) {
+                            val hash = objs.getJSONObject(keys.next()).getString("hash")
+                            val assetFile = fileSystem.getAssetObjectFile(hash)
+                            if (!assetFile.exists() || assetFile.length() == 0L) {
+                                missingAssets++
+                            }
+                        }
+                    }
+                } else {
+                    missingAssets = 1
+                }
+            } catch (e: Exception) {
+                LauncherLogger.warn("Repair check error: ${e.message}")
+            }
+        }
+
+        val requiredJava = runCatching { versionParser.parseVersionDetail(jsonFile.readText()).javaVersion.majorVersion }
+            .getOrDefault(21)
+        val javaInstalled = javaRuntimeManager.getBestRuntime(requiredJava) != null
+        val canLaunch = isJsonValid && isJarValid && missingLibs == 0 && missingAssets == 0 && javaInstalled
+
+        VersionRepairStatus(
+            versionId = versionId,
+            isJsonValid = isJsonValid,
+            isJarValid = isJarValid,
+            totalLibraries = totalLibs,
+            missingLibraries = missingLibs,
+            totalAssets = totalAssets,
+            missingAssets = missingAssets,
+            isJavaInstalled = javaInstalled,
+            canLaunch = canLaunch
+        )
+    }
+
+    suspend fun repairVersion(
+        versionId: String,
+        onProgress: (DownloadProgress) -> Unit,
+        onStatus: (String) -> Unit
+    ): Boolean = withContext(Dispatchers.IO) {
+        val summary = _versionsList.value.find { it.id == versionId }
+        val url = summary?.url?.takeIf { it.startsWith("https://", true) }
+            ?: throw IOException("Official metadata URL is unavailable for Minecraft version " + versionId)
+        LauncherLogger.info("Starting automated repair for " + versionId + "...")
+        installer.installVersion(versionId, url, onProgress, onStatus)
+    }
+
+    suspend fun deleteVersion(versionId: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val vDir = fileSystem.getVersionDir(versionId)
+            vDir.deleteRecursively()
+            installedVersionDao.deleteInstalledVersion(versionId)
+            LauncherLogger.info("Deleted version $versionId from storage.")
+            fetchVersions()
+            true
+        } catch (e: Exception) {
+            LauncherLogger.error("Failed to delete $versionId: ${e.message}")
+            false
+        }
+    }
+}

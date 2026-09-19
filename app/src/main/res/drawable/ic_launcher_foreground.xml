@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Centered within 66dp safe zone (21dp to 87dp) -->
+    <group
+        android:translateX="0"
+        android:translateY="0">
+        <!-- Isometric Top Face (Grass) -->
+        <path
+            android:fillColor="#5D9938"
+            android:pathData="M54,26 L80,41 L54,56 L28,41 Z" />
+        <path
+            android:fillColor="#6CA942"
+            android:pathData="M54,26 L67,33.5 L54,41 L41,33.5 Z" />
+        <!-- Isometric Left Face (Grass Rim + Dirt) -->
+        <path
+            android:fillColor="#866043"
+            android:pathData="M28,41 L54,56 L54,82 L28,67 Z" />
+        <!-- Left Grass Hangings -->
+        <path
+            android:fillColor="#4A7C2C"
+            android:pathData="M28,41 L54,56 L54,61 L48,61 L48,56 L41,56 L41,63 L35,63 L35,51 L28,48 Z" />
+        <!-- Isometric Right Face (Shadow Dirt) -->
+        <path
+            android:fillColor="#6F4E36"
+            android:pathData="M54,56 L80,41 L80,67 L54,82 Z" />
+        <!-- Right Grass Hangings -->
+        <path
+            android:fillColor="#3D6824"
+            android:pathData="M54,56 L80,41 L80,48 L73,52 L73,59 L67,59 L67,54 L61,54 L61,61 L54,61 Z" />
+        <!-- Pixel texture spots on dirt -->
+        <path
+            android:fillColor="#583E2B"
+            android:pathData="M34,68 h4 v4 h-4 z M44,72 h3 v3 h-3 z M62,67 h4 v3 h-4 z M70,72 h3 v4 h-3 z" />
+        <path
+            android:fillColor="#9C7250"
+            android:pathData="M38,62 h3 v3 h-3 z M66,63 h3 v3 h-3 z" />
+    </group>
+</vector>
