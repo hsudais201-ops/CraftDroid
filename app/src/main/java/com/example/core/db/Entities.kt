@@ -41,9 +41,12 @@ data class ProfileEntity(
 @Entity(tableName = "installed_versions")
 data class InstalledVersionEntity(
     @PrimaryKey val versionId: String,
-    val type: String, // release, snapshot
+    val type: String,
     val releaseTime: String,
     val javaRequirement: Int,
     val isCorrupted: Boolean = false,
+    val status: String = "INSTALLED",
+    val clientSha1: String = "",
+    val lastError: String? = null,
     val installedAt: Long = System.currentTimeMillis()
 )
