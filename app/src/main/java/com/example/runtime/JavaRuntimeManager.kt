@@ -450,7 +450,7 @@ class JavaRuntimeManager(
             }
 
             refreshRuntimes()
-            LauncherLogger.info("Installed Android OpenJDK $majorVersion/${pkg.arch}: ${validation.second}")
+            LauncherLogger.info("Installed Android OpenJDK " + majorVersion + "/" + pkg.arch + " successfully")
             onStatus("OpenJDK $majorVersion ready")
             true
         } catch (e: Exception) {
