@@ -83,11 +83,14 @@ interface InstalledVersionDao {
 
     @Query("DELETE FROM installed_versions WHERE versionId = :versionId")
     suspend fun deleteInstalledVersion(versionId: String)
+
+    @Query("UPDATE installed_versions SET status = :status, isCorrupted = :corrupted, lastError = :error WHERE versionId = :versionId")
+    suspend fun updateInstallStatus(versionId: String, status: String, corrupted: Boolean, error: String? = null)
 }
 
 @Database(
     entities = [AccountEntity::class, ProfileEntity::class, InstalledVersionEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -96,6 +99,14 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun installedVersionDao(): InstalledVersionDao
 
     companion object {
+        val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE installed_versions ADD COLUMN status TEXT NOT NULL DEFAULT 'INSTALLED'")
+                db.execSQL("ALTER TABLE installed_versions ADD COLUMN clientSha1 TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE installed_versions ADD COLUMN lastError TEXT")
+            }
+        }
+
         val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE accounts ADD COLUMN capeUrl TEXT")
