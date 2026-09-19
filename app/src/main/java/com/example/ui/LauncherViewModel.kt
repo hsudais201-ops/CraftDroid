@@ -335,6 +335,12 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
         }
     }
 
+    fun updateJavaRuntimeOverride(major: Int?) {
+        viewModelScope.launch {
+            container.settingsRepository.updateJavaRuntimeOverride(major)
+        }
+    }
+
     fun updateControls(opacity: Float, scale: Float, sens: Float, invertY: Boolean, virtualMouse: Boolean) {
         viewModelScope.launch {
             container.settingsRepository.updateControls(opacity, scale, sens, invertY, virtualMouse)
