@@ -116,6 +116,22 @@ class LwjglGlfwStubManager(
 
     private fun isValidJar(file: File): Boolean = validateStubJar(file).isValid
 
+    private fun containsAscii(bytes: ByteArray, token: String): Boolean {
+        val needle = token.toByteArray(Charsets.UTF_8)
+        if (needle.isEmpty() || needle.size > bytes.size) return false
+        for (i in 0..(bytes.size - needle.size)) {
+            var matches = true
+            for (j in needle.indices) {
+                if (bytes[i + j] != needle[j]) {
+                    matches = false
+                    break
+                }
+            }
+            if (matches) return true
+        }
+        return false
+    }
+
     private fun download(url: String, destination: File) {
         val request = Request.Builder()
             .url(url)
