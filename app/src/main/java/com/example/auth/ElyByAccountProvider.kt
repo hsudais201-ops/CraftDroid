@@ -46,15 +46,17 @@ class ElyByAccountProvider(
         const val AUTH_URL = "https://account.ely.by/oauth2/v1"
         const val TOKEN_URL = "https://account.ely.by/api/oauth2/v1/token"
         const val PROFILE_URL = "https://account.ely.by/api/account/v1/info"
-        const val DEFAULT_SCOPES = "account_info minecraft_server_session offline_access"
+        const val DEFAULT_SCOPES = "account_info account_email offline_access minecraft_server_session"
+        /** Pure URL formatter usable without constructing the provider. */
         @JvmStatic
-        fun buildAuthorizationUrl(clientId: String = DEFAULT_CLIENT_ID, redirectUri: String = DEFAULT_REDIRECT_URI): String {
-            return AUTH_URL + "?client_id=" + URLEncoder.encode(clientId, "UTF-8") +
+        fun buildAuthorizationUrl(clientId: String, redirectUri: String): String {
+            return "$AUTH_URL?client_id=${URLEncoder.encode(clientId, "UTF-8")}" +
                 "&response_type=code" +
-                "&redirect_uri=" + URLEncoder.encode(redirectUri, "UTF-8") +
-                "&scope=" + URLEncoder.encode(DEFAULT_SCOPES, "UTF-8") +
+                "&redirect_uri=${URLEncoder.encode(redirectUri, "UTF-8")}" +
+                "&scope=${URLEncoder.encode(DEFAULT_SCOPES, "UTF-8")}" +
                 "&prompt=consent"
         }
+
 
     }
 
@@ -65,16 +67,10 @@ class ElyByAccountProvider(
     /**
      * Builds the official Ely.by OAuth2 authorization URL to open in browser.
      */
-    fun buildAuthorizationUrl(
+    fun buildAuthorizationUrlForRuntime(
         clientId: String = DEFAULT_CLIENT_ID,
         redirectUri: String = DEFAULT_REDIRECT_URI
-    ): String {
-        return "$AUTH_URL?client_id=${URLEncoder.encode(clientId, "UTF-8")}" +
-                "&response_type=code" +
-                "&redirect_uri=${URLEncoder.encode(redirectUri, "UTF-8")}" +
-                "&scope=${URLEncoder.encode(DEFAULT_SCOPES, "UTF-8")}" +
-                "&prompt=consent"
-    }
+    ): String = Companion.buildAuthorizationUrl(clientId, redirectUri)
 
     /**
      * Authenticates with an Ely.by Authorization Code or OAuth2 Token directly.
