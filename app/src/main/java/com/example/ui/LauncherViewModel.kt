@@ -358,6 +358,10 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
         }
     }
 
+    fun updateCurseForgeProxyUrl(url: String) {
+        viewModelScope.launch { container.settingsRepository.updateCurseForgeProxyUrl(url) }
+    }
+
     fun updateJavaMajorOverride(major: Int?) {
         viewModelScope.launch { container.settingsRepository.updateJavaMajorOverride(major) }
     }
