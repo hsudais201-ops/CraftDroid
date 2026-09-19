@@ -96,6 +96,10 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
                     }
                 }
 
+                if (task.size > 0L && tempFile.length() != task.size) {
+                    throw IOException("Size mismatch for " + task.name + ": " + tempFile.length() + "/" + task.size)
+                }
+
                 if (verifyHash && !task.expectedSha1.isNullOrBlank()) {
                     if (!HashVerifier.verifySha1(tempFile, task.expectedSha1)) {
                         tempFile.delete()
@@ -219,6 +223,10 @@ class DownloadManager(private val okHttpClient: OkHttpClient) {
                                             }
                                         }
                                     }
+                                }
+
+                                if (task.size > 0L && tempFile.length() != task.size) {
+                                    throw IOException("Size mismatch for " + task.name + ": " + tempFile.length() + "/" + task.size)
                                 }
 
                                 if (!task.expectedSha1.isNullOrBlank()) {
