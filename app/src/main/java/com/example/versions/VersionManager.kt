@@ -81,20 +81,7 @@ class VersionManager(
                 val sha1 = v.getString("sha1")
 
                 val isInstalled = fileSystem.getVersionJarFile(id).exists() && fileSystem.getVersionJsonFile(id).exists()
-                val versionParts = id.trim().removePrefix("v")
-                    .split('.', '-', '+')
-                    .mapNotNull { it.toIntOrNull() }
-                val first = versionParts.getOrNull(0) ?: 1
-                val second = versionParts.getOrNull(1) ?: 0
-                val patch = versionParts.getOrNull(2) ?: 0
-                val javaReq = when {
-                    first >= 26 -> 25
-                    first == 1 && second >= 21 -> 21
-                    first == 1 && second == 20 && patch >= 5 -> 21
-                    first == 1 && second in 17..20 -> if (second == 17) 16 else 17
-                    first == 1 && second <= 16 -> 8
-                    else -> 8
-                }
+                val javaReq = MinecraftJavaRequirements.requiredMajor(id)
 
                 if (includeSnapshots || type == "release") {
                     summaries.add(
