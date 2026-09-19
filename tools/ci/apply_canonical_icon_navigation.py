@@ -302,6 +302,36 @@ def patch_build_ui(source: str) -> str:
         block = block.replace(old_step482, new_step482, 1)
         return source[:start] + block + source[end:]
 
+    old_step286 = '''        val home = button("⌂")
+        home.setOnClickListener { showPage("Game") }
+        val accounts = button("♟")
+        accounts.setOnClickListener { showPage("Accounts") }
+        val downloads = button("⇩")
+        downloads.setOnClickListener { showPage("Search by ID") }
+        val settings = button("⚙")
+        settings.setOnClickListener { showPage("Renderer") }
+        listOf(home, accounts, downloads, settings).forEach {
+            top.addView(it, LinearLayout.LayoutParams(dp(52), dp(52)))
+        }'''
+    new_step286 = '''        val back = button("←")
+        back.setOnClickListener { canonicalNavigateBack() }
+        val home = button("⌂")
+        home.setOnClickListener { canonicalNavigateHome() }
+        val files = button("▰")
+        files.setOnClickListener { canonicalOpenCurrentInstanceFolder() }
+        val accounts = button("♟")
+        accounts.setOnClickListener { showPage("Accounts") }
+        val downloads = button("⇩")
+        downloads.setOnClickListener { showPage("Content") }
+        val settings = button("⚙")
+        settings.setOnClickListener { showPage("Renderer") }
+        listOf(back, home, files, accounts, downloads, settings).forEach {
+            top.addView(it, LinearLayout.LayoutParams(dp(52), dp(52)))
+        }'''
+    if old_step286 in block:
+        block = block.replace(old_step286, new_step286, 1)
+        return source[:start] + block + source[end:]
+
     raise SystemExit("[canonical-nav] no supported buildUi navigation layout found")
 
 def patch_show_page(source: str) -> str:
