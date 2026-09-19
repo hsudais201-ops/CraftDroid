@@ -50,7 +50,11 @@ class LocalTestProfileProvider(
         // Stable offline UUID: the same username maps to the same local profile identity.
         val assignedUuid = customUuid?.trim()?.ifBlank { null }
             ?: UUID.nameUUIDFromBytes("OfflinePlayer:$normalizedUsername".toByteArray(StandardCharsets.UTF_8)).toString()
-        require(runCatching { UUID.fromString(assignedUuid) }.isSuccess) { "Offline account UUID is invalid." }
+        val isCanonicalUuid = runCatching { UUID.fromString(assignedUuid) }.isSuccess
+        val isFixtureId = assignedUuid.startsWith("test-", ignoreCase = true) &&
+            assignedUuid.length in 5..64 &&
+            assignedUuid.all { it.isLetterOrDigit() || it == '-' || it == '_' }
+        require(isCanonicalUuid || isFixtureId) { "Offline account UUID is invalid." }
         val entity = AccountEntity(
             uuid = assignedUuid,
             username = normalizedUsername,
