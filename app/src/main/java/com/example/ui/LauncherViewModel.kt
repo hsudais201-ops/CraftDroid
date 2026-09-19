@@ -166,6 +166,7 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
             val success = container.installer.installVersion(
                 versionId = vId,
                 versionJsonUrl = url,
+                versionJsonSha1 = summary?.sha1?.takeIf { it.isNotBlank() },
                 onProgress = { },
                 onStatus = { _downloadStatusText.value = it }
             )
