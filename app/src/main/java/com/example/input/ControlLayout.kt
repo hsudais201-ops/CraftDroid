@@ -107,7 +107,9 @@ data class ControlLayout(
                 val item = array.optJSONObject(i) ?: continue
                 try {
                     list.add(TouchControl.fromJson(item))
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    com.example.logs.LauncherLogger.warn("Skipping malformed touch control at index " + i + ": " + e.message)
+                }
             }
             return ControlLayout(orientation = orient, controls = list)
         }
