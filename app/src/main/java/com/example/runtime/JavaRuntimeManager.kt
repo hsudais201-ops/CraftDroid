@@ -19,6 +19,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.nio.file.Files
+import java.net.URI
 import java.security.MessageDigest
 import java.util.zip.ZipInputStream
 
@@ -265,6 +266,9 @@ class JavaRuntimeManager(
     }
 
     private fun download(url: String, destination: File) {
+        require(URI(url).scheme?.equals("https", true) == true) {
+            "Non-HTTPS runtime URL rejected: $url"
+        }
         destination.parentFile?.mkdirs()
         for (attempt in 0 until 3) {
             val resumeBytes = if (destination.isFile) destination.length() else 0L
@@ -406,23 +410,43 @@ class JavaRuntimeManager(
             onStatus("Extracting OpenJDK $majorVersion…")
             staging.deleteRecursively()
             extractTarXz(archive, staging)
-            val javaHome = findJavaHome(staging)
+            val stagedJavaHome = findJavaHome(staging)
                 ?: throw IllegalStateException("Downloaded archive does not contain bin/java")
 
-            target.deleteRecursively()
-            target.parentFile?.mkdirs()
-            if (!javaHome.renameTo(target)) {
-                javaHome.copyRecursively(target, overwrite = true)
+            val stagedJava = File(stagedJavaHome, "bin/java")
+            stagedJava.setExecutable(true, false)
+            val stagedValidation = testJavaExecutable(stagedJava)
+            if (!stagedValidation.first) {
                 staging.deleteRecursively()
+                throw IllegalStateException("Extracted Java failed validation: ${stagedValidation.second}")
             }
-            staging.deleteRecursively()
 
-            val javaExe = File(target, "bin/java")
-            javaExe.setExecutable(true, false)
-            val validation = testJavaExecutable(javaExe)
-            if (!validation.first) {
-                target.deleteRecursively()
-                throw IllegalStateException("Installed Java failed validation: ${validation.second}")
+            target.parentFile?.mkdirs()
+            val backup = File(fileSystem.javaDir, "java-$majorVersion.backup-${System.currentTimeMillis()}")
+            if (target.exists() && !target.renameTo(backup)) {
+                staging.deleteRecursively()
+                throw IllegalStateException("Could not safely replace existing Java $majorVersion runtime")
+            }
+
+            try {
+                if (!stagedJavaHome.renameTo(target)) {
+                    stagedJavaHome.copyRecursively(target, overwrite = true)
+                }
+                val javaExe = File(target, "bin/java")
+                javaExe.setExecutable(true, false)
+                val validation = testJavaExecutable(javaExe)
+                if (!validation.first) {
+                    target.deleteRecursively()
+                    if (backup.exists()) backup.renameTo(target)
+                    throw IllegalStateException("Installed Java failed validation: ${validation.second}")
+                }
+                backup.deleteRecursively()
+            } catch (e: Exception) {
+                if (backup.exists() && !target.exists()) backup.renameTo(target)
+                staging.deleteRecursively()
+                throw e
+            } finally {
+                staging.deleteRecursively()
             }
 
             refreshRuntimes()
