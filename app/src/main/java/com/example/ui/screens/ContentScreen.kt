@@ -85,6 +85,22 @@ fun ContentScreen(
                 }
             }
 
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    null to "Any loader",
+                    "forge" to "Forge",
+                    "fabric" to "Fabric",
+                    "quilt" to "Quilt",
+                    "neoforge" to "NeoForge"
+                ).forEach { (loader, label) ->
+                    FilterChip(
+                        selected = state.loader == loader,
+                        onClick = { viewModel.updateContentLoader(loader) },
+                        label = { Text(label) }
+                    )
+                }
+            }
+
             OutlinedTextField(
                 value = state.query,
                 onValueChange = { viewModel.updateContentQuery(it) },
