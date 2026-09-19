@@ -141,23 +141,26 @@ class CurseForgeClient(private val http: OkHttpClient, private val proxyBaseUrl:
         )
     }
 
-    suspend fun resolveRequiredDependencies(root: CurseForgeFile, maxNodes: Int = 128): List<CurseForgeFile> =
-        withContext(Dispatchers.IO) {
-            val resolved = LinkedHashMap<String, CurseForgeFile>()
-            val queue = ArrayDeque<Pair<Long, Long?>>()
-            root.dependencies.forEach(queue::addLast)
-            while (queue.isNotEmpty()) {
-                if (resolved.size >= maxNodes) throw IOException("CurseForge dependency graph exceeded " + maxNodes + " nodes")
-                val (modId, fileId) = queue.removeFirst()
-                if (fileId == null) throw IOException("CurseForge dependency " + modId + " did not provide a compatible file id")
-                val key = modId.toString() + ":" + fileId
-                if (resolved.containsKey(key)) continue
-                val file = getFile(modId, fileId)
-                resolved[key] = file
-                file.dependencies.forEach(queue::addLast)
-            }
-            resolved.values.toList()
+    suspend fun resolveRequiredDependencies(
+        root: CurseForgeFile,
+        gameVersion: String,
+        loaderType: Int?,
+        maxNodes: Int = 128
+    ): List<CurseForgeFile> = withContext(Dispatchers.IO) {
+        val resolved = LinkedHashMap<String, CurseForgeFile>()
+        val queue = ArrayDeque<Pair<Long, Long?>>()
+        root.dependencies.forEach(queue::addLast)
+        while (queue.isNotEmpty()) {
+            if (resolved.size >= maxNodes) throw IOException("CurseForge dependency graph exceeded " + maxNodes + " nodes")
+            val (modId, fileId) = queue.removeFirst()
+            val file = if (fileId != null) getFile(modId, fileId) else latestCompatibleFile(modId, gameVersion, loaderType)
+            val key = modId.toString() + ":" + file.id
+            if (resolved.containsKey(key)) continue
+            resolved[key] = file
+            file.dependencies.forEach(queue::addLast)
         }
+        resolved.values.toList()
+    }
 
     suspend fun distributionUrl(modId: Long, fileId: Long): String {
         val project = getProject(modId)
