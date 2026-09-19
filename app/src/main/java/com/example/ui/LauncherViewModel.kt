@@ -163,13 +163,18 @@ class LauncherViewModel(val container: LauncherContainer) : ViewModel() {
         val url = summary?.url ?: "https://piston-meta.mojang.com/v1/packages/${vId}/${vId}.json"
 
         viewModelScope.launch {
-            container.installer.installVersion(
+            val success = container.installer.installVersion(
                 versionId = vId,
                 versionJsonUrl = url,
-                onProgress = {},
+                onProgress = { },
                 onStatus = { _downloadStatusText.value = it }
             )
             container.versionManager.fetchVersions()
+            if (success && !settings.value.onboardingComplete) {
+                container.settingsRepository.updateSelectedVersion(vId)
+                container.settingsRepository.completeOnboarding()
+                _currentScreen.value = LauncherScreen.HOME
+            }
         }
     }
 
