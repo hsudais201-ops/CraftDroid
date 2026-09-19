@@ -186,6 +186,14 @@ def main() -> int:
     if not verifier.is_file():
         raise SystemExit("[step479] premium UI verifier missing")
     subprocess.run([sys.executable, str(verifier), str(root)], check=True)
+
+    functional = Path.cwd() / "tools/ci/apply_step480_functional_managers.py"
+    functional_verifier = Path.cwd() / "tools/ci/verify_step480_functional_managers.py"
+    if not functional.is_file() or not functional_verifier.is_file():
+        raise SystemExit("[step480] functional manager scripts missing")
+    subprocess.run([sys.executable, str(functional), str(root)], check=True)
+    subprocess.run([sys.executable, str(functional_verifier), str(root)], check=True)
+
     print("[step463] loader cards now persist a real per-instance selection and reuse the existing selectedLoader state when available")
     return 0
 
