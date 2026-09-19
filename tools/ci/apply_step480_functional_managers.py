@@ -110,19 +110,22 @@ HELPERS = r'''
         }
 
     private fun step480ManagerPage(type: String) {
+        if (type == "World") {
+            step480WorldManagerPage()
+            return
+        }
         val titleValue = when (type) {
             "Mod" -> "Mods"
             "Modpack" -> "Modpacks"
             "Shader Pack" -> "Shaders"
             "Resource Pack" -> "Resource Packs"
-            else -> "Worlds"
+            else -> type
         }
         val projectType = when (type) {
             "Mod" -> "mod"
             "Modpack" -> "modpack"
             "Shader Pack" -> "shader"
-            "Resource Pack" -> "resourcepack"
-            else -> "modpack"
+            else -> "resourcepack"
         }
         val queryPrefs = getSharedPreferences("droid_launcher_ui", MODE_PRIVATE)
         val query = queryPrefs.getString("query_" + type, "") ?: ""
@@ -154,20 +157,7 @@ HELPERS = r'''
         listCard.addView(android.widget.ProgressBar(this).apply { isIndeterminate = true },
             LinearLayout.LayoutParams(-1, dp(32)))
         pageArea.addView(listCard, LinearLayout.LayoutParams(-1, dp(82)).apply { topMargin = dp(8) })
-        if (type == "World") {
-            val local = MinecraftContentManager.list(this, MinecraftContentManager.Kind.WORLD)
-            if (local.isNotEmpty()) {
-                pageArea.addView(step375Text("INSTALLED WORLDS", 11f, true).apply {
-                    setTextColor(android.graphics.Color.rgb(86, 240, 177))
-                    setPadding(dp(4), dp(10), 0, dp(4))
-                })
-                local.take(8).forEach { file ->
-                    pageArea.addView(step479Row(file.name, "Local world archive", "OPEN", false) {
-                        showPage("World")
-                    }, LinearLayout.LayoutParams(-1, dp(70)).apply { topMargin = dp(6) })
-                }
-            }
-        }
+
         step480Run {
             try {
                 val q = java.net.URLEncoder.encode(query, "UTF-8")
@@ -190,7 +180,9 @@ HELPERS = r'''
                     b.putString("desc", h.optString("description"))
                     b.putString("icon", h.optString("icon_url"))
                     val va = h.optJSONArray("versions")
-                    val vv = if (va == null) "" else (0 until minOf(3, va.length())).mapNotNull { va.optString(it).takeIf { it.isNotBlank() } }.joinToString(", ")
+                    val vv = if (va == null) "" else (0 until minOf(3, va.length()))
+                        .mapNotNull { va.optString(it).takeIf { it.isNotBlank() } }
+                        .joinToString(", ")
                     b.putString("versions", vv)
                     results.add(b)
                 }
@@ -261,6 +253,101 @@ HELPERS = r'''
                     pageArea.addView(error)
                 }
             }
+        }
+    }
+
+    private fun step480WorldManagerPage() {
+        pageArea.addView(step375Title("Worlds", "Local Minecraft worlds · search, preview, import and remove"))
+        val prefs = getSharedPreferences("droid_launcher_ui", MODE_PRIVATE)
+        val query = prefs.getString("query_World", "") ?: ""
+        val field = android.widget.EditText(this).apply {
+            hint = "Search worlds"
+            setSingleLine(true)
+            setText(query)
+        }
+        val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        controls.addView(field, LinearLayout.LayoutParams(0, dp(50), 1f))
+        controls.addView(step375Button("SEARCH", true) {
+            prefs.edit().putString("query_World", field.text.toString()).apply()
+            showPage("World")
+        }, LinearLayout.LayoutParams(dp(104), dp(46)).apply { marginStart = dp(7) })
+        controls.addView(step375Button("REFRESH") { showPage("World") },
+            LinearLayout.LayoutParams(dp(94), dp(46)).apply { marginStart = dp(7) })
+        pageArea.addView(controls)
+
+        val importPanel = step375Panel(12)
+        importPanel.addView(step375Text("WORLD LIBRARY", 11f, true).apply {
+            setTextColor(android.graphics.Color.rgb(86, 240, 177))
+        })
+        importPanel.addView(step375Text("Imports are copied through the Android document picker and processed off the UI thread.", 10.5f))
+        importPanel.addView(step375Button("IMPORT WORLD", true) {
+            if (!step375HasInstance()) showPage("Instances") else step391StartContentImport("World")
+        }, LinearLayout.LayoutParams(dp(180), dp(48)).apply { topMargin = dp(8) })
+        pageArea.addView(importPanel)
+
+        val worldDir = MinecraftContentManager.directory(this, MinecraftContentManager.Kind.WORLD)
+        val worlds = worldDir.listFiles()?.filter { it.isDirectory }.orEmpty()
+            .filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
+            .sortedBy { it.name.lowercase() }
+
+        if (worlds.isEmpty()) {
+            val empty = step375Panel(18)
+            empty.gravity = Gravity.CENTER
+            empty.addView(step460MiniBadge("WRLD"))
+            empty.addView(step375Text("No worlds installed", 19f, true))
+            empty.addView(step375Text("Import a world ZIP to populate this library."))
+            pageArea.addView(empty, LinearLayout.LayoutParams(-1, dp(180)).apply { topMargin = dp(8) })
+            return
+        }
+
+        worlds.forEach { world ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(10), dp(8), dp(10), dp(8))
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = dp(16).toFloat()
+                    setColor(android.graphics.Color.argb(228, 12, 19, 30))
+                    setStroke(dp(1), android.graphics.Color.argb(80, 75, 230, 175))
+                }
+            }
+            val icon = android.widget.ImageView(this).apply {
+                setImageResource(android.R.drawable.ic_menu_mapmode)
+                scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+            }
+            val iconFile = java.io.File(world, "icon.png")
+            if (iconFile.isFile) {
+                step480Run {
+                    try {
+                        val o = android.graphics.BitmapFactory.Options().apply {
+                            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+                            inSampleSize = 2
+                        }
+                        val bmp = android.graphics.BitmapFactory.decodeFile(iconFile.absolutePath, o)
+                        if (bmp != null) runOnUiThread { if (!isFinishing) icon.setImageBitmap(bmp) }
+                    } catch (_: Throwable) {}
+                }
+            }
+            row.addView(icon, LinearLayout.LayoutParams(dp(64), dp(64)))
+            val copy = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(9), 0, dp(7), 0)
+                addView(step375Text(world.name, 15f, true))
+                addView(step375Text("Minecraft world · local", 10.5f))
+                addView(step375Text(world.listFiles()?.count { it.isFile }?.toString() + " files", 9.5f).apply {
+                    setTextColor(android.graphics.Color.rgb(86, 240, 177))
+                })
+            }
+            row.addView(copy, LinearLayout.LayoutParams(0, dp(70), 1f))
+            row.addView(step375Button("REMOVE") {
+                try {
+                    MinecraftContentManager.remove(this@DroidLauncherUiActivity, MinecraftContentManager.Kind.WORLD, world)
+                    showPage("World")
+                } catch (t: Throwable) {
+                    android.widget.Toast.makeText(this@DroidLauncherUiActivity, t.message ?: "Remove failed", android.widget.Toast.LENGTH_LONG).show()
+                }
+            }, LinearLayout.LayoutParams(dp(92), dp(42)))
+            pageArea.addView(row, LinearLayout.LayoutParams(-1, dp(82)).apply { topMargin = dp(7) })
         }
     }
 
